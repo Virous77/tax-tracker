@@ -1,0 +1,638 @@
+"use client";
+
+import {
+	AlertTriangle,
+	CheckCircle2,
+	Database,
+	LogOut,
+	Save,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useId, useState } from "react";
+import { Badge } from "@/components/ui/Badge";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { FALLBACK_TAX_YEARS } from "@/components/ui/TaxYearSelect";
+import {
+	type AppSettings,
+	api,
+	getErrorMessage,
+	type TaxYearInfo,
+} from "@/lib/client/api";
+import { isLocalEndpoint } from "@/lib/client/format";
+
+export function SettingsClient() {
+	const router = useRouter();
+	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
+	const [settings, setSettings] = useState<AppSettings | null>(null);
+	const [apiKeyDraft, setApiKeyDraft] = useState("");
+	const [loading, setLoading] = useState(true);
+	const [saving, setSaving] = useState(false);
+	const [savedMsg, setSavedMsg] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	const defaultYearId = useId();
+	const feeId = useId();
+	const lotMethodId = useId();
+	const lotPoolId = useId();
+	const usdtRateId = useId();
+	const incomeBasisId = useId();
+	const headId = useId();
+	const surchargeId = useId();
+	const specifiedId = useId();
+	const windowId = useId();
+	const toleranceId = useId();
+	const aiUrlId = useId();
+	const aiModelId = useId();
+	const aiKeyId = useId();
+	const cloudAckId = useId();
+
+	const load = useCallback(async () => {
+		setLoading(true);
+		setError(null);
+		try {
+			const [s, years] = await Promise.all([
+				api.getSettings(),
+				api.getTaxYears().catch(() => FALLBACK_TAX_YEARS),
+			]);
+			setSettings(s);
+			if (years.length > 0) setTaxYears(years);
+		} catch (err) {
+			setError(getErrorMessage(err));
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		load();
+	}, [load]);
+
+	async function handleSave(e: React.FormEvent) {
+		e.preventDefault();
+		if (!settings) return;
+		const local = isLocalEndpoint(settings.ai.baseUrl);
+		if (!local && !settings.ai.cloudAcknowledged) {
+			setError(
+				"Please acknowledge the cloud privacy warning before saving a non-local AI endpoint.",
+			);
+			return;
+		}
+		setSaving(true);
+		setError(null);
+		setSavedMsg(null);
+		try {
+			const updated = await api.putSettings({
+				defaultTaxYear: settings.defaultTaxYear,
+				feeTreatment: settings.feeTreatment,
+				lotMethod: settings.lotMethod,
+				lotPool: settings.lotPool,
+				usdtInrRate: settings.usdtInrRate,
+				incomeCostBasis: settings.incomeCostBasis,
+				headOfIncome: settings.headOfIncome,
+				surchargeRate: settings.surchargeRate,
+				specifiedPerson: settings.specifiedPerson,
+				transferMatchWindowHours: Number(settings.transferMatchWindowHours),
+				transferAmountTolerance: settings.transferAmountTolerance,
+				ai: {
+					baseUrl: settings.ai.baseUrl.trim(),
+					model: settings.ai.model.trim(),
+					cloudAcknowledged: settings.ai.cloudAcknowledged,
+					...(apiKeyDraft.trim() !== "" ? { apiKey: apiKeyDraft.trim() } : {}),
+				},
+			});
+			setSettings(updated);
+			setApiKeyDraft("");
+			setSavedMsg(
+				"Settings saved. Recompute any open tax report to apply changes.",
+			);
+		} catch (err) {
+			setError(getErrorMessage(err));
+		} finally {
+			setSaving(false);
+		}
+	}
+
+	async function handleLogout() {
+		try {
+			await api.logout();
+			router.push("/login");
+		} catch (err) {
+			setError(getErrorMessage(err));
+		}
+	}
+
+	if (loading) {
+		return (
+			<div className="h-64 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]" />
+		);
+	}
+
+	if (!settings) {
+		return (
+			<div className="space-y-4">
+				<h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+				{error ? <ErrorBanner message={error} onRetry={load} /> : null}
+			</div>
+		);
+	}
+
+	const isLocal = isLocalEndpoint(settings.ai.baseUrl);
+
+	return (
+		<div className="space-y-6">
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<div>
+					<h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
+						CA-configurable tax assumptions, AI recipe assistant endpoint, and
+						backup location.
+					</p>
+				</div>
+				<button
+					type="button"
+					onClick={handleLogout}
+					className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+				>
+					<LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+					Log out (if password enabled)
+				</button>
+			</div>
+
+			{error ? <ErrorBanner message={error} /> : null}
+			{savedMsg ? (
+				<div
+					aria-live="polite"
+					className="flex items-center gap-2 rounded-lg border border-[var(--positive)]/40 bg-[var(--positive-soft)] px-4 py-2.5 text-sm text-[var(--positive)]"
+				>
+					<CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+					<span>{savedMsg}</span>
+				</div>
+			) : null}
+
+			<form onSubmit={handleSave} className="space-y-6">
+				{/* General / Engine Settings */}
+				<section className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+					<h2 className="text-base font-semibold tracking-tight">
+						Tax Engine Assumptions
+					</h2>
+
+					<div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+						<div>
+							<label
+								htmlFor={defaultYearId}
+								className="block text-sm font-medium"
+							>
+								Default tax year
+							</label>
+							<select
+								id={defaultYearId}
+								value={settings.defaultTaxYear}
+								onChange={(e) =>
+									setSettings({ ...settings, defaultTaxYear: e.target.value })
+								}
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							>
+								{taxYears.map((ty) => (
+									<option key={ty.id} value={ty.id}>
+										{ty.id} ({ty.act})
+									</option>
+								))}
+							</select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Which financial year (1 April – 31 March IST) opens by default.
+							</p>
+						</div>
+
+						<div>
+							<label htmlFor={headId} className="block text-sm font-medium">
+								Head of income
+							</label>
+							<select
+								id={headId}
+								value={settings.headOfIncome}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										headOfIncome: e.target.value as AppSettings["headOfIncome"],
+									})
+								}
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							>
+								<option value="capital_gains">Capital Gains</option>
+								<option value="business">Business Income</option>
+							</select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Schedule VDA classification printed on every disposal row (ask
+								your CA which applies to your trading frequency).
+							</p>
+						</div>
+
+						<div>
+							<label htmlFor={feeId} className="block text-sm font-medium">
+								Fee &amp; GST treatment
+							</label>
+							<select
+								id={feeId}
+								value={settings.feeTreatment}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										feeTreatment: e.target.value as AppSettings["feeTreatment"],
+									})
+								}
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							>
+								<option value="exclude">
+									Exclude fees (strict statutory default)
+								</option>
+								<option value="include">
+									Include fees (add to buy cost / reduce sell consideration)
+								</option>
+							</select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Statutory VDA rules allow only cost of acquisition; some CAs
+								treat brokerage as part of cost or reduction of full value.
+							</p>
+						</div>
+
+						<div>
+							<label htmlFor={lotPoolId} className="block text-sm font-medium">
+								Lot pool scope
+							</label>
+							<select
+								id={lotPoolId}
+								value={settings.lotPool}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										lotPool: e.target.value as AppSettings["lotPool"],
+									})
+								}
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							>
+								<option value="global">Global FIFO across all wallets</option>
+								<option value="per_source">
+									Per-source FIFO (separate per exchange)
+								</option>
+							</select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Determines whether FIFO lot queues are matched per exchange or
+								pooled across your entire portfolio.
+							</p>
+						</div>
+
+						<div>
+							<label
+								htmlFor={lotMethodId}
+								className="block text-sm font-medium"
+							>
+								Lot matching method
+							</label>
+							<select
+								id={lotMethodId}
+								value={settings.lotMethod}
+								disabled
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-1.5 text-sm text-[var(--text-secondary)]"
+							>
+								<option value="FIFO">FIFO (First-In, First-Out)</option>
+							</select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Standard Indian accounting method for fungible digital assets.
+							</p>
+						</div>
+
+						<div>
+							<label htmlFor={usdtRateId} className="block text-sm font-medium">
+								USDT / USD-stablecoin INR rate
+							</label>
+							<select
+								id={usdtRateId}
+								value={settings.usdtInrRate}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										usdtInrRate: e.target.value as AppSettings["usdtInrRate"],
+									})
+								}
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							>
+								<option value="ledger_usdt_inr">
+									Latest ledger USDT/INR trade (fallback to SBI TT)
+								</option>
+								<option value="sbi_usd_tt">
+									Always SBI TT buying USD/INR rate
+								</option>
+							</select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								How crypto trades quoted in USDT are converted to INR when no
+								direct INR price is recorded.
+							</p>
+						</div>
+
+						<div>
+							<label
+								htmlFor={incomeBasisId}
+								className="block text-sm font-medium"
+							>
+								Income receipt cost basis
+							</label>
+							<select
+								id={incomeBasisId}
+								value={settings.incomeCostBasis}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										incomeCostBasis: e.target
+											.value as AppSettings["incomeCostBasis"],
+									})
+								}
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							>
+								<option value="zero">₹0 (conservative default)</option>
+								<option value="fmv_at_receipt">
+									Fair market value (FMV) at receipt
+								</option>
+							</select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Cost assigned to staking, mining, or airdrop coins when they are
+								later sold (if already taxed as income at receipt).
+							</p>
+						</div>
+
+						<div>
+							<label
+								htmlFor={surchargeId}
+								className="block text-sm font-medium"
+							>
+								Surcharge rate
+							</label>
+							<select
+								id={surchargeId}
+								value={settings.surchargeRate}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										surchargeRate: e.target
+											.value as AppSettings["surchargeRate"],
+									})
+								}
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							>
+								<option value="0">0% (income up to ₹50 lakh)</option>
+								<option value="0.10">10% (above ₹50 lakh – ₹1 crore)</option>
+								<option value="0.15">15% (above ₹1 crore – ₹2 crore)</option>
+								<option value="0.25">25% (above ₹2 crore – ₹5 crore)</option>
+								<option value="0.37">37% (above ₹5 crore)</option>
+							</select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Applied on top of the 30% base VDA tax before calculating 4%
+								Health &amp; Education Cess.
+							</p>
+						</div>
+
+						<div>
+							<label htmlFor={windowId} className="block text-sm font-medium">
+								Transfer match window (hours)
+							</label>
+							<input
+								id={windowId}
+								type="number"
+								min={0}
+								step={1}
+								value={settings.transferMatchWindowHours}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										transferMatchWindowHours: Number(e.target.value) || 0,
+									})
+								}
+								className="num mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							/>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Maximum time between a withdrawal on one exchange and deposit on
+								another to pair them as a self-transfer.
+							</p>
+						</div>
+
+						<div>
+							<label
+								htmlFor={toleranceId}
+								className="block text-sm font-medium"
+							>
+								Transfer amount tolerance (fraction)
+							</label>
+							<input
+								id={toleranceId}
+								type="text"
+								inputMode="decimal"
+								value={settings.transferAmountTolerance}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										transferAmountTolerance: e.target.value,
+									})
+								}
+								className="num mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							/>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Allowed withdrawal-to-deposit quantity shrinkage (e.g. 0.01 =
+								1%) to absorb network gas fees during self-transfers.
+							</p>
+						</div>
+
+						<div className="md:col-span-2">
+							<label
+								htmlFor={specifiedId}
+								className="flex items-start gap-2.5 text-sm font-medium"
+							>
+								<input
+									id={specifiedId}
+									type="checkbox"
+									checked={settings.specifiedPerson}
+									onChange={(e) =>
+										setSettings({
+											...settings,
+											specifiedPerson: e.target.checked,
+										})
+									}
+									className="mt-1"
+								/>
+								<span>
+									Specified person for VDA TDS threshold
+									<span className="mt-0.5 block text-xs font-normal text-[var(--text-muted)]">
+										Raises the yearly aggregate VDA TDS exemption threshold from
+										₹10,000 to ₹50,000 (applicable to individuals/HUFs meeting
+										statutory criteria).
+									</span>
+								</span>
+							</label>
+						</div>
+					</div>
+				</section>
+
+				{/* AI Recipe Assistant Settings */}
+				<section className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+					<div className="flex flex-wrap items-center justify-between gap-2">
+						<div>
+							<h2 className="text-base font-semibold tracking-tight">
+								AI Recipe Assistant (Optional)
+							</h2>
+							<p className="text-xs text-[var(--text-secondary)]">
+								Used only when you click &ldquo;Send &amp; suggest recipe&rdquo;
+								for unknown CSV formats. Never called automatically.
+							</p>
+						</div>
+						<Badge tone={isLocal ? "positive" : "warning"}>
+							{isLocal ? "Local endpoint" : "Cloud endpoint"}
+						</Badge>
+					</div>
+
+					<div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+						<div>
+							<label htmlFor={aiUrlId} className="block text-sm font-medium">
+								OpenAI-compatible base URL
+							</label>
+							<input
+								id={aiUrlId}
+								type="url"
+								value={settings.ai.baseUrl}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										ai: { ...settings.ai, baseUrl: e.target.value },
+									})
+								}
+								placeholder="http://ollama:11434/v1"
+								className="font-mono-code mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							/>
+						</div>
+
+						<div>
+							<label htmlFor={aiModelId} className="block text-sm font-medium">
+								Model name
+							</label>
+							<input
+								id={aiModelId}
+								type="text"
+								value={settings.ai.model}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										ai: { ...settings.ai, model: e.target.value },
+									})
+								}
+								placeholder="qwen2.5:7b"
+								className="font-mono-code mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							/>
+						</div>
+
+						<div>
+							<div className="flex items-center justify-between">
+								<label htmlFor={aiKeyId} className="block text-sm font-medium">
+									API key (optional)
+								</label>
+								{settings.ai.apiKeySet ? (
+									<Badge tone="positive">Key saved</Badge>
+								) : null}
+							</div>
+							<input
+								id={aiKeyId}
+								type="password"
+								autoComplete="new-password"
+								value={apiKeyDraft}
+								onChange={(e) => setApiKeyDraft(e.target.value)}
+								placeholder={
+									settings.ai.apiKeySet
+										? "Leave blank to keep existing key"
+										: "Not required for local Ollama"
+								}
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							/>
+						</div>
+					</div>
+
+					{!isLocal ? (
+						<div className="space-y-2 rounded-md border border-[var(--warning)]/40 bg-[var(--warning-soft)] p-3 text-xs">
+							<p className="flex items-center gap-1.5 font-semibold text-[var(--warning)]">
+								<AlertTriangle
+									className="h-4 w-4 shrink-0"
+									aria-hidden="true"
+								/>
+								Cloud endpoint warning
+							</p>
+							<p className="text-[var(--text-primary)]">
+								This URL is outside your local machine/network. When you request
+								an AI recipe suggestion, the CSV headers and first 20 sample
+								rows will be sent to{" "}
+								<code className="font-mono-code">{settings.ai.baseUrl}</code>.
+							</p>
+							<label
+								htmlFor={cloudAckId}
+								className="flex items-center gap-2 pt-1 font-medium text-[var(--text-primary)]"
+							>
+								<input
+									id={cloudAckId}
+									type="checkbox"
+									checked={settings.ai.cloudAcknowledged}
+									onChange={(e) =>
+										setSettings({
+											...settings,
+											ai: {
+												...settings.ai,
+												cloudAcknowledged: e.target.checked,
+											},
+										})
+									}
+								/>
+								<span>
+									I understand that 20 sample CSV rows will be sent to this
+									external AI provider when I click Suggest Recipe.
+								</span>
+							</label>
+						</div>
+					) : null}
+				</section>
+
+				<div className="flex justify-end">
+					<button
+						type="submit"
+						disabled={saving}
+						className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-5 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+					>
+						<Save className="h-4 w-4" aria-hidden="true" />
+						{saving ? "Saving…" : "Save settings"}
+					</button>
+				</div>
+			</form>
+
+			{/* Data Folder & Backup Note */}
+			<section className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+				<div className="flex items-start gap-3">
+					<Database
+						className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accent)]"
+						aria-hidden="true"
+					/>
+					<div className="space-y-1 text-sm">
+						<h2 className="font-semibold">Local Data &amp; Backups</h2>
+						<p className="text-xs leading-relaxed text-[var(--text-secondary)]">
+							All imports, raw source rows, edited transactions, saved recipes,
+							and computed reports are stored locally in a single SQLite file:{" "}
+							<code className="font-mono-code rounded bg-[var(--bg-subtle)] px-1.5 py-0.5">
+								{"$"}
+								{"{DATA_DIR:-./data}/tax-tracker.db"}
+							</code>{" "}
+							(mounted at{" "}
+							<code className="font-mono-code">/data/tax-tracker.db</code> in
+							Docker).
+						</p>
+						<p className="text-xs text-[var(--text-secondary)]">
+							<strong>How to back up:</strong> Copy the{" "}
+							<code className="font-mono-code">.db</code> file (when no import
+							or report computation is running) to an encrypted drive.
+						</p>
+					</div>
+				</div>
+			</section>
+		</div>
+	);
+}

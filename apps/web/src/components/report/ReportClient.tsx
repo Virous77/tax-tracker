@@ -1,0 +1,961 @@
+"use client";
+
+import {
+	type ActualBalance,
+	D,
+	type ScheduleVdaRow,
+	type VdaReport,
+} from "@tax/core";
+import {
+	AlertTriangle,
+	Calculator,
+	CheckCircle2,
+	Download,
+	FileSpreadsheet,
+	Info,
+	Save,
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { TrailDrawer } from "@/components/report/TrailDrawer";
+import { Badge } from "@/components/ui/Badge";
+import { Drawer } from "@/components/ui/Drawer";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import {
+	FALLBACK_TAX_YEARS,
+	TaxYearSelect,
+} from "@/components/ui/TaxYearSelect";
+import { api, getErrorMessage, type TaxYearInfo } from "@/lib/client/api";
+import {
+	formatInr,
+	formatInrNullable,
+	formatIstDate,
+	formatQty,
+	formatSourceLabel,
+	isPositiveDecimal,
+	isZeroDecimal,
+} from "@/lib/client/format";
+
+function balanceKey(asset: string, source?: string): string {
+	return `${asset}::${source ?? ""}`;
+}
+
+export function ReportClient() {
+	const router = useRouter();
+	const searchParams = useSearchParams();
+	const urlTaxYear = searchParams.get("taxYear") ?? "";
+
+	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
+	const [taxYear, setTaxYear] = useState<string>(urlTaxYear || "2026-27");
+	const [report, setReport] = useState<VdaReport | null>(null);
+	const [actualDrafts, setActualDrafts] = useState<Record<string, string>>({});
+	const [checkedChecklist, setCheckedChecklist] = useState<
+		Record<string, boolean>
+	>({});
+	const [loading, setLoading] = useState(true);
+	const [computing, setComputing] = useState(false);
+	const [savingBalances, setSavingBalances] = useState(false);
+	const [balanceSavedMsg, setBalanceSavedMsg] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [trailRow, setTrailRow] = useState<ScheduleVdaRow | null>(null);
+	const [incomeRawInspect, setIncomeRawInspect] = useState<{
+		title: string;
+		raw: unknown;
+	} | null>(null);
+
+	useEffect(() => {
+		let cancelled = false;
+		async function initMeta() {
+			try {
+				const [years, settings] = await Promise.all([
+					api.getTaxYears().catch(() => FALLBACK_TAX_YEARS),
+					api.getSettings().catch(() => null),
+				]);
+				if (cancelled) return;
+				if (years.length > 0) setTaxYears(years);
+				if (!urlTaxYear && settings?.defaultTaxYear) {
+					setTaxYear(settings.defaultTaxYear);
+				}
+			} catch {
+				// handled per call
+			}
+		}
+		initMeta();
+		return () => {
+			cancelled = true;
+		};
+	}, [urlTaxYear]);
+
+	useEffect(() => {
+		if (urlTaxYear) setTaxYear(urlTaxYear);
+	}, [urlTaxYear]);
+
+	const loadReport = useCallback(async (year: string) => {
+		setLoading(true);
+		setError(null);
+		setBalanceSavedMsg(null);
+		try {
+			const [rep, savedActuals] = await Promise.all([
+				api.getReportOrNull(year),
+				api.getActualBalances(year).catch(() => []),
+			]);
+			setReport(rep);
+
+			const drafts: Record<string, string> = {};
+			if (rep) {
+				for (const b of rep.balances) {
+					if (b.actual !== undefined) {
+						drafts[balanceKey(b.asset, b.source)] = b.actual;
+					}
+				}
+			}
+			for (const a of savedActuals) {
+				drafts[balanceKey(a.asset, a.source)] = a.amount;
+			}
+			setActualDrafts(drafts);
+		} catch (err) {
+			setError(getErrorMessage(err));
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		if (taxYear) loadReport(taxYear);
+	}, [taxYear, loadReport]);
+
+	function handleTaxYearChange(next: string) {
+		setTaxYear(next);
+		const params = new URLSearchParams(searchParams.toString());
+		params.set("taxYear", next);
+		router.replace(`/report?${params.toString()}`);
+	}
+
+	async function handleCompute() {
+		setComputing(true);
+		setError(null);
+		setBalanceSavedMsg(null);
+		try {
+			const rep = await api.computeReport(taxYear);
+			setReport(rep);
+		} catch (err) {
+			setError(getErrorMessage(err));
+		} finally {
+			setComputing(false);
+		}
+	}
+
+	async function handleSaveBalances() {
+		if (!report) return;
+		setSavingBalances(true);
+		setError(null);
+		setBalanceSavedMsg(null);
+		try {
+			const payload: ActualBalance[] = [];
+			for (const row of report.balances) {
+				const raw = actualDrafts[balanceKey(row.asset, row.source)]?.trim();
+				if (raw) {
+					payload.push({
+						asset: row.asset,
+						...(row.source ? { source: row.source } : {}),
+						amount: raw,
+					});
+				}
+			}
+			await api.putActualBalances(taxYear, payload);
+			const rep = await api.computeReport(taxYear);
+			setReport(rep);
+			setBalanceSavedMsg(
+				"Actual balances saved and reconciliation checks updated.",
+			);
+		} catch (err) {
+			setError(getErrorMessage(err));
+		} finally {
+			setSavingBalances(false);
+		}
+	}
+
+	return (
+		<div className="space-y-6">
+			{/* Header */}
+			<div className="flex flex-wrap items-center justify-between gap-4">
+				<div>
+					<h1 className="text-xl font-semibold tracking-tight">
+						Schedule VDA &amp; Tax Report
+					</h1>
+					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
+						ITR-ready Schedule VDA rows, Section 194S/393 TDS summary, income
+						&amp; gifts, and year-end balances.
+					</p>
+				</div>
+
+				<div className="flex flex-wrap items-center gap-3">
+					<TaxYearSelect
+						value={taxYear}
+						onChange={handleTaxYearChange}
+						taxYears={taxYears}
+					/>
+					<button
+						type="button"
+						disabled={computing}
+						onClick={handleCompute}
+						className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+					>
+						<Calculator className="h-4 w-4" aria-hidden="true" />
+						{computing
+							? "Computing…"
+							: report
+								? "Recompute report"
+								: "Compute report"}
+					</button>
+				</div>
+			</div>
+
+			{error ? (
+				<ErrorBanner message={error} onRetry={() => loadReport(taxYear)} />
+			) : null}
+
+			{loading ? (
+				<div className="h-64 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]" />
+			) : !report ? (
+				<EmptyState
+					icon={<FileSpreadsheet className="h-8 w-8" />}
+					title={`No report computed for ${taxYear}`}
+					description="Compute the report to generate Schedule VDA rows, TDS totals, and year-end balance checks."
+					action={
+						<button
+							type="button"
+							disabled={computing}
+							onClick={handleCompute}
+							className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+						>
+							<Calculator className="h-4 w-4" aria-hidden="true" />
+							{computing ? "Computing…" : `Compute ${taxYear} report`}
+						</button>
+					}
+				/>
+			) : (
+				<>
+					{/* Exports & Legal Section Labels */}
+					<section className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4">
+						<div className="flex flex-wrap items-start justify-between gap-4">
+							<div className="space-y-1">
+								<div className="flex flex-wrap items-center gap-2">
+									<h2 className="text-sm font-semibold">{report.act}</h2>
+									{!report.sectionsVerified ? (
+										<Badge tone="warning">Pending CA verification</Badge>
+									) : (
+										<Badge tone="positive">Sections verified</Badge>
+									)}
+								</div>
+								<p className="text-xs text-[var(--text-secondary)]">
+									Rule file:{" "}
+									<code className="font-mono-code">
+										{report.generatedFrom.ruleFile}
+									</code>{" "}
+									· {report.generatedFrom.txCount} transactions evaluated
+								</p>
+							</div>
+
+							{/* Export buttons */}
+							<div className="flex flex-wrap gap-2">
+								{(
+									[
+										{ kind: "schedule-vda", label: "Schedule VDA" },
+										{ kind: "tds", label: "TDS" },
+										{ kind: "income", label: "Income" },
+										{ kind: "full", label: "Full Report" },
+									] as const
+								).map((exp) => (
+									<div
+										key={exp.kind}
+										className="inline-flex items-center overflow-hidden rounded border border-[var(--border)] bg-[var(--bg-canvas)] text-xs"
+									>
+										<span className="px-2.5 py-1 font-medium text-[var(--text-secondary)]">
+											{exp.label}
+										</span>
+										<a
+											href={api.getExportUrl(taxYear, "csv", exp.kind)}
+											download
+											className="inline-flex items-center gap-1 border-l border-[var(--border)] px-2 py-1 font-medium text-[var(--accent-text)] hover:bg-[var(--bg-hover)]"
+										>
+											<Download className="h-3 w-3" aria-hidden="true" />
+											CSV
+										</a>
+										<a
+											href={api.getExportUrl(taxYear, "xlsx", exp.kind)}
+											download
+											className="inline-flex items-center gap-1 border-l border-[var(--border)] px-2 py-1 font-medium text-[var(--accent-text)] hover:bg-[var(--bg-hover)]"
+										>
+											XLSX
+										</a>
+									</div>
+								))}
+							</div>
+						</div>
+
+						{/* Section labels */}
+						<div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-3 text-xs">
+							{Object.entries(report.sections).map(([k, v]) => (
+								<div
+									key={k}
+									className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-2.5 py-1"
+								>
+									<span className="text-[var(--text-muted)]">{k}: </span>
+									<span className="font-medium">{v}</span>
+								</div>
+							))}
+						</div>
+					</section>
+
+					{/* Totals strip */}
+					<section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+						{[
+							{
+								label: "Consideration",
+								val: formatInr(report.totals.consideration),
+							},
+							{ label: "Cost", val: formatInr(report.totals.cost) },
+							{
+								label: "Taxable Income",
+								val: formatInr(report.totals.taxableIncome),
+							},
+							{
+								label: "Total Tax",
+								val: formatInr(report.totals.totalTax),
+							},
+							{
+								label: "TDS Credit",
+								val: formatInr(report.totals.tdsCredit),
+								tone: "positive" as const,
+							},
+							{
+								label: "Net Payable",
+								val: formatInr(report.totals.netPayable),
+							},
+						].map((item) => (
+							<div
+								key={item.label}
+								className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-3"
+							>
+								<p className="text-xs text-[var(--text-secondary)]">
+									{item.label}
+								</p>
+								<p
+									className={`num mt-1 text-base font-semibold ${
+										item.tone === "positive" ? "text-[var(--positive)]" : ""
+									}`}
+								>
+									{item.val}
+								</p>
+							</div>
+						))}
+					</section>
+
+					{/* Unresolved rows */}
+					{report.unresolved.length > 0 ? (
+						<section
+							id="unresolved"
+							className="space-y-3 rounded-lg border border-[var(--loss)]/40 bg-[var(--loss-soft)] p-4"
+						>
+							<div className="flex flex-wrap items-center justify-between gap-2">
+								<div className="flex items-center gap-2">
+									<AlertTriangle
+										className="h-4 w-4 text-[var(--loss)]"
+										aria-hidden="true"
+									/>
+									<h2 className="text-sm font-semibold text-[var(--loss)]">
+										Unresolved Disposal Slices ({report.unresolved.length}) —
+										Excluded from Totals
+									</h2>
+								</div>
+								<Link
+									href={`/review?taxYear=${encodeURIComponent(taxYear)}`}
+									className="text-xs font-medium text-[var(--loss)] underline"
+								>
+									Resolve in Review Queue
+								</Link>
+							</div>
+							<div className="overflow-x-auto rounded border border-[var(--loss)]/25 bg-[var(--bg-surface)]">
+								<table className="w-full border-collapse text-left text-xs">
+									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
+										<tr>
+											<th className="px-3 py-2 font-medium">Asset</th>
+											<th className="num-right px-3 py-2 font-medium">
+												Uncovered Qty
+											</th>
+											<th className="px-3 py-2 font-medium">Reason</th>
+											<th className="px-3 py-2 text-right font-medium">Fix</th>
+										</tr>
+									</thead>
+									<tbody>
+										{report.unresolved.map((u) => (
+											<tr
+												key={`${u.txId}:${u.asset}:${u.reason}`}
+												className="border-b border-[var(--border)] last:border-b-0"
+											>
+												<td className="px-3 py-2 font-medium">{u.asset}</td>
+												<td className="num-right px-3 py-2">
+													{formatQty(u.quantity)}
+												</td>
+												<td className="px-3 py-2">
+													<Badge tone="loss">{u.reason}</Badge>
+												</td>
+												<td className="px-3 py-2 text-right">
+													<Link
+														href={`/transactions?add=buy&asset=${encodeURIComponent(u.asset)}`}
+														className="font-medium text-[var(--accent-text)] hover:underline"
+													>
+														Add missing buy
+													</Link>
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
+						</section>
+					) : null}
+
+					{/* Schedule VDA Table */}
+					<section className="space-y-3">
+						<div className="flex flex-wrap items-center justify-between gap-2">
+							<h2 className="text-base font-semibold tracking-tight">
+								Schedule VDA ({report.scheduleVdaRows.length} rows)
+							</h2>
+							<p className="text-xs text-[var(--text-secondary)]">
+								Losses not set off:{" "}
+								<span className="num font-semibold text-[var(--loss)]">
+									{formatInr(report.totals.lossesNotSetOff)}
+								</span>
+							</p>
+						</div>
+
+						{report.scheduleVdaRows.length === 0 ? (
+							<EmptyState
+								title="No VDA disposals in this tax year"
+								description="No taxable sells or crypto-to-crypto swaps occurred between 1 April and 31 March."
+							/>
+						) : (
+							<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+								<div className="overflow-x-auto">
+									<table className="w-full border-collapse text-left text-xs sm:text-sm">
+										<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
+											<tr>
+												<th className="px-3 py-2.5 font-medium whitespace-nowrap">
+													Date of Acquisition
+												</th>
+												<th className="px-3 py-2.5 font-medium whitespace-nowrap">
+													Date of Transfer
+												</th>
+												<th className="px-3 py-2.5 font-medium whitespace-nowrap">
+													Head of Income
+												</th>
+												<th className="px-3 py-2.5 font-medium whitespace-nowrap">
+													Asset &amp; Qty
+												</th>
+												<th className="num-right px-3 py-2.5 font-medium whitespace-nowrap">
+													Cost of Acquisition
+												</th>
+												<th className="num-right px-3 py-2.5 font-medium whitespace-nowrap">
+													Consideration Received
+												</th>
+												<th className="num-right px-3 py-2.5 font-medium whitespace-nowrap">
+													Income
+												</th>
+												<th className="num-right px-3 py-2.5 font-medium whitespace-nowrap">
+													Loss
+												</th>
+												<th className="px-3 py-2.5 text-right font-medium">
+													Trail
+												</th>
+											</tr>
+										</thead>
+										<tbody>
+											{report.scheduleVdaRows.map((row) => {
+												const hasLoss = isPositiveDecimal(row.loss);
+												return (
+													<tr
+														key={`${row.trail.disposalTxId}:${row.dateOfAcquisition ?? "unk"}:${row.quantity}:${row.trail.lotTxIds.join(",")}`}
+														className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
+													>
+														<td className="px-3 py-2.5 whitespace-nowrap">
+															{row.dateOfAcquisition ? (
+																formatIstDate(row.dateOfAcquisition)
+															) : (
+																<Badge tone="loss">Unknown</Badge>
+															)}
+														</td>
+														<td className="px-3 py-2.5 whitespace-nowrap">
+															{formatIstDate(row.dateOfTransfer)}
+														</td>
+														<td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
+															{row.headOfIncome === "capital_gains"
+																? "Capital Gains"
+																: "Business"}
+														</td>
+														<td className="num px-3 py-2.5 whitespace-nowrap">
+															<span className="font-medium">{row.asset}</span>{" "}
+															<span className="text-xs text-[var(--text-secondary)]">
+																{formatQty(row.quantity)}
+															</span>
+														</td>
+														<td className="num-right px-3 py-2.5 whitespace-nowrap">
+															{row.costOfAcquisition !== null ? (
+																formatInr(row.costOfAcquisition)
+															) : (
+																<span className="text-[var(--loss)]">
+																	Missing
+																</span>
+															)}
+														</td>
+														<td className="num-right px-3 py-2.5 whitespace-nowrap">
+															{row.considerationReceived !== null ? (
+																formatInr(row.considerationReceived)
+															) : (
+																<span className="text-[var(--loss)]">
+																	Missing
+																</span>
+															)}
+														</td>
+														<td className="num-right px-3 py-2.5 font-medium whitespace-nowrap">
+															{formatInrNullable(row.income)}
+														</td>
+														<td
+															className={`num-right px-3 py-2.5 whitespace-nowrap ${
+																hasLoss
+																	? "font-medium text-[var(--loss)]"
+																	: "text-[var(--text-muted)]"
+															}`}
+														>
+															{formatInrNullable(row.loss)}
+														</td>
+														<td className="px-3 py-2.5 text-right whitespace-nowrap">
+															<button
+																type="button"
+																onClick={() => setTrailRow(row)}
+																className="rounded border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--bg-hover)]"
+															>
+																Trail
+															</button>
+														</td>
+													</tr>
+												);
+											})}
+										</tbody>
+									</table>
+								</div>
+							</div>
+						)}
+					</section>
+
+					{/* TDS Section */}
+					<section id="tds" className="space-y-3">
+						<h2 className="text-base font-semibold tracking-tight">
+							TDS Summary &amp; Form 26AS / AIS Reconciliation
+						</h2>
+						<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+							<div className="overflow-x-auto">
+								<table className="w-full border-collapse text-left text-sm">
+									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
+										<tr>
+											<th className="px-4 py-2.5 font-medium">Source</th>
+											<th className="px-4 py-2.5 font-medium">
+												Platform Deducts TDS
+											</th>
+											<th className="num-right px-4 py-2.5 font-medium">
+												Gross Transfer Value
+											</th>
+											<th className="num-right px-4 py-2.5 font-medium">
+												TDS Deducted
+											</th>
+											<th className="num-right px-4 py-2.5 font-medium">
+												TDS Possibly Due
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										{report.tds.bySource.length === 0 ? (
+											<tr>
+												<td
+													colSpan={5}
+													className="px-4 py-6 text-center text-xs text-[var(--text-muted)]"
+												>
+													No VDA transfers recorded in this tax year.
+												</td>
+											</tr>
+										) : (
+											report.tds.bySource.map((src) => {
+												const possiblyDue = isPositiveDecimal(
+													src.possiblyDueInr,
+												);
+												return (
+													<tr
+														key={src.source}
+														className="border-b border-[var(--border)] last:border-b-0"
+													>
+														<td className="px-4 py-2.5 font-medium">
+															{formatSourceLabel(src.source)}
+														</td>
+														<td className="px-4 py-2.5">
+															{src.deductedByPlatform === true ? (
+																<Badge tone="positive">Yes</Badge>
+															) : src.deductedByPlatform === false ? (
+																<Badge tone="warning">
+																	No (offshore / peer)
+																</Badge>
+															) : (
+																<Badge tone="neutral">Unknown</Badge>
+															)}
+														</td>
+														<td className="num-right px-4 py-2.5">
+															{formatInr(src.transferValueInr)}
+														</td>
+														<td className="num-right px-4 py-2.5 font-medium text-[var(--positive)]">
+															{formatInr(src.tdsInr)}
+														</td>
+														<td className="num-right px-4 py-2.5">
+															{possiblyDue ? (
+																<Badge tone="warning">
+																	<span className="num">
+																		{formatInr(src.possiblyDueInr)}
+																	</span>
+																</Badge>
+															) : (
+																<span className="num text-[var(--text-muted)]">
+																	{formatInr(src.possiblyDueInr)}
+																</span>
+															)}
+														</td>
+													</tr>
+												);
+											})
+										)}
+									</tbody>
+								</table>
+							</div>
+
+							{report.tds.checklist.length > 0 ? (
+								<div className="border-t border-[var(--border)] bg-[var(--bg-subtle)] p-4">
+									<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
+										Form 26AS / AIS Matching Checklist
+									</h3>
+									<ul className="mt-2 space-y-1.5 text-xs">
+										{report.tds.checklist.map((item) => (
+											<li key={item}>
+												<label className="flex items-start gap-2">
+													<input
+														type="checkbox"
+														checked={Boolean(checkedChecklist[item])}
+														onChange={(e) =>
+															setCheckedChecklist((prev) => ({
+																...prev,
+																[item]: e.target.checked,
+															}))
+														}
+														className="mt-0.5"
+													/>
+													<span>{item}</span>
+												</label>
+											</li>
+										))}
+									</ul>
+								</div>
+							) : null}
+						</div>
+					</section>
+
+					{/* Income & Gifts */}
+					<section className="space-y-3">
+						<div className="flex flex-wrap items-center justify-between gap-2">
+							<h2 className="text-base font-semibold tracking-tight">
+								Income &amp; Gifts ({report.income.rows.length})
+							</h2>
+							<div className="flex items-center gap-2 text-xs">
+								<span>
+									Gifts total:{" "}
+									<strong className="num">
+										{formatInr(report.income.giftsTotalInr)}
+									</strong>
+								</span>
+								{report.income.giftsOverThreshold ? (
+									<Badge tone="warning">Exceeds gift threshold</Badge>
+								) : null}
+							</div>
+						</div>
+
+						{report.income.note ? (
+							<p className="flex items-center gap-2 rounded border border-[var(--warning)]/40 bg-[var(--warning-soft)] px-3 py-2 text-xs text-[var(--text-primary)]">
+								<Info
+									className="h-4 w-4 shrink-0 text-[var(--warning)]"
+									aria-hidden="true"
+								/>
+								{report.income.note}
+							</p>
+						) : null}
+
+						<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+							<div className="overflow-x-auto">
+								<table className="w-full border-collapse text-left text-sm">
+									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
+										<tr>
+											<th className="px-4 py-2.5 font-medium">Date</th>
+											<th className="px-4 py-2.5 font-medium">Type</th>
+											<th className="px-4 py-2.5 font-medium">Kind</th>
+											<th className="px-4 py-2.5 font-medium">
+												Asset &amp; Qty
+											</th>
+											<th className="num-right px-4 py-2.5 font-medium">
+												FMV (INR)
+											</th>
+											<th className="px-4 py-2.5 text-right font-medium">
+												Raw
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										{report.income.rows.length === 0 ? (
+											<tr>
+												<td
+													colSpan={6}
+													className="px-4 py-6 text-center text-xs text-[var(--text-muted)]"
+												>
+													No staking, airdrop, or gift receipts in this tax
+													year.
+												</td>
+											</tr>
+										) : (
+											report.income.rows.map((inc) => (
+												<tr
+													key={inc.txId}
+													className="border-b border-[var(--border)] last:border-b-0"
+												>
+													<td className="px-4 py-2.5 text-xs whitespace-nowrap">
+														{formatIstDate(inc.date)}
+													</td>
+													<td className="px-4 py-2.5">
+														<Badge tone="neutral">{inc.type}</Badge>
+													</td>
+													<td className="px-4 py-2.5 text-xs text-[var(--text-secondary)]">
+														{inc.incomeKind ?? "—"}
+													</td>
+													<td className="num px-4 py-2.5 whitespace-nowrap">
+														{formatQty(inc.quantity)} {inc.asset}
+													</td>
+													<td className="num-right px-4 py-2.5 font-medium">
+														{inc.fmvInr !== null ? (
+															formatInr(inc.fmvInr)
+														) : (
+															<span className="text-[var(--warning)]">
+																Missing FMV
+															</span>
+														)}
+													</td>
+													<td className="px-4 py-2.5 text-right">
+														<button
+															type="button"
+															onClick={() =>
+																setIncomeRawInspect({
+																	title: `${inc.type} · ${inc.asset}`,
+																	raw: inc.trail,
+																})
+															}
+															className="rounded border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--bg-hover)]"
+														>
+															Trail
+														</button>
+													</td>
+												</tr>
+											))
+										)}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</section>
+
+					{/* Year-end Balances with editable actual balances */}
+					<section id="balances" className="space-y-3">
+						<div className="flex flex-wrap items-center justify-between gap-3">
+							<div>
+								<h2 className="text-base font-semibold tracking-tight">
+									Year-End Balances ({report.balances.length})
+								</h2>
+								<p className="text-xs text-[var(--text-secondary)]">
+									Compare computed year-end holdings against your actual wallet
+									or exchange balances.
+								</p>
+							</div>
+							{report.balances.length > 0 ? (
+								<button
+									type="button"
+									disabled={savingBalances}
+									onClick={handleSaveBalances}
+									className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3.5 py-1.5 text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+								>
+									<Save className="h-3.5 w-3.5" aria-hidden="true" />
+									{savingBalances ? "Saving…" : "Save actual balances"}
+								</button>
+							) : null}
+						</div>
+
+						{balanceSavedMsg ? (
+							<p className="flex items-center gap-2 rounded border border-[var(--positive)]/40 bg-[var(--positive-soft)] px-3 py-2 text-xs text-[var(--positive)]">
+								<CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+								{balanceSavedMsg}
+							</p>
+						) : null}
+
+						<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+							<div className="overflow-x-auto">
+								<table className="w-full border-collapse text-left text-sm">
+									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
+										<tr>
+											<th className="px-4 py-2.5 font-medium">Asset</th>
+											<th className="px-4 py-2.5 font-medium">Pool / Source</th>
+											<th className="num-right px-4 py-2.5 font-medium">
+												Computed
+											</th>
+											<th className="num-right px-4 py-2.5 font-medium">
+												Actual Balance
+											</th>
+											<th className="num-right px-4 py-2.5 font-medium">
+												Difference
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										{report.balances.length === 0 ? (
+											<tr>
+												<td
+													colSpan={5}
+													className="px-4 py-6 text-center text-xs text-[var(--text-muted)]"
+												>
+													No asset holdings at year end.
+												</td>
+											</tr>
+										) : (
+											report.balances.map((b) => {
+												const key = balanceKey(b.asset, b.source);
+												const draft = actualDrafts[key] ?? "";
+												let liveDiff: string | null = b.difference ?? null;
+												if (draft.trim() !== "") {
+													try {
+														liveDiff = D(draft.trim())
+															.minus(b.computed)
+															.toFixed();
+													} catch {
+														liveDiff = null;
+													}
+												}
+												const hasMismatch =
+													liveDiff !== null && !isZeroDecimal(liveDiff);
+
+												return (
+													<tr
+														key={key}
+														className="border-b border-[var(--border)] last:border-b-0"
+													>
+														<td className="px-4 py-2.5 font-medium">
+															{b.asset}
+														</td>
+														<td className="px-4 py-2.5 text-xs text-[var(--text-secondary)]">
+															{b.source
+																? formatSourceLabel(b.source)
+																: "Global"}
+														</td>
+														<td className="num-right px-4 py-2.5">
+															{formatQty(b.computed)}
+														</td>
+														<td className="px-4 py-2 text-right">
+															<input
+																type="text"
+																inputMode="decimal"
+																aria-label={`Actual balance for ${b.asset}${b.source ? ` on ${b.source}` : ""}`}
+																value={draft}
+																onChange={(e) =>
+																	setActualDrafts((prev) => ({
+																		...prev,
+																		[key]: e.target.value,
+																	}))
+																}
+																placeholder="Enter actual…"
+																className="num w-36 rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2 py-1 text-right text-xs"
+															/>
+														</td>
+														<td
+															className={`num-right px-4 py-2.5 text-xs ${
+																hasMismatch
+																	? "font-medium text-[var(--warning)]"
+																	: "text-[var(--text-muted)]"
+															}`}
+														>
+															{liveDiff !== null ? formatQty(liveDiff) : "—"}
+														</td>
+													</tr>
+												);
+											})
+										)}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</section>
+
+					{/* Settings used & warnings */}
+					<section className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4">
+						<h2 className="text-sm font-semibold">
+							Engine Settings Used for This Report
+						</h2>
+						<dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3 lg:grid-cols-5">
+							{Object.entries(report.generatedFrom.settings).map(([k, v]) => (
+								<div key={k}>
+									<dt className="text-[var(--text-muted)]">{k}</dt>
+									<dd className="font-mono-code mt-0.5 font-medium">
+										{String(v)}
+									</dd>
+								</div>
+							))}
+						</dl>
+
+						{report.warnings.length > 0 ? (
+							<div className="space-y-1.5 border-t border-[var(--border)] pt-3 text-xs">
+								<h3 className="font-semibold text-[var(--warning)]">
+									Report Warnings ({report.warnings.length})
+								</h3>
+								<ul className="list-disc space-y-0.5 pl-5 text-[var(--text-secondary)]">
+									{report.warnings.map((w) => (
+										<li key={`${w.code}:${w.txId ?? ""}:${w.message}`}>
+											<code className="font-mono-code font-medium">
+												{w.code}
+											</code>
+											: {w.message}
+										</li>
+									))}
+								</ul>
+							</div>
+						) : null}
+					</section>
+				</>
+			)}
+
+			<TrailDrawer
+				row={trailRow}
+				report={report}
+				onClose={() => setTrailRow(null)}
+			/>
+
+			<Drawer
+				open={Boolean(incomeRawInspect)}
+				onClose={() => setIncomeRawInspect(null)}
+				title={incomeRawInspect?.title ?? "Raw Trail"}
+			>
+				<pre className="font-mono-code overflow-auto rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs text-[var(--text-secondary)]">
+					{JSON.stringify(incomeRawInspect?.raw, null, 2)}
+				</pre>
+			</Drawer>
+		</div>
+	);
+}

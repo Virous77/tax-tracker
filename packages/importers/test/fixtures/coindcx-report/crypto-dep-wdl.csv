@@ -1,0 +1,11 @@
+CoinDCX Trade Report (SYNTHETIC FIXTURE - preamble rows 1-8 are invented placeholders)
+Name,Fixture User
+Email,fixture.user@example.invalid
+Report,"Crypto Dep&Wdl,Airdrop,Staking"
+Period,01-04-2025 to 30-06-2026
+Generated on,2026-07-05 10:00:00
+Note,THE COLUMN HEADERS OF THIS SHEET ARE INVENTED - only the sheet name was seen in a real FY 2022-23 report
+Note,do not hard-code these headers in the importer
+Transaction ID,Type,Crypto,Quantity,Fees,Network,Transaction Hash,Transaction time,Status
+DW-FIXT-0001,Withdrawal,USDT,1800,1,TRC20,c417d6d3aa027a949c69ed25cb2265ece9961aeab0a7723f4044577fbfa66be9,2025-06-14 20:05:10,Completed
+DW-FIXT-0002,Staking Reward,ETH,0.00001234,,,,2025-09-30 06:00:00,Completed

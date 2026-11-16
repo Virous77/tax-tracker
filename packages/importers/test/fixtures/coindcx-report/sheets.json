@@ -1,0 +1,54 @@
+{
+	"workbook": "../coindcx-report.xlsx",
+	"note": "Synthetic CoinDCX trade report. One CSV per sheet, in workbook order. See ../README.md and docs/research/export-formats.md for what is verified.",
+	"sheets": [
+		{
+			"file": "instant-orders.csv",
+			"name": "Instant Orders",
+			"headerRow": 9,
+			"verified": "sheet name and header strings verified from an open-source parser; preamble rows invented",
+			"numericColumns": [
+				"Avg Buying/Selling Price(in INR)",
+				"Quantity",
+				"Gross Amount Paid/Received by the user(in INR)",
+				"Fees(in INR)",
+				"Net Amount Paid/Received by the user(in INR)",
+				"**TDS(in INR)"
+			]
+		},
+		{
+			"file": "spot-orders.csv",
+			"name": "Spot Orders",
+			"headerRow": 9,
+			"verified": "sheet name and header strings verified from an open-source parser; preamble rows invented",
+			"numericColumns": [
+				"Avg Buying/Selling Price(in base currency)",
+				"Quantity",
+				"Gross Amount Paid/Received by the user(in base currency)",
+				"Fees(in base currency)",
+				"Net Amount Paid/Received by the user(in base currency)",
+				"*Net Amount Paid/Received by the user (in INR)",
+				"**TDS(in base currency)",
+				"**TDS (in INR)"
+			]
+		},
+		{
+			"file": "futures-orders-usdt-m.csv",
+			"name": "Futures Orders (USDT-M)",
+			"headerRow": 9,
+			"verified": "sheet name and the three P&L/fee headers seen in a Koinly bug report; the other headers are inferred; out of scope for the importer (must be reported as skipped, not dropped silently)",
+			"numericColumns": [
+				"Gross P&L for this transaction(in USDT)",
+				"Fees(in USDT)",
+				"Net P&L for this transaction(in USDT)"
+			]
+		},
+		{
+			"file": "crypto-dep-wdl.csv",
+			"name": "Crypto Dep&Wdl,Airdrop,Staking",
+			"headerRow": 9,
+			"verified": "sheet name seen in one real FY 2022-23 report; EVERY column header is invented",
+			"numericColumns": ["Quantity", "Fees"]
+		}
+	]
+}

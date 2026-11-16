@@ -1,0 +1,14 @@
+CoinDCX Trade Report (SYNTHETIC FIXTURE - preamble rows 1-8 are invented placeholders)
+Name,Fixture User
+Email,fixture.user@example.invalid
+Report,Spot Orders
+Period,01-04-2025 to 30-06-2026
+Generated on,2026-07-05 10:00:00
+Note,*placeholder footnote row about the INR value being indicative (real wording not verified)
+Note,**placeholder footnote row about TDS (real wording not verified)
+Order ID,Trade ID,Crypto Pair,Base currency,Trade Completion time,Side (Buy/Sell),Avg Buying/Selling Price(in base currency),Quantity,Gross Amount Paid/Received by the user(in base currency),Fees(in base currency),Net Amount Paid/Received by the user(in base currency),*Net Amount Paid/Received by the user (in INR),**TDS(in base currency),**TDS (in INR)
+SO-FIXT-0001,ST-FIXT-0001,BTCINR,INR,2025-06-12 09:30:05,Buy,9200000,0.006,55200,325.68,55525.68,55525.68,,
+SO-FIXT-0001,ST-FIXT-0002,BTCINR,INR,2025-06-12 09:30:07,Buy,9201000,0.004,36804,217.14,37021.14,37021.14,,
+SO-FIXT-0002,ST-FIXT-0003,ETHUSDT,USDT,2025-07-03 14:59:05,Buy,4000,0.02,80,0.2,80.2,7218,0.802,72.18
+SO-FIXT-0003,ST-FIXT-0004,BTCINR,INR,2026-03-31 23:58:40,Sell,8100000,0.003,24300,143.37,24156.63,24156.63,241.57,241.57
+SO-FIXT-0003,ST-FIXT-0005,BTCINR,INR,2026-04-01 00:00:35,Sell,8100500,0.002,16201,95.59,16105.41,16105.41,161.05,161.05

@@ -1,0 +1,10 @@
+CoinDCX Trade Report (SYNTHETIC FIXTURE - preamble rows 1-8 are invented placeholders)
+Name,Fixture User
+Email,fixture.user@example.invalid
+Report,Futures Orders (USDT-M)
+Period,01-04-2025 to 30-06-2026
+Generated on,2026-07-05 10:00:00
+Note,placeholder footnote row (real wording not verified)
+Note,placeholder footnote row (real wording not verified)
+Transaction ID,Crypto Pair,Base currency,Transaction time,Type of Transaction,Gross P&L for this transaction(in USDT),Fees(in USDT),Net P&L for this transaction(in USDT)
+FU-FIXT-0001,BTCUSDT,USDT,2025-10-10 15:00:00,Realised P&L,12.5,0.35,12.15

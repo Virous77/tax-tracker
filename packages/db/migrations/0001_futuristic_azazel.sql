@@ -1,0 +1,1 @@
+ALTER TABLE `raw_rows` ADD `excel_date_1904` integer;

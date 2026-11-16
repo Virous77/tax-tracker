@@ -1,0 +1,40 @@
+services:
+  app:
+    build: .
+    image: tax-tracker-app:local
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    volumes:
+      - ${DATA_HOST_DIR:-./data}:/data
+    environment:
+      DATA_DIR: /data
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      APP_SECRET: ${APP_SECRET:-}
+      AI_BASE_URL: ${AI_BASE_URL:-http://ollama:11434/v1}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+    restart: unless-stopped
+  data-init:
+    image: tax-tracker-app:local
+    pull_policy: never
+    user: "0:0"
+    network_mode: none
+    volumes:
+      - ${DATA_HOST_DIR:-./data}:/data
+    entrypoint:
+      - node
+      - -e
+      - "require('node:fs').chownSync('/data', 1000, 1000)"
+    healthcheck:
+      disable: true
+  ollama:
+    image: ollama/ollama:0.12.10
+    profiles: [ai]
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+volumes:
+  ollama:

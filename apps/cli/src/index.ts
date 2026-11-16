@@ -2,8 +2,16 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { EngineSettingsSchema, LedgerTxSchema, TaxYearSchema } from "@tax/core";
+import {
+	EngineSettingsSchema,
+	ImportSourceSchema,
+	LedgerTxSchema,
+	RecipeSchema,
+	TaxYearSchema,
+	TimezoneSchema,
+} from "@tax/core";
 import { computeVdaReport } from "@tax/engine";
+import { importFile } from "@tax/importers";
 import { loadSbiCsv } from "@tax/rates";
 import { loadRules } from "@tax/rules";
 import { scheduleVdaCsv } from "./csv.js";
@@ -17,7 +25,51 @@ export async function main(
 ): Promise<void> {
 	const [command, ...rest] = args;
 	if (command === "import") {
-		process.stdout.write("Importers come in Phase 1.\n");
+		const { values, positionals } = parseArgs({
+			args: rest,
+			strict: true,
+			allowPositionals: true,
+			options: {
+				source: { type: "string" },
+				tz: { type: "string" },
+				recipe: { type: "string" },
+				out: { type: "string" },
+			},
+		});
+		if (positionals.length !== 1 || !values.source || !values.tz || !values.out)
+			throw new Error(
+				"tax-tracker import <file> --source binance|coindcx|generic --tz IST|UTC [--recipe r.json] --out ledger.json",
+			);
+		const path = positionals[0];
+		if (!path) throw new Error("An import file is required.");
+		const source = ImportSourceSchema.parse(values.source);
+		const timezone = TimezoneSchema.parse(values.tz);
+		const recipe = values.recipe
+			? RecipeSchema.parse(JSON.parse(await readFile(values.recipe, "utf8")))
+			: undefined;
+		const result = importFile(
+			{ name: path, bytes: new Uint8Array(await readFile(path)) },
+			{ source, timezone, recipe },
+		);
+		await writeFile(
+			values.out,
+			`${JSON.stringify(result.transactions, null, 2)}\n`,
+			"utf8",
+		);
+		process.stderr.write(
+			`${result.rowsRead} rows read; ${result.transactions.length} ledger rows; ${result.rowErrors.length} row errors.\n`,
+		);
+		if (result.rowErrors.length) {
+			await writeFile(
+				`${values.out}.errors.json`,
+				`${JSON.stringify(result.rowErrors, null, 2)}\n`,
+				"utf8",
+			);
+			process.stderr.write(
+				`Review row errors in ${values.out}.errors.json before computing tax.\n`,
+			);
+			process.exitCode = 1;
+		}
 		return;
 	}
 	if (command === "--help" || command === "help") {

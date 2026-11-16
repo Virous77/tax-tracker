@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+**/.next
+.git
+data
+**/*.db*
+.env
+.env.*
+!.env.example
+coverage
+**/coverage
+*.tsbuildinfo
+**/*.tsbuildinfo

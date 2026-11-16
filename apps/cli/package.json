@@ -16,9 +16,10 @@
 	},
 	"dependencies": {
 		"@tax/core": "workspace:*",
-		"@tax/rules": "workspace:*",
 		"@tax/engine": "workspace:*",
-		"@tax/rates": "workspace:*"
+		"@tax/importers": "workspace:*",
+		"@tax/rates": "workspace:*",
+		"@tax/rules": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "26.6.6"

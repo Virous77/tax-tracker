@@ -1,0 +1,20 @@
+export const COINDCX_HEADERS = {
+	id: ["Trade ID", "Transaction ID"],
+	timestamp: ["Trade Completion time", "Transaction time"],
+	side: ["Side (Buy/Sell)"],
+	asset: ["Crypto"],
+	pair: ["Crypto Pair"],
+	quote: ["Base currency"],
+	amount: ["Quantity"],
+	priceInr: ["Avg Buying/Selling Price(in INR)"],
+	priceQuote: ["Avg Buying/Selling Price(in base currency)"],
+	grossInr: ["Gross Amount Paid/Received by the user(in INR)"],
+	grossQuote: ["Gross Amount Paid/Received by the user(in base currency)"],
+	feeInr: ["Fees(in INR)"],
+	feeQuote: ["Fees(in base currency)"],
+	netQuote: ["Net Amount Paid/Received by the user(in base currency)"],
+	netInr: ["*Net Amount Paid/Received by the user (in INR)"],
+	tdsInr: ["*TDS(in INR)", "**TDS(in INR)", "**TDS (in INR)"],
+	gst: ["GST(in INR)", "GST (in INR)"],
+};
+export const COINDCX_SHEETS = ["Instant Orders", "Spot Orders"];

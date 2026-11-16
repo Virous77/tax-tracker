@@ -44,8 +44,34 @@ test("CLI computes an INR report and exports traceable CSV", () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
-test("import is an explicit Phase 1 stub", () => {
-	expect(
-		execFileSync(process.execPath, [cli, "import"], { encoding: "utf8" }),
-	).toContain("Phase 1");
+test("CLI imports verified Binance history with precise decimal strings", () => {
+	const dir = mkdtempSync(resolve(tmpdir(), "tax-cli-import-"));
+	try {
+		const out = resolve(dir, "ledger.json");
+		const fixture = resolve(
+			import.meta.dirname,
+			"../../../packages/importers/test/fixtures/binance-trade-history.csv",
+		);
+		execFileSync(process.execPath, [
+			cli,
+			"import",
+			fixture,
+			"--source",
+			"binance",
+			"--tz",
+			"UTC",
+			"--out",
+			out,
+		]);
+		const rows = JSON.parse(readFileSync(out, "utf8"));
+		expect(rows).toHaveLength(8);
+		expect(rows.at(-1)).toMatchObject({
+			assetIn: "BTC",
+			amountIn: "0.01",
+			amountOut: "1050",
+			raw: { Amount: "1,050.00000000USDT" },
+		});
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 });

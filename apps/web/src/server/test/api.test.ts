@@ -140,7 +140,7 @@ describe("API happy path", () => {
 		);
 		const csvText = await csv.text();
 		expect(csvText).toContain("Not tax advice");
-		expect(csvText).toContain("Settings");
+		expect(csvText).toContain("Setting");
 		expect(csvText).toContain("'=sensitive formula");
 		const xlsx = await call(
 			"exportReport",
@@ -680,4 +680,31 @@ it("refuses AI requests for imported and failed files before making a network ca
 			).toBe(409);
 	}
 	expect(fetcher).not.toHaveBeenCalled();
+});
+
+it("persists report invalidation reasons across reopening the database", async () => {
+	const params = { taxYear: "2026-27" };
+	const fresh = await (
+		await call("getReport", "GET", undefined, params)
+	).json();
+	expect(fresh.error).toMatchObject({
+		code: "report_not_computed",
+		details: { invalidatedAt: null, cause: "never_computed" },
+	});
+	await call("computeReport", "POST", {}, params);
+	await call("putSettings", "PUT", { feeTreatment: "include" });
+	const before = await (
+		await call("getReport", "GET", undefined, params)
+	).json();
+	expect(before.error).toMatchObject({
+		code: "report_not_computed",
+		details: { invalidatedAt: expect.any(String), cause: "settings_changed" },
+	});
+	closeDatabases();
+	const after = await (
+		await call("getReport", "GET", undefined, params)
+	).json();
+	expect(after).toEqual(before);
+	await call("computeReport", "POST", {}, params);
+	expect((await call("getReport", "GET", undefined, params)).status).toBe(200);
 });

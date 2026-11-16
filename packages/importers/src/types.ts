@@ -26,6 +26,7 @@ export interface ImportResult {
 	warnings: ReviewFlag[];
 	sheets?: { name: string; rowsRead: number }[];
 	rowErrors: RowError[];
+	skippedRows?: { rowIndex: number; sheet: string; reason: string }[];
 }
 export interface Importer {
 	id: "binance" | "coindcx" | "generic";

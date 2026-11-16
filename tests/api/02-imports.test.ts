@@ -101,16 +101,26 @@ describe("Binance fixtures", () => {
 		});
 	});
 
-	it("transaction statement imports only income rows and reports the rest as row errors (no drop)", async () => {
+	it("transaction statement imports only income rows and separates overlap skips from row errors (no drop)", async () => {
 		const s = await importOk(
 			fixture("binance-transaction-statement.csv"),
 			"statement.csv",
 			{ source: "auto" },
 		);
 		expect(s).toMatchObject({ source: "binance", rowsRead: 32 });
-		expect(s.rowsInserted + s.rowsError + s.rowsDuplicate).toBe(32);
+		expect(s.rowsInserted + s.rowsError + s.rowsDuplicate + s.rowsSkipped).toBe(
+			32,
+		);
 		const d = await detail(s.id);
 		expect(d.rowErrors).toHaveLength(s.rowsError);
+		expect(s.rowsSkipped).toBe(27);
+		expect(s.skippedRows).toHaveLength(27);
+		for (const skipped of s.skippedRows)
+			expect(skipped).toMatchObject({
+				rowIndex: expect.any(Number),
+				sheet: expect.any(String),
+				reason: expect.stringContaining("overlaps"),
+			});
 		for (const e of d.rowErrors) expect(e.raw).toBeDefined();
 		const txs = await allTx();
 		expect(txs).toHaveLength(s.rowsInserted);
@@ -119,6 +129,24 @@ describe("Binance fixtures", () => {
 			type: "income",
 			amountIn: "0.00001234",
 		});
+		const again = await importOk(
+			fixture("binance-transaction-statement.csv"),
+			"statement-again.csv",
+			{ source: "binance" },
+		);
+		expect(again).toMatchObject({
+			rowsRead: 32,
+			rowsInserted: 0,
+			rowsDuplicate: 2,
+			rowsError: 3,
+			rowsSkipped: 27,
+		});
+		expect(
+			again.rowsInserted +
+				again.rowsDuplicate +
+				again.rowsError +
+				again.rowsSkipped,
+		).toBe(again.rowsRead);
 		const unknown = JSON.stringify(d.rowErrors) + JSON.stringify(txs);
 		expect(
 			unknown,

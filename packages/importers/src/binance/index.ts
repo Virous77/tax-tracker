@@ -79,10 +79,6 @@ function rowTransaction(
 		});
 	if (kind === "statement") {
 		const operation = raw.Operation ?? "";
-		if (STATEMENT_OVERLAP.has(operation))
-			throw new RowParseError(
-				"Statement row overlaps trade/deposit/withdrawal exports; import the dedicated history file. This row is preserved but not applied.",
-			);
 		const income = BINANCE_INCOME[operation];
 		if (!income)
 			throw new RowParseError(
@@ -197,6 +193,7 @@ export function parseBinance(
 		rowsRead: 0,
 		warnings: [],
 		rowErrors: [],
+		skippedRows: [],
 		sheets: [],
 	};
 	const ref = sourceReferences();
@@ -207,6 +204,18 @@ export function parseBinance(
 		sheet.rows.forEach((raw, rowIndex) => {
 			try {
 				if (!kind) throw new RowParseError("Unrecognised Binance sheet.");
+				if (
+					kind === "statement" &&
+					STATEMENT_OVERLAP.has(raw.Operation ?? "")
+				) {
+					result.skippedRows?.push({
+						rowIndex,
+						sheet: sheet.name,
+						reason:
+							"Statement row overlaps trade/deposit/withdrawal exports; import the dedicated history file. This row is preserved but not applied.",
+					});
+					return;
+				}
 				result.transactions.push(
 					rowTransaction(
 						raw,

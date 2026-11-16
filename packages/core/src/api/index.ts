@@ -10,7 +10,12 @@ import {
 	TxTypeSchema,
 } from "../ledger.js";
 import { RecipeSchema } from "../recipe.js";
-import { BalanceSchema, UnresolvedSchema, VdaReportSchema } from "../report.js";
+import {
+	BalanceSchema,
+	ReportWarningSchema,
+	UnresolvedSchema,
+	VdaReportSchema,
+} from "../report.js";
 import {
 	ActualBalanceSchema,
 	EngineSettingsPatchSchema,
@@ -95,6 +100,21 @@ export const RowErrorSchema = z.object({
 	message: z.string(),
 	raw: z.unknown().optional(),
 });
+export const SkippedRowSchema = z.object({
+	rowIndex: z.number().int().nonnegative(),
+	sheet: z.string(),
+	reason: z.string(),
+});
+export const ReportMissingDetailsSchema = z.object({
+	invalidatedAt: z.iso.datetime().nullable(),
+	cause: z.enum([
+		"ledger_changed",
+		"settings_changed",
+		"balances_changed",
+		"never_computed",
+	]),
+});
+export type ReportMissingDetails = z.infer<typeof ReportMissingDetailsSchema>;
 export const ImportSummarySchema = z.object({
 	id: z.string(),
 	source: z.string(),
@@ -106,6 +126,8 @@ export const ImportSummarySchema = z.object({
 	rowsInserted: z.number().int().nonnegative(),
 	rowsDuplicate: z.number().int().nonnegative(),
 	rowsError: z.number().int().nonnegative(),
+	rowsSkipped: z.number().int().nonnegative().default(0),
+	skippedRows: z.array(SkippedRowSchema).default([]),
 	recipeId: z.string().nullable(),
 	createdAt: z.iso.datetime(),
 	error: z.string().nullable(),
@@ -271,6 +293,12 @@ export const ReviewQuerySchema = z.object({
 export const ReviewRequestSchema = ReviewQuerySchema;
 export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 	z.object({
+		kind: z.literal("warning"),
+		taxYear: TaxYearSchema,
+		message: z.string(),
+		warning: ReportWarningSchema,
+	}),
+	z.object({
 		kind: z.literal("balance"),
 		taxYear: TaxYearSchema,
 		message: z.string(),
@@ -285,7 +313,14 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 ]);
 export type ReportReviewItem = z.infer<typeof ReportReviewItemSchema>;
 export const ReviewResponseSchema = z.object({
-	reportStatus: z.enum(["current", "stale", "missing"]),
+	reportStatus: z.enum(["current", "missing"]),
+	reportStatuses: z.array(
+		z.object({
+			taxYear: TaxYearSchema,
+			status: z.enum(["current", "missing"]),
+		}),
+	),
+	computeTaxYears: z.array(TaxYearSchema),
 	groups: z.array(
 		z.object({
 			code: ReviewCodeSchema,

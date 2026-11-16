@@ -59,8 +59,10 @@ describe("GET /api/review", () => {
 
 	it("missing_history: the ETH sell with no buy (2026-27)", async () => {
 		const g = group(await review("?taxYear=2026-27"), "missing_history");
-		expect(g?.count).toBe(1);
-		expect(g?.reportItems[0]).toMatchObject({
+		expect(g?.items).toEqual([]);
+		expect(
+			g?.reportItems.find((item) => item.kind === "unresolved"),
+		).toMatchObject({
 			kind: "unresolved",
 			taxYear: "2026-27",
 			unresolved: { asset: "ETH", quantity: "0.01", reason: "missing_history" },
@@ -118,9 +120,18 @@ describe("GET /api/review", () => {
 			inrValue: "3000",
 		});
 		await compute("2026-27");
+		const remaining = group(
+			await review("?taxYear=2026-27"),
+			"missing_history",
+		);
+		expect(remaining?.items ?? []).toEqual([]);
 		expect(
-			group(await review("?taxYear=2026-27"), "missing_history")?.count ?? 0,
-		).toBe(0);
+			remaining?.reportItems.some(
+				(item) =>
+					item.kind === "unresolved" ||
+					(item.kind === "balance" && item.balance.asset === "ETH"),
+			),
+		).toBe(false);
 	});
 
 	it("parse_warning: CoinDCX fee/GST notes show up once imported", async () => {

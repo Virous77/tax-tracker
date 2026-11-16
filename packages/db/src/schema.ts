@@ -21,6 +21,11 @@ export const imports = sqliteTable("imports", {
 	rowsInserted: integer("rows_inserted").notNull(),
 	rowsDuplicate: integer("rows_duplicate").notNull(),
 	rowsError: integer("rows_error").notNull(),
+	rowsSkipped: integer("rows_skipped").notNull().default(0),
+	skippedRows: text("skipped_rows", { mode: "json" })
+		.$type<ImportSummary["skippedRows"]>()
+		.notNull()
+		.default([]),
 	recipeId: text("recipe_id"),
 	createdAt: text("created_at").notNull(),
 	error: text("error"),
@@ -155,3 +160,11 @@ export const fxRates = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.currency, t.date] })],
 );
+
+export const reportInvalidations = sqliteTable("report_invalidations", {
+	taxYear: text("tax_year").primaryKey(),
+	invalidatedAt: text("invalidated_at").notNull(),
+	cause: text("cause", {
+		enum: ["ledger_changed", "settings_changed", "balances_changed"],
+	}).notNull(),
+});

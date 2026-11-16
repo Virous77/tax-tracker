@@ -2,6 +2,7 @@ import type { VdaReport } from "@tax/core";
 import type { ExportReportQuerySchema } from "@tax/core/api";
 import { writeXlsx } from "@tax/importers";
 import type { z } from "zod";
+import { sectionRows, settingsRows } from "./report-metadata";
 export function safeCell(value: string): string {
 	const start = value
 		.split("")
@@ -39,10 +40,10 @@ export async function exportReport(
 	const metadata = [
 		[report.disclaimer],
 		["Tax year", report.taxYear, "Act", report.act],
-		["Settings", JSON.stringify(report.generatedFrom.settings)],
+		...settingsRows(report.generatedFrom.settings),
+		...sectionRows(report.sections),
 		[
-			"Sections",
-			JSON.stringify(report.sections),
+			"Section verification",
 			report.sectionsVerified
 				? "Verified"
 				: "Section numbers pending CA verification",

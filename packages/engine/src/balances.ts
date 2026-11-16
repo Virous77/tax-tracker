@@ -3,7 +3,7 @@ import {
 	type Balance,
 	D,
 	type EngineSettings,
-	type ReviewFlag,
+	type ReportWarning,
 } from "@tax/core";
 import { compareText } from "./matching.js";
 import { FIAT } from "./valuation.js";
@@ -31,7 +31,10 @@ export class BalanceBook {
 		if (!row.txIds.includes(txId)) row.txIds.push(txId);
 		this.rows.set(key, row);
 	}
-	finish(actual: ActualBalance[], warn: (flag: ReviewFlag) => void): Balance[] {
+	finish(
+		actual: ActualBalance[],
+		warn: (flag: ReportWarning) => void,
+	): Balance[] {
 		const seen = new Set<string>();
 		for (const item of actual) {
 			if (this.settings.lotPool === "global" && item.source !== undefined)
@@ -55,6 +58,9 @@ export class BalanceBook {
 			if (!D(row.difference).isZero())
 				warn({
 					code: "balance_mismatch",
+					asset: row.asset,
+					...(row.source ? { source: row.source } : {}),
+					txIds: row.txIds,
 					message: `${item.asset}${item.source ? ` at ${item.source}` : ""}: computed ${row.computed}, actual ${item.amount}`,
 				});
 		}
@@ -67,6 +73,9 @@ export class BalanceBook {
 			if (D(row.computed).lt("0"))
 				warn({
 					code: "missing_history",
+					asset: row.asset,
+					...(row.source ? { source: row.source } : {}),
+					txIds: row.txIds,
 					message: `Negative ${row.asset} holding${row.source ? ` at ${row.source}` : ""}: ${row.computed}`,
 				});
 		return rows;

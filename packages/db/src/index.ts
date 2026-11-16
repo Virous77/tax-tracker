@@ -12,7 +12,11 @@ import {
 	type VdaReport,
 	VdaReportSchema,
 } from "@tax/core";
-import { GetImportResponseSchema, type ImportDetail } from "@tax/core/api";
+import {
+	GetImportResponseSchema,
+	type ImportDetail,
+	type ReportMissingDetails,
+} from "@tax/core/api";
 import Database, { type Database as SQLiteDatabase } from "better-sqlite3";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
@@ -36,7 +40,25 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 			"../migrations",
 		),
 	});
-	const invalidateReports = () => orm.delete(schema.reports).run();
+	const invalidateReports = (
+		cause: Exclude<ReportMissingDetails["cause"], "never_computed">,
+	) => {
+		const invalidatedAt = new Date().toISOString();
+		const years = orm
+			.selectDistinct({ taxYear: schema.reports.taxYear })
+			.from(schema.reports)
+			.all();
+		for (const { taxYear } of years)
+			orm
+				.insert(schema.reportInvalidations)
+				.values({ taxYear, invalidatedAt, cause })
+				.onConflictDoUpdate({
+					target: schema.reportInvalidations.taxYear,
+					set: { invalidatedAt, cause },
+				})
+				.run();
+		orm.delete(schema.reports).run();
+	};
 	const txValues = (tx: LedgerTx) => ({
 		...tx,
 		...Object.fromEntries(
@@ -77,7 +99,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 						.delete(schema.imports)
 						.where(eq(schema.imports.id, id))
 						.run();
-					invalidateReports();
+					invalidateReports("ledger_changed");
 					return result.changes > 0;
 				}),
 		},
@@ -146,7 +168,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 							})
 							.run().changes;
 					}
-					if (inserted) invalidateReports();
+					if (inserted) invalidateReports("ledger_changed");
 					return { inserted, duplicate: rows.length - inserted };
 				}),
 			update: (tx: LedgerTx) =>
@@ -161,7 +183,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 						})
 						.where(eq(schema.transactions.id, value.id))
 						.run();
-					invalidateReports();
+					invalidateReports("ledger_changed");
 					return result.changes > 0;
 				}),
 			deleteManual: (id: string) =>
@@ -175,7 +197,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 							),
 						)
 						.run();
-					invalidateReports();
+					invalidateReports("ledger_changed");
 					return result.changes > 0;
 				}),
 		},
@@ -230,7 +252,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 						.values({ key, value })
 						.onConflictDoUpdate({ target: schema.settings.key, set: { value } })
 						.run();
-					invalidateReports();
+					invalidateReports("settings_changed");
 				}),
 		},
 		actualBalances: {
@@ -259,11 +281,20 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 							.insert(schema.actualBalances)
 							.values({ ...row, taxYear, source: row.source ?? "" })
 							.run();
-					invalidateReports();
+					invalidateReports("balances_changed");
 					return rows;
 				}),
 		},
 		reports: {
+			missingDetails: (taxYear: string): ReportMissingDetails =>
+				orm
+					.select({
+						invalidatedAt: schema.reportInvalidations.invalidatedAt,
+						cause: schema.reportInvalidations.cause,
+					})
+					.from(schema.reportInvalidations)
+					.where(eq(schema.reportInvalidations.taxYear, taxYear))
+					.get() ?? { invalidatedAt: null, cause: "never_computed" },
 			save: (report: VdaReport) => {
 				const value = VdaReportSchema.parse(report);
 				orm

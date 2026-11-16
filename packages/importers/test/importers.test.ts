@@ -116,14 +116,20 @@ describe("verified research fixtures", () => {
 		});
 		expect(result.rowsRead).toBe(32);
 		expect(result.transactions).toHaveLength(2);
-		expect(result.rowErrors).toHaveLength(30);
+		expect(result.rowErrors).toHaveLength(3);
+		expect(result.skippedRows).toHaveLength(27);
+		expect(
+			result.transactions.length +
+				result.rowErrors.length +
+				(result.skippedRows?.length ?? 0),
+		).toBe(result.rowsRead);
 		expect(result.transactions[0]).toMatchObject({
 			type: "income",
 			incomeKind: "interest",
 			amountIn: "0.00001234",
 		});
 		expect(
-			result.rowErrors.some((row) => row.message.includes("overlaps")),
+			result.skippedRows?.some((row) => row.reason.includes("overlaps")),
 		).toBe(true);
 		expect(
 			result.rowErrors.some((row) => row.message.includes("Unknown")),

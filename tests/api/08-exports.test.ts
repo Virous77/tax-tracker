@@ -69,8 +69,14 @@ describe.each(["schedule-vda", "tds", "income", "full"])("kind=%s", (kind) => {
 		expect(res.headers.get("cache-control")).toContain("no-store");
 		const rows = parseCsv(res.text);
 		expect(rows[0][0]).toBe(DISCLAIMER);
-		expect(res.text).toContain("feeTreatment");
-		expect(res.text).toContain("surchargeRate");
+		expect(rows).toContainEqual(["Setting", "Value"]);
+		expect(rows).toContainEqual(["Fee & GST treatment", "Exclude fees"]);
+		expect(rows).toContainEqual(["Surcharge rate", "0%"]);
+		expect(rows).toContainEqual(["Section", "Reference"]);
+		expect(rows).toContainEqual(["VDA Tax", "Section 115BBH"]);
+		expect(
+			rows.some((row) => row[0] === "Settings" || row[0] === "Sections"),
+		).toBe(false);
 		expect(res.text).toMatch(/pending CA verification/);
 	});
 
@@ -97,7 +103,11 @@ describe.each(["schedule-vda", "tds", "income", "full"])("kind=%s", (kind) => {
 			.flatMap((k) => xmlText(files.get(k)?.toString("utf8") ?? ""))
 			.join("\n");
 		expect(allText).toContain(DISCLAIMER);
-		expect(allText).toContain("feeTreatment");
+		expect(allText).toContain("Fee & GST treatment");
+		expect(allText).toContain("Exclude fees");
+		expect(allText).toContain("VDA Tax");
+		expect(allText).toContain("Section 115BBH");
+		expect(allText).not.toContain("feeTreatment");
 		for (const k of sheets)
 			expect(files.get(k)?.toString("utf8"), `${k} has a formula`).not.toMatch(
 				/<f[ >]/,
@@ -186,7 +196,7 @@ describe("errors", () => {
 		fail(
 			await call("GET", exportUrl("2026-27", "csv", "full")),
 			404,
-			"not_found",
+			"report_not_computed",
 		);
 	});
 });

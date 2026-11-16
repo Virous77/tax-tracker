@@ -51,8 +51,8 @@ const sell = (
 
 describe("report lifecycle", () => {
 	it("GET before compute → 404", async () => {
-		fail(await getReport("2026-27"), 404, "not_found");
-		fail(await getReport("2025-26"), 404, "not_found");
+		fail(await getReport("2026-27"), 404, "report_not_computed");
+		fail(await getReport("2025-26"), 404, "report_not_computed");
 	});
 
 	it("compute stores the report; GET returns the same report", async () => {

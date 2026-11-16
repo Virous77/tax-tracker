@@ -28,6 +28,8 @@ const record = (): ImportDetail => ({
 	rowsInserted: 1,
 	rowsDuplicate: 0,
 	rowsError: 0,
+	rowsSkipped: 0,
+	skippedRows: [],
 	recipeId: null,
 	createdAt: new Date().toISOString(),
 	error: null,

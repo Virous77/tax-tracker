@@ -33,7 +33,7 @@ export class DisposalBook {
 		if (consideration?.lt("0")) {
 			this.warn({
 				txId: tx.id,
-				code: "parse_warning",
+				code: "fee_review_required",
 				message:
 					"Fee exceeds disposal consideration; review the fee before calculating tax.",
 			});

@@ -12,14 +12,21 @@ import { computeVdaReport } from "@tax/engine";
 import { createFxLookup, parseSbiCsv } from "@tax/rates";
 import { listTaxYears, loadRules } from "@tax/rules";
 import { runJob } from "./context";
-import { ApiError, required } from "./errors";
+import { ApiError } from "./errors";
 import { getSettings } from "./settings";
 export function groupWarnings(warnings: ReportWarning[]): ReportWarning[] {
 	const groups = new Map<string, ReportWarning>();
 	for (const warning of warnings) {
-		const key = JSON.stringify([warning.code, warning.message]);
+		const key = JSON.stringify([
+			warning.code,
+			warning.message,
+			warning.asset,
+			warning.source,
+		]);
 		const group = groups.get(key) ?? {
 			code: warning.code,
+			...(warning.asset ? { asset: warning.asset } : {}),
+			...(warning.source ? { source: warning.source } : {}),
 			message: warning.message,
 			count: 0,
 			txIds: [],
@@ -78,7 +85,7 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 			.list()
 			.filter((item) => item.status !== "imported" || item.rowsError > 0)
 			.map((item) => ({
-				code: "parse_warning",
+				code: "import_incomplete",
 				message: `Import ${item.fileName}: ${item.rowsError} excluded rows; status ${item.status}. Review the import before relying on this report.`,
 			}));
 		let fx = (() => null) as ReturnType<typeof createFxLookup>;
@@ -100,7 +107,7 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 			)
 				throw error;
 			warnings.push({
-				code: "parse_warning",
+				code: "fx_unavailable",
 				message:
 					"Bundled SBI rates are unavailable; FX-dependent rows remain unresolved.",
 			});
@@ -136,8 +143,13 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 }
 export function getReport(db: TaxDatabase, taxYear: string) {
 	checkYear(taxYear);
-	return required(
-		db.reports.latest(taxYear),
-		"Compute a report for this year first.",
-	);
+	const report = db.reports.latest(taxYear);
+	if (!report)
+		throw new ApiError(
+			404,
+			"report_not_computed",
+			"Compute a report for this year first.",
+			db.reports.missingDetails(taxYear),
+		);
+	return report;
 }

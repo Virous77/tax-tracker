@@ -101,6 +101,8 @@ export const UnresolvedSchema = z.object({
 	reason: ReviewCodeSchema,
 });
 export const ReportWarningSchema = ReviewFlagSchema.extend({
+	asset: AssetSchema.optional(),
+	source: z.string().optional(),
 	count: z.number().int().positive().optional(),
 	txIds: z.array(z.string()).optional(),
 });

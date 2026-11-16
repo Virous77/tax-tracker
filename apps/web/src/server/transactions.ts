@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { D, LedgerTxSchema, taxYearOf } from "@tax/core";
+import { LedgerTxSchema, taxYearOf } from "@tax/core";
 import {
 	CreateTransactionRequestSchema,
 	PatchTransactionRequestSchema,
@@ -9,11 +9,15 @@ import {
 import type { TaxDatabase } from "@tax/db";
 import { listTaxYears } from "@tax/rules";
 import { ApiError, required } from "./errors";
+import { reportReviewItems } from "./report-review";
 
-function reviewedLedger(db: TaxDatabase) {
+function reviewedLedger(
+	db: TaxDatabase,
+	years = listTaxYears().map((year) => year.id),
+) {
 	const ledger = db.transactions.all();
-	const flags = listTaxYears().flatMap(
-		(year) => db.reports.latest(year.id)?.warnings ?? [],
+	const flags = years.flatMap(
+		(year) => db.reports.latest(year)?.warnings ?? [],
 	);
 	return ledger.map((tx) => ({
 		...tx,
@@ -134,38 +138,25 @@ export function review(db: TaxDatabase, taxYear?: string) {
 		const report = db.reports.latest(year);
 		return report ? [report] : [];
 	});
-	const reportItems: { code: string; item: ReportReviewItem }[] =
-		reports.flatMap((report) => [
-			...report.balances
-				.filter(
-					(balance) =>
-						balance.difference !== undefined && !D(balance.difference).isZero(),
-				)
-				.map((balance) => ({
-					code: "balance_mismatch",
-					item: {
-						kind: "balance" as const,
-						taxYear: report.taxYear,
-						message: `${balance.asset}${balance.source ? ` at ${balance.source}` : ""}: computed ${balance.computed}, actual ${balance.actual}`,
-						balance,
-					},
-				})),
-			...report.unresolved
-				.filter((item) => item.reason === "missing_history")
-				.map((unresolved) => ({
-					code: unresolved.reason,
-					item: {
-						kind: "unresolved" as const,
-						taxYear: report.taxYear,
-						message: `Missing acquisition history for ${unresolved.quantity} ${unresolved.asset}.`,
-						unresolved,
-					},
-				})),
-		]);
-	const unresolvedTxIds = new Set(
-		reportItems.flatMap(({ item }) =>
-			item.kind === "unresolved" ? [item.unresolved.txId] : [],
-		),
+
+	const ledger = reviewedLedger(db, years).filter(
+		(tx) => !taxYear || taxYearOf(tx.timestamp) === taxYear,
+	);
+	const reportItems = reportReviewItems(
+		reports,
+		new Set(ledger.map((tx) => tx.id)),
+	);
+	const represented = new Set(
+		reportItems.flatMap(({ code, item }) => {
+			if (item.kind === "unresolved")
+				return [JSON.stringify([code, item.unresolved.txId])];
+			return [];
+		}),
+	);
+	const balanceWarnings = new Set(
+		reportItems
+			.filter(({ item }) => item.kind === "balance")
+			.map(({ code, item }) => JSON.stringify([code, item.message])),
 	);
 	const groups = new Map<
 		string,
@@ -176,10 +167,16 @@ export function review(db: TaxDatabase, taxYear?: string) {
 			reportItems: ReportReviewItem[];
 		}
 	>();
-	for (const tx of reviewedLedger(db)) {
-		if (taxYear && taxYearOf(tx.timestamp) !== taxYear) continue;
-		for (const code of new Set(tx.reviewFlags.map((flag) => flag.code))) {
-			if (code === "missing_history" && unresolvedTxIds.has(tx.id)) continue;
+	for (const tx of ledger) {
+		for (const code of new Set(
+			tx.reviewFlags
+				.filter(
+					(flag) =>
+						!balanceWarnings.has(JSON.stringify([flag.code, flag.message])),
+				)
+				.map((flag) => flag.code),
+		)) {
+			if (represented.has(JSON.stringify([code, tx.id]))) continue;
 			const group = groups.get(code) ?? {
 				code,
 				count: 0,
@@ -202,8 +199,18 @@ export function review(db: TaxDatabase, taxYear?: string) {
 		group.count++;
 		groups.set(code, group);
 	}
+	const reportStatuses = years.map((year) => ({
+		taxYear: year,
+		status: reports.some((report) => report.taxYear === year)
+			? ("current" as const)
+			: ("missing" as const),
+	}));
 	return {
 		reportStatus: reports.length === years.length ? "current" : "missing",
+		reportStatuses,
+		computeTaxYears: reportStatuses
+			.filter((entry) => entry.status === "missing")
+			.map((entry) => entry.taxYear),
 		groups: [...groups.values()].sort((a, b) => a.code.localeCompare(b.code)),
 	};
 }

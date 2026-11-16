@@ -11,7 +11,7 @@ import {
 	istDate,
 	type LedgerTx,
 	LedgerTxSchema,
-	type ReviewFlag,
+	type ReportWarning,
 	roundInr,
 	TaxYearSchema,
 	taxYearBounds,
@@ -81,9 +81,9 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 	);
 	const inYear = (tx: LedgerTx) =>
 		Date.parse(tx.timestamp) >= Date.parse(bounds.startUtc);
-	const warnings: ReviewFlag[] = [];
+	const warnings: ReportWarning[] = [];
 	const warningKeys = new Set<string>();
-	const warn = (flag: ReviewFlag) => {
+	const warn = (flag: ReportWarning) => {
 		const key = JSON.stringify(flag);
 		if (!warningKeys.has(key)) {
 			warnings.push(flag);
@@ -94,7 +94,7 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 		for (const flag of tx.reviewFlags) warn({ ...flag, txId: tx.id });
 	if (!rules.sectionsVerified)
 		warn({
-			code: "parse_warning",
+			code: "ca_verification_pending",
 			message: "Section numbers pending CA verification",
 		});
 	const matches = matchTransfers(included, settings);
@@ -103,7 +103,7 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 		if (match.ambiguous)
 			warn({
 				txId: match.withdrawal.id,
-				code: "parse_warning",
+				code: "ambiguous_transfer",
 				message:
 					"Multiple possible transfer pairs; earliest chronological pair was inferred. Confirm source history before filing.",
 			});
@@ -353,7 +353,7 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 				lots.consume(tx.feeAsset, sourcePool, extraFee);
 				warn({
 					txId: tx.id,
-					code: "parse_warning",
+					code: "fee_review_required",
 					message:
 						"Crypto-denominated fee reduces holdings; confirm whether paying the fee is a separate taxable disposal.",
 				});

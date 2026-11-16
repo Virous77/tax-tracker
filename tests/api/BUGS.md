@@ -2,7 +2,15 @@
 
 Regression run on 2026-11-17 against image `tax-tracker-app:local` built from `main` at `1cc6111`
 (after fix commits `f1f5394` server and `1cc6111` UI).
-Result: **296 tests, 296 pass, 0 fail.**
+Historical result: **296 tests, 296 pass, 0 fail.**
+
+Second server fix round: **309 tests, 309 pass, 0 fail** across 12 files. A subsequent targeted run
+of `12-server-round2.test.ts` passed all 13 tests, including retention of the first invalidation reason.
+The test image was rebuilt with a temporary Compose/Dockerfile override that skips Next's UI type
+check inside the image only. The normal `docker compose build`, `pnpm -r build` and `pnpm typecheck`
+fail on the documented UI contract consumers pending the next UI agent; repository build settings
+and UI sources are unchanged. All 104 package/server tests and scoped Biome checks pass. Full-repo
+lint finds the existing formatting issue in `tests/e2e/BUGS.md`, which is outside this task's ownership.
 
 The fix commit `f1f5394` also updated the suite for intended contract changes (host.docker.internal
 and private hosts are local AI endpoints, wrong explicit source → 422, suggest on a finished import →
@@ -12,45 +20,45 @@ each one follows the contract in `packages/core/src/api/index.ts` and none of th
 
 ## Status of earlier findings
 
-| #   | Finding                                                         | Status    | Verified by                                                                                                |
-| --- | --------------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------- |
-| 1   | High: generic imports not idempotent across recipe ids          | **FIXED** | `04-recipes.test.ts › the same generic file confirmed twice with differently-named recipes does not double the ledger` |
-| 2   | Low: settings accept a default tax year with no rule file       | **FIXED** | `01-health-settings.test.ts › settings › PUT rejects bad tax year with 400`                                |
-| 3   | Low: oversize upload message differs from the documented one    | **FIXED** | `03-edge-data.test.ts › huge.csv → 413 file_too_large 'File exceeds 25 MB.'`                               |
-| O1  | Observation: logout did not revoke a copied token               | **FIXED** | `09-auth.test.ts › logout …` (old cookie → 401, a fresh login works)                                       |
-| O2  | Observation: wrong explicit source stored as an all-error import | **FIXED** | `02-imports.test.ts › wrong explicit source returns 422 naming the expected headers`                       |
-| O3  | Observation: suggest on a finished import still called the AI   | **FIXED** | `04-recipes.test.ts › suggest and payload preview reject a completed import without calling AI`            |
-| —   | Docker same-origin check (E2E bug 1)                            | **FIXED** | `10-security.test.ts › same-origin mutations use the public localhost port in Docker`                      |
-| —   | Balance difference sign (E2E bug 14)                            | **FIXED** | `07-reports.test.ts › 18 balance mismatch … difference -0.1` (report, CSV and XLSX)                        |
+| #   | Finding                                                          | Status    | Verified by                                                                                                            |
+| --- | ---------------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 1   | High: generic imports not idempotent across recipe ids           | **FIXED** | `04-recipes.test.ts › the same generic file confirmed twice with differently-named recipes does not double the ledger` |
+| 2   | Low: settings accept a default tax year with no rule file        | **FIXED** | `01-health-settings.test.ts › settings › PUT rejects bad tax year with 400`                                            |
+| 3   | Low: oversize upload message differs from the documented one     | **FIXED** | `03-edge-data.test.ts › huge.csv → 413 file_too_large 'File exceeds 25 MB.'`                                           |
+| O1  | Observation: logout did not revoke a copied token                | **FIXED** | `09-auth.test.ts › logout …` (old cookie → 401, a fresh login works)                                                   |
+| O2  | Observation: wrong explicit source stored as an all-error import | **FIXED** | `02-imports.test.ts › wrong explicit source returns 422 naming the expected headers`                                   |
+| O3  | Observation: suggest on a finished import still called the AI    | **FIXED** | `04-recipes.test.ts › suggest and payload preview reject a completed import without calling AI`                        |
+| —   | Docker same-origin check (E2E bug 1)                             | **FIXED** | `10-security.test.ts › same-origin mutations use the public localhost port in Docker`                                  |
+| —   | Balance difference sign (E2E bug 14)                             | **FIXED** | `07-reports.test.ts › 18 balance mismatch … difference -0.1` (report, CSV and XLSX)                                    |
 
-## New findings (found through the API while exploring; no failing API test)
+## Second server fix round — 2026-11-17
 
-### N1. Low — a grouped `balance_mismatch` warning has empty `txIds`
+All seven server findings are fixed. `12-server-round2.test.ts` adds regressions for per-year
+status and compute targets, negative holdings, unresolved reasons, prior-year acquisition warnings,
+global/per-source warning trails, non-parse warning codes, intentional skips, and report-missing
+reasons. `02-imports.test.ts` verifies the mixed statement fixture and re-import accounting;
+`08-exports.test.ts` verifies readable metadata in every CSV/XLSX kind and retains formula-injection checks.
 
-- **Endpoint:** `POST /api/reports/:taxYear/compute` (and the `full` export's warnings section).
-- **Repro:** add a manual ETH buy of 1 in 2026-27 → `PUT /api/balances/actual?taxYear=2026-27`
-  `[{"asset":"ETH","amount":"1.5"}]` → compute.
-- **Expected:** the warning `balance_mismatch "ETH: computed 1, actual 1.5"` lists the same ledger ids as
-  `balances[0].txIds`, as the grouped-warnings contract says (`warnings[].txIds` = affected transactions).
-- **Actual:** `count 1, txIds []`, while `balances[0].txIds` holds the buy's id. A CA following the
-  warning from the export has no transaction to open.
-- **Cause:** `packages/engine/src/balances.ts:56-59` calls `warn()` without a `txId`, so the grouping has nothing to collect.
+- **API N1 / E2E N4:** balance warnings retain asset/source and contributing ledger ids. Actual-only
+  assets legitimately have no ids but retain explicit context. Each warning counts one problem.
+- **API N2 / E2E N4:** non-parse warnings use `ca_verification_pending`, `import_incomplete`,
+  `fx_unavailable`, `ambiguous_transfer`, or `fee_review_required`; parsing issues keep `parse_warning`.
+- **E2E N1:** Review exposes `reportStatuses` and `computeTaxYears`. The compatibility aggregate
+  remains missing until every requested year has a report; the UI must compute the named missing years.
+- **E2E N2:** Review includes negative holdings, all unresolved reasons, balance mismatches, and
+  report-wide warnings. It omits ledger items represented by those report items. A sell without a buy
+  can have two distinct report checks (negative balance and unresolved slice), with no duplicate ledger item.
+- **Still-open CSV metadata:** disclaimer first, readable `Setting,Value` / `Section,Reference`
+  rows and shared labels/values across CSV and XLSX.
+- **Still-open statement overlap:** `rowsSkipped` / `skippedRows` carry intentional overlap rows;
+  the 32-row fixture has 2 income transactions, 27 skips and 3 real row errors. Re-import gives
+  2 duplicates, 27 skips and 3 errors. Raw rows remain preserved.
+- **Missing report explanation:** 404 uses `report_not_computed` with persisted `invalidatedAt` and
+  `cause`; a fresh year gives `never_computed` and null. The first invalidating cause is retained while
+  the report remains missing. A server test verifies persistence across closing/reopening the database.
 
-### N2. Low — non-parse warnings are coded `parse_warning`
-
-- "Section numbers pending CA verification" (`packages/engine/src/index.ts:98`) and "Import x.xlsx:
-  3 excluded rows; status imported…" both come back as `code: "parse_warning"`. Report screens and
-  exports label them as import parse warnings, which they are not. A distinct code
-  (e.g. `rules_pending_verification`, `import_rows_excluded`) would let the UI and CA filter them.
-
-## Observations
-
-- `GET /api/review` never returns `reportStatus: "stale"`; `apps/web/src/server/transactions.ts:206`
-  only produces `current` or `missing` (every data change deletes stored reports). The UI's `stale`
-  wording is unreachable. Not a defect while reports are deleted on change.
-- `GET /api/review` without `taxYear` is `current` only when **every** rule year has a stored report.
-  That is consistent, but the UI's compute button on the All-years view computes only one year
-  (see `tests/e2e/BUGS.md` N1).
+The authoritative UI handoff is `apps/web/src/server/README.md`. E2E was not run or edited. UI changes
+are required to consume the new fields and union variant; server-only changes do not resolve the UI banners yet.
 
 ## Coverage
 
@@ -67,7 +75,8 @@ each one follows the contract in `packages/core/src/api/index.ts` and none of th
 | Auth (`APP_PASSWORD`)              | `09-auth.test.ts`            | 35      | 35      | 0     |
 | Security / robustness              | `10-security.test.ts`        | 32      | 32      | 0     |
 | Research-flagged behaviours        | `11-research.test.ts`        | 8       | 8       | 0     |
-| **Total**                          |                              | **296** | **296** | **0** |
+| Second server regressions          | `12-server-round2.test.ts`   | 13      | 13      | 0     |
+| **Total**                          |                              | **309** | **309** | **0** |
 
 ## Not covered
 

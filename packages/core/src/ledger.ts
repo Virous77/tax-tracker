@@ -40,6 +40,11 @@ export const ReviewCodeSchema = z.enum([
 	"balance_mismatch",
 	"parse_warning",
 	"complex_onchain",
+	"ca_verification_pending",
+	"import_incomplete",
+	"fx_unavailable",
+	"ambiguous_transfer",
+	"fee_review_required",
 ]);
 export const ReviewFlagSchema = z.object({
 	code: ReviewCodeSchema,

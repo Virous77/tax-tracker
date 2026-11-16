@@ -68,6 +68,8 @@ function saveResult(
 			rowsInserted: count.inserted,
 			rowsDuplicate: count.duplicate,
 			rowsError: result.rowErrors.length,
+			rowsSkipped: result.skippedRows?.length ?? 0,
+			skippedRows: result.skippedRows ?? [],
 			recipeId,
 			rowErrors: result.rowErrors,
 			warnings: result.warnings,
@@ -75,7 +77,10 @@ function saveResult(
 		};
 		if (
 			updated.rowsRead !==
-			updated.rowsInserted + updated.rowsDuplicate + updated.rowsError
+			updated.rowsInserted +
+				updated.rowsDuplicate +
+				updated.rowsError +
+				updated.rowsSkipped
 		)
 			throw new ApiError(
 				422,
@@ -135,6 +140,8 @@ export async function createImport(
 		rowsInserted: 0,
 		rowsDuplicate: 0,
 		rowsError: 0,
+		rowsSkipped: 0,
+		skippedRows: [],
 		recipeId: null,
 		createdAt: new Date().toISOString(),
 		error: null,

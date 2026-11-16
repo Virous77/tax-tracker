@@ -160,7 +160,7 @@ describe("tests/data edge-case pack (tests/data/README.md)", () => {
 		expect(err?.message).toBe("File exceeds 25 MB.");
 	});
 
-	it("sell-without-buy.csv: 1 row; after compute review has missing_history 1 and totals exclude it", async () => {
+	it("sell-without-buy.csv: 1 row; after compute review has unresolved history and negative holdings, and totals exclude it", async () => {
 		const s = await importOk(
 			edge("sell-without-buy.csv"),
 			"sell-without-buy.csv",
@@ -182,9 +182,16 @@ describe("tests/data edge-case pack (tests/data/README.md)", () => {
 			200,
 			api.ReviewResponseSchema,
 		);
-		expect(review.groups.find((g) => g.code === "missing_history")?.count).toBe(
-			1,
-		);
+		expect(
+			review.groups.find((g) => g.code === "missing_history"),
+		).toMatchObject({
+			count: 2,
+			items: [],
+			reportItems: expect.arrayContaining([
+				expect.objectContaining({ kind: "balance" }),
+				expect.objectContaining({ kind: "unresolved" }),
+			]),
+		});
 	});
 
 	it("year-boundary.csv (UTC): 18:29:59Z in 2025-26, 18:30:00Z in 2026-27, no timezone flags", async () => {

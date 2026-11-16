@@ -98,8 +98,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
-## Repo note
-
-The root `.gitignore` has the line `data/`, which matches **this folder** (and `packages/rules/data/`), so git
-ignores these files today. Change that line to `/data/` (root only) before committing.

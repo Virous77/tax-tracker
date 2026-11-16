@@ -208,7 +208,7 @@ export function baseTransaction(
 	source: string,
 	sourceRef: string,
 	timestamp: string,
-	raw: unknown,
+	raw: LedgerTx["raw"],
 ): LedgerTx {
 	return {
 		id: randomUUID(),

@@ -1,130 +1,132 @@
-# Browser E2E findings — regression round 2026-11-17
+# Browser E2E findings — regression round 3, 2026-11-17
 
 Run: `pnpm test:e2e` (Playwright 1.65, Chromium, image `tax-tracker-app:local` built from `main` at
-`1cc6111`, after fix commits `f1f5394` server and `1cc6111` UI).
-Result: **108 tests: 107 pass, 1 fail.** The failure is new bug N1 below and is left failing on purpose.
+`9fe338e`, after fix commits `70566bc` server and `9fe338e` UI).
+Result: **123 tests: 123 pass, 0 fail** (108 existing + 15 new).
+
+Before the test updates, the first run gave **101 pass, 7 fail**. All 7 failures came from intended
+contract/UI changes, not bugs (see "Assertions changed"). The earlier failing N1 test now passes.
 
 Global setup starts three throwaway Compose stacks: `taxe2e` (3102), `taxe2epw` (3103, `APP_PASSWORD`)
-and `taxe2efresh` (3104, read-only empty-state checks), each on a fresh `/private/tmp` data dir; global
-teardown stops them. Playwright's `webServer` runs the mock LLM on 11502.
-`E2E_REUSE_STACK=1` reuses running stacks and `E2E_KEEP_STACK=1` leaves them running.
-
-**The test-only Origin-rewriting proxy is gone.** Bug 1 is fixed, so every spec talks to the app ports
-directly. The two tests that proved bug 1 now pass as "saves succeed".
-
-Screenshots: `tests/e2e/screenshots/` (gitignored), refreshed in this run. `screen-<name>-{light,dark,mobile,mobile-dark}.png`
-cover every screen; the other files are per-scenario captures.
+and `taxe2efresh` (3104, read-only empty-state checks). Global teardown stops them. Playwright's
+`webServer` runs the mock LLM on 11502. Screenshots: `tests/e2e/screenshots/` (gitignored).
 
 ---
 
 ## Status of earlier findings
 
-| #   | Finding                                                    | Status    | Verified by                                                                                                                                                                                  |
-| --- | ---------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Critical: every browser write rejected with 403 in Docker  | **FIXED** | `import.spec.ts` › "a real browser upload is accepted…"; `password.spec.ts` › "a real browser can log in"; whole suite now runs without the proxy                                            |
-| 2   | High: wizard used "Side" as the row ID, dropping trades    | **FIXED** | `recipe-wizard.spec.ts` › "the wizard's first guess does not use the Side column…" and "generic-ddmmyyyy.csv with the wizard's ID guess inserts 4 rows; re-import is 4 duplicates"           |
-| 3   | High: host.docker.internal "Local" in UI, cloud on server  | **FIXED** | `settings.spec.ts` › "host.docker.internal is local in both UI and server" (saved with `cloudAcknowledged: false`)                                                                           |
-| 4   | Medium: balance mismatch never reached Review              | **FIXED** | `review.spec.ts` › "reportStatus banner prompts a compute, then the balance mismatch appears as a report item"; `report.spec.ts` › "TDS section, 26AS checklist and actual-balance mismatch" |
-| 5   | Medium: Review said "clean" before any compute             | **FIXED** | `review.spec.ts` › "before any compute…" and the reportStatus test; `empty-states.spec.ts` › "review empty state asks for a compute instead of claiming clean"                               |
-| 6   | Medium: Add-transaction error was a raw Zod dump           | **FIXED** | `transactions.spec.ts` › "validation errors are shown and nothing is saved" (now a hard check: "Quantity received must be a valid number.")                                                  |
-| 7   | Medium a11y: no visible focus on the file picker           | **FIXED** | `import.spec.ts` › "the drop zone shows a visible focus ring…"; `responsive-a11y.spec.ts` › "keyboard focus is visible on import"                                                            |
-| 8   | Medium a11y: mobile menu ignored Escape, didn't take focus | **FIXED** | `responsive-a11y.spec.ts` › "mobile navigation" (3 existing + "Escape returns focus to the toggle and Tab stays inside the open menu")                                                       |
-| 9   | Medium a11y: dark primary buttons 2.94:1                   | **FIXED** | `responsive-a11y.spec.ts` › "text meets WCAG AA contrast (dark)"                                                                                                                             |
-| 10  | Low a11y: light muted text 4.28:1                          | **FIXED** | `responsive-a11y.spec.ts` › "text meets WCAG AA contrast (light)"                                                                                                                            |
-| 11  | Low a11y: export links all named "CSV"/"XLSX"              | **FIXED** | `report.spec.ts` › "export links have distinguishable accessible names" (now also requires kind + format in each name)                                                                       |
-| 12  | Low: login always landed on Overview                       | **FIXED** | `password.spec.ts` › "after login the user lands on the page they asked for"; off-site `?next=` values are refused (3 new tests)                                                             |
-| 13  | Low a11y: drawer didn't return focus                       | **FIXED** | `responsive-a11y.spec.ts` › "add-transaction drawer traps focus, closes on Escape and returns focus" (soft → hard)                                                                           |
-| 14  | Low: Difference sign differed between UI and export        | **FIXED** | `report.spec.ts` › "TDS section…" asserts the CSV row `"ETH","0","0.5","0.5"` and the "Difference = Actual − Computed" note                                                                  |
+| #    | Finding                                                            | Status    | Verified by                                                                                                                                                                     |
+| ---- | ------------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| N1   | Medium: All-years Compute never cleared the "not computed" banner  | **FIXED** | `review.spec.ts` › "All years: after Compute the banner no longer says that year is not computed" and "All years with one year computed names only the missing year"            |
+| N2   | Medium: negative holdings never reached Review                     | **FIXED** | `review.spec.ts` › "a sell without a buy shows both the negative holding and the unresolved slice"; `round3.spec.ts` › "global pool: negative holding shows the asset chip…"    |
+| N3   | Low: Review showed only the first flag message per transaction     | **FIXED** | `round3.spec.ts` › "Review lists every flag message of a transaction, not only the first"                                                                                       |
+| N4   | Low: balance warning without ids; non-parse codes as parse_warning | **FIXED** | `round3.spec.ts` › "per-source pool: balance mismatch shows asset · source and every contributing transaction"; `transactions.spec.ts` › "flag chips…" (`fee_review_required`)  |
+| N5   | Low: "1 flagged transaction item need review"                      | **FIXED** | `round3.spec.ts` › "Overview: one item needs review" / "two items need review" / "Report: one Schedule VDA row…"; `review.spec.ts` › "singular and plural item counts"          |
+| UX   | Raw settings JSON in CSV exports                                   | **FIXED** | `report.spec.ts` › "every export button downloads…" (disclaimer first, `Setting,Value` rows, no JSON; XLSX has the same labels)                                                 |
+| UX   | Statement overlap rows shown as red errors                         | **FIXED** | `round3.spec.ts` › "import summary shows a neutral skipped section and the count equation"; "re-import: duplicates, skips and errors still add up…"                             |
+| UX   | No reason when a report disappears (Report, Overview)              | **FIXED** | `round3.spec.ts` › "a cleared report explains why" (ledger, settings, balances, first cause kept); `settings.spec.ts` (settings cause); `empty-states.spec.ts` (never computed) |
+| 1–14 | Earlier rounds (403 in Docker, wizard ID, a11y, …)                 | **FIXED** | Unchanged tests still pass                                                                                                                                                      |
 
-UX items from the last round:
+## STILL OPEN
 
-| Item                                                      | Status                                                 | Notes                                                                                                            |
-| --------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| "TDS Possibly Due" warned on fully covered manual TDS     | **FIXED**                                              | Shows "Covered by recorded TDS"; a partial case shows "₹500.00 after recorded TDS" (`screen-report-light.png`)   |
-| Report Warnings listed 30 repeated lines                  | **FIXED**                                              | "10 distinct · 30 total", `(×13) View 13 transactions` links to the filtered list                                |
-| "Schedule VDA (1 rows)" plural                            | **FIXED**                                              | "Schedule VDA (1 row)"                                                                                           |
-| Raw setting keys on Report                                | **FIXED**                                              | "Fee & GST treatment: Exclude fees", "Surcharge rate: 10%"…; asserted in `report.spec.ts` and `settings.spec.ts` |
-| Raw settings in CSV export (one JSON cell)                | **STILL OPEN**                                         | `"Settings","{""feeTreatment"":…}"` and `"Sections","{…}"` in every CSV export                                   |
-| Imports list on mobile hid status/actions off-screen      | **FIXED**                                              | 375 px card layout (`screen-imports-mobile.png`)                                                                 |
-| Generic import labelled "generic" in lower case           | **FIXED**                                              | "Generic CSV"                                                                                                    |
-| Statement import shows overlap skips as red "errors"      | **STILL OPEN**                                         | Not changed by the fix commits                                                                                   |
-| No banner explaining why reports disappear after a change | **FIXED** (Review) / **STILL OPEN** (Report, Overview) | Review explains it; Report/Overview still fall back to the plain "No report computed" state                      |
+None from earlier rounds.
 
----
+## NEW (ranked)
 
-## New findings (ranked)
+### R3-1. Medium — Save settings clears every report even when nothing tax-related changed
 
-### N1. Medium — Review "All years": Compute never clears the "not computed" banner
+- **Steps:** compute both years → Settings → press _Save settings_ without editing (or change only the AI
+  model or the default tax year) → Report.
+- **Expected:** reports stay; the AI endpoint and default year are not engine inputs.
+- **Actual:** both reports are gone and the page says "Your report was cleared because tax engine settings
+  changed on …".
+- **Cause / test:** server side, see `tests/api/BUGS.md` R3-1 (`apps/web/src/server/settings.ts:81-87`,
+  `packages/db/src/index.ts:255`). Failing API tests in `13-round3.test.ts`. No E2E test, because the
+  defect is in the API, and the E2E settings specs reset settings in every test.
 
-- **Screen:** Review with the default "All years" filter (the Import summary's CTA leads users here).
-- **Steps:** import `sell-without-buy.csv` → open `/review` → click _Compute 2026-27 report_.
-- **Expected:** the banner goes away, or names the year that is still missing (2025-26).
-- **Actual:** the report is computed and the groups appear, but the banner still says
-  "Report not computed for 2026-27 — some checks … appear only after computing." Clicking again
-  recomputes 2026-27 and changes nothing, so the user is stuck in a loop.
-- **Cause:** without `?taxYear` the server reports `current` only when **every** rule year has a stored
-  report (`apps/web/src/server/transactions.ts:206`), but the button computes only
-  `computeTargetYear = taxYear || defaultTaxYear` (`apps/web/src/components/ReviewClient.tsx:109`).
-  Either compute every missing year from the All-years view, or have the API return which years are missing.
-- **Test:** `review.spec.ts` › "All years: after Compute the banner no longer says that year is not computed" (fails).
+### R3-2. Low — editing 2026-27 data also clears the 2025-26 report
 
-### N2. Medium — negative holdings ("missing_history: Negative USDT holding") never reach Review
+- **Steps:** compute both years → edit the 01 Apr 2026 CoinDCX sell's INR value (or save 2026-27 actual
+  balances) → Overview for 2025-26 says "Report cleared for 2025-26 … because transactions changed".
+- **Expected:** a 2026-27 change leaves 2025-26 current (allowing for the transfer-match window around 31 March).
+- **Cause:** `invalidateReports` has no year scope (`packages/db/src/index.ts:43-60`). Balance case:
+  failing API test `13-round3.test.ts › actual balances for one year keep the other year's report`.
 
-- **Screen:** Report → Report Warnings vs Review.
-- **Steps:** import the E2E Binance/CoinDCX set (as `screenshots.spec.ts` does) → compute 2026-27 →
-  Report lists `missing_history: Negative USDT holding: -413.737002` (`screen-report-light.png`).
-- **Expected:** a Review item under "Missing acquisition history" (the same class of problem as bug 4).
-- **Actual:** Review shows report items only for `report.unresolved` missing-history slices and
-  `balances[].difference` mismatches; the negative-holding warning (no `txId`) is dropped.
-- **Cause:** `apps/web/src/server/transactions.ts:131-163` builds `reportItems` from balances with a
-  difference and `unresolved`, not from `balances` with `computed < 0` (raised in `packages/engine/src/balances.ts:66-70`).
-- **Test:** none yet (found in exploration); seen in `screenshots/screen-report-light.png`.
+### R3-3. Low — duplicate flag chips on Transactions
 
-### N3. Low — Review shows only the first flag message per transaction in a group
+- The sell-without-buy swap shows `tds_not_deducted missing_history fee_review_required missing_history`.
+  The two `missing_history` flags have different messages (unresolved slice and negative holding), but
+  the chips show only the code, so the same chip appears twice. `TransactionsClient.tsx:422` maps every
+  flag. Suggest deduplicating by code with a count or tooltip. Not asserted. This is UX, not a correctness issue.
 
-- A CoinDCX sell carrying three `parse_warning` flags (GST, gross INR derived, crypto fee) shows only
-  "Export does not separate GST…" in Review's Details column
-  (`ReviewClient.tsx:289`, `tx.reviewFlags.find(...)`). The other two are visible only in Report
-  warnings or the transaction drawer.
+### R3-4. Low — Overview counts report notices as "flagged transaction items"
 
-### N4. Low — grouped `balance_mismatch` warning has no transaction ids; non-parse warnings coded `parse_warning`
+- After compute, "N flagged transaction items need review" includes `ca_verification_pending` and
+  `import_incomplete` notices that are not transactions (`OverviewClient.tsx:98`, sum of `group.count`).
+  Suggest "N review items" or counting ledger items only.
 
-- See `tests/api/BUGS.md` N1/N2. In the UI this means the balance warning on Report has no
-  "View transaction" link, and "Section numbers pending CA verification" / "Import …: N excluded rows"
-  are shown as `parse_warning`.
+### R3-5. Low — skipped and error rows are numbered from 0
 
-### N5. Low — Overview grammar
+- The import summary and Imports drawer show "Row 0" for the first data row (`ImportClient.tsx:332,372`,
+  `ImportsClient.tsx:547,575`). The API index is zero-based by contract. Users matching against a
+  spreadsheet expect row 2 (header = row 1). Suggest displaying `rowIndex + 2` for CSV or labelling "data row #".
 
-- "1 flagged transaction item need review before filing." (`OverviewClient.tsx:185`): "needs" for one.
+### Design notes (no defect)
 
----
+- **404 for an uncomputed report.** `GET /api/reports/<year>` answers 404 `report_not_computed` by design, and
+  Chromium logs "Failed to load resource" for each one. The fixture (`support/fixtures.ts`) ignores that
+  console line only for `GET /api/reports/<yyyy-yy>`, and a response listener now records a problem
+  unless the 404 body has code `report_not_computed`. Every other console error or failed request still
+  fails the test. Suggest a non-error shape, for example `200 {status:"missing", details}`.
+- **Prior-year warnings in the 2026-27 Review.** With `?taxYear=2026-27`, the 2025 airdrop's
+  `missing_inr_value` still appears as a "Report warning" row, because the 2026-27 report evaluates full
+  history (server README: warnings on out-of-year transactions are kept). This is intended, but a user filtering by
+  year may not expect it. A "from earlier year" label would help.
+- The balance-warning message uses the raw source id ("BTC at coindcx: …") while the chip next to it
+  says "CoinDCX".
 
-## Exploration notes (≈25 min, Playwright scripts against the `taxe2e` / `taxe2epw` stacks)
+## Assertions changed (intended contract/UI changes only)
+
+| Test                                             | Old assertion                                                     | New assertion                                                                                                                                     | Why                                                                                                          |
+| ------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `empty-states.spec.ts` › review empty state      | "Report not computed for 2026-27" + "Compute 2026-27 report"      | All years: "Reports not computed for 2025-26, 2026-27" + "Compute 2025-26 & 2026-27 reports"; the 2026-27 filter still shows the single-year text | Per-year `computeTaxYears` banner (N1 fix)                                                                   |
+| `settings.spec.ts` › `recompute()` helper        | heading "No report computed for 2026-27"                          | heading "Report cleared for 2026-27" + "cleared because tax engine settings changed on <IST time>"                                                | The cause is now explained (stricter than before)                                                            |
+| `transactions.spec.ts` › flag chips              | swap has `parse_warning`                                          | swap has `fee_review_required` and no `parse_warning`                                                                                             | Crypto-fee note has its own code (API N2)                                                                    |
+| `review.spec.ts` › groups / fix action           | one "Add missing buy" link                                        | `.first()`; a new test asserts exactly 2 rows (negative holding + unresolved slice), both linking to the pre-filled buy                           | Server README: one sell without a buy yields two report checks                                               |
+| `review.spec.ts` › year filter narrows the queue | "Missing INR valuation" heading count 0 (raced the loading state) | waits for data; the 2025 Income ledger row is gone; its warning remains one "Report warning" row with no Inspect button                           | Out-of-year warnings are now `warning` report items; the old check passed only because it ran during loading |
+| `review.spec.ts` › All years test (old N1)       | clicked "Compute 2026-27 report"                                  | clicks "Compute 2025-26 & 2026-27 reports"; the banner must be gone after reload                                                                  | Button now computes `computeTaxYears`                                                                        |
+| `report.spec.ts` › every export button           | CSV contains the disclaimer                                       | CSV line 1 is the disclaimer; readable `Setting,Value` rows; no JSON settings; XLSX has the labels                                                | Readable export metadata (stricter)                                                                          |
+| `support/fixtures.ts`                            | ignored any `/api/reports/<year>` 404 console line                | also requires the 404 body code to be `report_not_computed`                                                                                       | Stricter. See the design note                                                                                |
+
+## New tests (15)
+
+`round3.spec.ts` (12): statement skips (import summary + re-import/Imports drawer), cleared-report cause
+for ledger / settings / balances, first cause kept + API details, singular/plural on Overview (1 and 2)
+and Report, warning chips (global asset, per-source asset · source with "View 4 transactions"), every flag
+message per transaction. `review.spec.ts` (+3): negative holding and unresolved slice, singular/plural
+counts, All years with one year computed. `empty-states.spec.ts` now also checks `never_computed` + `invalidatedAt: null` from the API.
+
+## Exploration notes (≈20 min, Playwright scripts + curl against `taxe2e`, `taxe2epw`, `taxapi`)
 
 Checked and working:
 
-- **Import → review → compute → report → export → edit → recompute:** editing the sell's INR value
-  to ₹3,00,000 in the transaction drawer deletes the stored report (Report shows "No report computed"),
-  _Compute_ gives Consideration ₹3,00,000 / Taxable ₹1,00,000 / Total tax ₹31,200 / Net ₹28,700, and
-  the Schedule VDA CSV carries `300000.00` / `100000.00`.
-- **Tax-year switching** on Overview, Report, Transactions and Review updates the URL and data
-  (2025-26 shows the 1961-Act sections, `india-vda/2025-26.json`, ₹62.40 tax on a ₹200 gain).
-- **Default tax year** setting (2025-26) drives Overview, Report and Review's compute target.
-- **Delete import** clears Imports, Review (back to "not computed") and Report.
-- **Report warning links** open `/transactions?taxYear=…&flagged=true&source=…`.
-- **Password mode end to end:** login with `?next=`, UI import, compute, export download, logout; the
-  export URL then answers 401 (new test `password.spec.ts` › "password mode end to end…").
-- **Mobile Imports** at 375 px: no page-level horizontal overflow.
-
-Test-side fix found while exploring: the AI-wizard test asserted the suggested columns before the
-`/api/recipes/suggest` reply had arrived (the wizard's own header guesses equal the mock's answer), so a
-late reply could overwrite the hand edit. The test now waits for the response. Not an app defect.
+- **Full Binance + CoinDCX import via UI:** equations correct for every file
+  (statement: 32 = 2 + 0 + 27 + 3; CoinDCX: 10 = 7 + 0 + 0 + 3).
+- **Review All years → "Compute 2025-26 & 2026-27 reports"** computes both and the banner disappears;
+  editing data then shows "Computed: 2026-27 · Not computed: 2025-26" correctly after one recompute.
+- **Edit → recompute:** setting the 01 Apr 2026 CoinDCX sell to ₹50,000 cleared the report (cause shown),
+  recompute gave Consideration ₹73,164.98, Taxable ₹31,415.00, Total tax ₹9,801.48 (30% + 4% cess), and the
+  Schedule VDA CSV contains 50000.
+- **2025-26:** 1961-Act sections in UI and CSV (115BBH, 194S, 2(47A), 285BAA, Rule 115), Total tax ₹245.70.
+- **Exports when missing:** all 8 kind/format pairs return 404 `report_not_computed` with the cause.
+- **Password mode:** `/review` → `/login?next=%2Freview` → Unlock → back on Review; UI import of the
+  statement shows the skip equation; All-years compute; export 200; after logout export 401. No console errors.
 
 ## Not tested
 
-- Real OS drag-and-drop onto the drop zone (Playwright can't send it); picker and keyboard paths only.
-- `mock-slow` (120 s upstream timeout), for run time.
-- Firefox and WebKit; Chromium only.
-- EVM and US-stock flows (Phase 3; no UI yet).
-- Dark-mode contrast inside dialogs and drawers (screenshots only).
-- `reportStatus: "stale"`: the server never returns it (see `tests/api/BUGS.md`), so the stale wording can't be reached.
+- Real OS drag-and-drop onto the drop zone; `mock-slow` (120 s timeout); Firefox and WebKit.
+- EVM and US-stock flows (no UI yet).
+- `fx_unavailable` and `ambiguous_transfer` labels in the browser: no fixture produces them through the
+  UI (the server tests cover the codes; `review-codes.ts` has labels for both).
+- A "Compute all N missing reports" label (more than two missing years): only two rule years exist.
+- Dark-mode contrast of the new chips and the skipped section (screenshots only).

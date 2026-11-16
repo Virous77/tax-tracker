@@ -116,7 +116,9 @@ test.describe("flags, drawer and editing", () => {
 		await expect(page.getByText("Showing 1–2 of 2")).toBeVisible();
 		const swap = rows(page).filter({ hasText: "Swap" });
 		await expect(swap.getByText("tds_not_deducted")).toBeVisible();
-		await expect(swap.getByText("parse_warning")).toBeVisible();
+		// The crypto-fee note moved from parse_warning to its own code (70566bc).
+		await expect(swap.getByText("fee_review_required")).toBeVisible();
+		await expect(swap.getByText("parse_warning")).toHaveCount(0);
 		await expect(
 			rows(page).filter({ hasText: "Income" }).getByText("missing_inr_value"),
 		).toBeVisible();

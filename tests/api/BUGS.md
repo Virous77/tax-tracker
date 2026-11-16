@@ -1,64 +1,76 @@
 # API defects found by `tests/api`
 
-Regression run on 2026-11-17 against image `tax-tracker-app:local` built from `main` at `1cc6111`
-(after fix commits `f1f5394` server and `1cc6111` UI).
-Historical result: **296 tests, 296 pass, 0 fail.**
+Regression round 3 on 2026-11-17 against image `tax-tracker-app:local` built from `main` at `9fe338e`
+(after fix commits `70566bc` server and `9fe338e` UI).
+Result: **320 tests: 316 pass, 4 fail** across 13 files. The 4 failures are the new defects R3-1 and R3-2
+below. They are left failing on purpose.
 
-Second server fix round: **309 tests, 309 pass, 0 fail** across 12 files. A subsequent targeted run
-of `12-server-round2.test.ts` passed all 13 tests, including retention of the first invalidation reason.
-The test image was rebuilt with a temporary Compose/Dockerfile override that skips Next's UI type
-check inside the image only. The normal `docker compose build`, `pnpm -r build` and `pnpm typecheck`
-fail on the documented UI contract consumers pending the next UI agent; repository build settings
-and UI sources are unchanged. All 104 package/server tests and scoped Biome checks pass. Full-repo
-lint finds the existing formatting issue in `tests/e2e/BUGS.md`, which is outside this task's ownership.
+Stack: `APP_PORT=3101 DATA_HOST_DIR=<mktemp> docker compose -p taxapi up -d --no-build`, mock LLM on
+11501, `pnpm -r build`, `pnpm test:api`. Stack and mock were stopped afterwards.
 
-The fix commit `f1f5394` also updated the suite for intended contract changes (host.docker.internal
-and private hosts are local AI endpoints, wrong explicit source → 422, suggest on a finished import →
-409, `reportStatus` / `reportItems` in review, grouped warnings, `difference = actual − computed`,
-logout revokes the session, `?next=` on the login redirect). Those edits were re-read in this round:
-each one follows the contract in `packages/core/src/api/index.ts` and none of them weakens a check.
+No existing API assertion was changed in this round. The suite was already updated for the new
+contract in `70566bc`. Those edits (02, 03, 06, 07, 08 and the new 12) were re-read: each one follows
+`packages/core/src/api/index.ts` and the server README, and none weakens a check.
 
 ## Status of earlier findings
 
-| #   | Finding                                                          | Status    | Verified by                                                                                                            |
-| --- | ---------------------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 1   | High: generic imports not idempotent across recipe ids           | **FIXED** | `04-recipes.test.ts › the same generic file confirmed twice with differently-named recipes does not double the ledger` |
-| 2   | Low: settings accept a default tax year with no rule file        | **FIXED** | `01-health-settings.test.ts › settings › PUT rejects bad tax year with 400`                                            |
-| 3   | Low: oversize upload message differs from the documented one     | **FIXED** | `03-edge-data.test.ts › huge.csv → 413 file_too_large 'File exceeds 25 MB.'`                                           |
-| O1  | Observation: logout did not revoke a copied token                | **FIXED** | `09-auth.test.ts › logout …` (old cookie → 401, a fresh login works)                                                   |
-| O2  | Observation: wrong explicit source stored as an all-error import | **FIXED** | `02-imports.test.ts › wrong explicit source returns 422 naming the expected headers`                                   |
-| O3  | Observation: suggest on a finished import still called the AI    | **FIXED** | `04-recipes.test.ts › suggest and payload preview reject a completed import without calling AI`                        |
-| —   | Docker same-origin check (E2E bug 1)                             | **FIXED** | `10-security.test.ts › same-origin mutations use the public localhost port in Docker`                                  |
-| —   | Balance difference sign (E2E bug 14)                             | **FIXED** | `07-reports.test.ts › 18 balance mismatch … difference -0.1` (report, CSV and XLSX)                                    |
+| #      | Finding                                                              | Status    | Verified by                                                                                                                             |
+| ------ | -------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1      | High: generic imports not idempotent across recipe ids               | **FIXED** | `04-recipes.test.ts › the same generic file confirmed twice with differently-named recipes does not double the ledger`                  |
+| 2      | Low: settings accept a default tax year with no rule file            | **FIXED** | `01-health-settings.test.ts › settings › PUT rejects bad tax year with 400`                                                             |
+| 3      | Low: oversize upload message differs from the documented one         | **FIXED** | `03-edge-data.test.ts › huge.csv → 413 file_too_large 'File exceeds 25 MB.'`                                                            |
+| O1–O3  | Logout revocation, wrong explicit source, suggest on finished import | **FIXED** | `09-auth`, `02-imports`, `04-recipes` (unchanged, still pass)                                                                           |
+| N1     | Balance warnings lost asset/source and transaction ids               | **FIXED** | `12-server-round2.test.ts` (warning trails); E2E `round3.spec.ts › per-source pool: balance mismatch…`                                  |
+| N2     | Non-parse warnings coded `parse_warning`                             | **FIXED** | `12-server-round2.test.ts › non-parse warning codes`; E2E `transactions.spec.ts › flag chips…` (now `fee_review_required`)              |
+| E2E N1 | All-years Review had no way to name the missing years                | **FIXED** | `12-server-round2.test.ts › All years identifies exactly which report still needs computing`                                            |
+| E2E N2 | Negative holdings missing from Review                                | **FIXED** | `12-server-round2.test.ts › negative fee holdings appear once in Review…`                                                               |
+| —      | CSV metadata as one JSON cell                                        | **FIXED** | `08-exports.test.ts` (readable `Setting,Value` in every CSV/XLSX kind); E2E `report.spec.ts › every export button…`                     |
+| —      | Statement overlap rows counted as errors                             | **FIXED** | `02-imports.test.ts` (2 inserted / 27 skipped / 3 errors); `13-round3.test.ts › … read = inserted + duplicate + error + skipped, twice` |
+| —      | Missing report gave no reason                                        | **FIXED** | `12-server-round2.test.ts` (persisted cause); `13-round3.test.ts › a missing report blocks every export kind with the same explanation` |
 
-## Second server fix round — 2026-11-17
+## STILL OPEN
 
-All seven server findings are fixed. `12-server-round2.test.ts` adds regressions for per-year
-status and compute targets, negative holdings, unresolved reasons, prior-year acquisition warnings,
-global/per-source warning trails, non-parse warning codes, intentional skips, and report-missing
-reasons. `02-imports.test.ts` verifies the mixed statement fixture and re-import accounting;
-`08-exports.test.ts` verifies readable metadata in every CSV/XLSX kind and retains formula-injection checks.
+None from earlier rounds.
 
-- **API N1 / E2E N4:** balance warnings retain asset/source and contributing ledger ids. Actual-only
-  assets legitimately have no ids but retain explicit context. Each warning counts one problem.
-- **API N2 / E2E N4:** non-parse warnings use `ca_verification_pending`, `import_incomplete`,
-  `fx_unavailable`, `ambiguous_transfer`, or `fee_review_required`; parsing issues keep `parse_warning`.
-- **E2E N1:** Review exposes `reportStatuses` and `computeTaxYears`. The compatibility aggregate
-  remains missing until every requested year has a report; the UI must compute the named missing years.
-- **E2E N2:** Review includes negative holdings, all unresolved reasons, balance mismatches, and
-  report-wide warnings. It omits ledger items represented by those report items. A sell without a buy
-  can have two distinct report checks (negative balance and unresolved slice), with no duplicate ledger item.
-- **Still-open CSV metadata:** disclaimer first, readable `Setting,Value` / `Section,Reference`
-  rows and shared labels/values across CSV and XLSX.
-- **Still-open statement overlap:** `rowsSkipped` / `skippedRows` carry intentional overlap rows;
-  the 32-row fixture has 2 income transactions, 27 skips and 3 real row errors. Re-import gives
-  2 duplicates, 27 skips and 3 errors. Raw rows remain preserved.
-- **Missing report explanation:** 404 uses `report_not_computed` with persisted `invalidatedAt` and
-  `cause`; a fresh year gives `never_computed` and null. The first invalidating cause is retained while
-  the report remains missing. A server test verifies persistence across closing/reopening the database.
+## NEW (ranked)
 
-The authoritative UI handoff is `apps/web/src/server/README.md`. E2E was not run or edited. UI changes
-are required to consume the new fields and union variant; server-only changes do not resolve the UI banners yet.
+### R3-1. Medium — saving non-engine or unchanged settings deletes every stored report
+
+- **Repro:** compute 2025-26 and 2026-27 → `PUT /api/settings` with only `ai` (another model), or only
+  `defaultTaxYear`, or exactly the current settings → `GET /api/review` shows both years `missing`;
+  `GET /api/reports/2026-27` → 404 `report_not_computed`, `cause: "settings_changed"`.
+- **Expected:** reports stay current. The AI endpoint and the default year are not tax engine inputs,
+  and an unchanged save changes nothing.
+- **Actual:** every report is deleted, and Report/Overview tell the user "Your report was cleared because
+  tax engine settings changed", which is not true. In the UI, pressing _Save settings_ without editing
+  anything also clears every report.
+- **Suspected cause:** `apps/web/src/server/settings.ts:81-87` always writes the `engine` key and writes
+  `ai`/`defaultTaxYear` through the same `db.settings.set`, which calls
+  `invalidateReports("settings_changed")` unconditionally (`packages/db/src/index.ts:255`). Invalidate only
+  when the parsed engine settings differ from the stored ones.
+- **Tests:** `13-round3.test.ts › changing only the AI model keeps stored reports`,
+  `› changing only the default tax year keeps stored reports`, `› saving unchanged settings keeps stored reports` (all fail).
+
+### R3-2. Low — actual balances for one year delete every year's report
+
+- **Repro:** compute both years → `PUT /api/balances/actual?taxYear=2026-27` → 2025-26 is `missing` too
+  (`cause: "balances_changed"`).
+- **Expected:** only 2026-27 is cleared. Actual balances are stored per tax year and the 2025-26 report
+  cannot read 2026-27 balances.
+- **Suspected cause:** `invalidateReports` (`packages/db/src/index.ts:43-60`) has no year scope; the balance
+  `replace` at `:284` calls it for all years.
+- **Test:** `13-round3.test.ts › actual balances for one year keep the other year's report` (fails).
+- **Related note (no test):** any ledger change also clears earlier years even when the transaction is
+  dated months after that year's end (for example a July 2026 buy clears 2025-26). Transfer matching can
+  cross 31 March within the match window, so a safe scope is "tax years ending after
+  `timestamp − transferMatchWindowHours`". Lower priority; this only forces an extra recompute.
+
+### Design note — `report_not_computed` uses HTTP 404
+
+The browser logs every uncomputed `GET /api/reports/<year>` as "Failed to load resource: 404". The E2E
+console guard allows exactly that request and now also checks the body is `report_not_computed`. A
+`200 {status: "missing", details}` shape (or 204 + details header) would keep consoles clean and let
+real 404s (unsupported year) stand out. Not a defect.
 
 ## Coverage
 
@@ -76,13 +88,14 @@ are required to consume the new fields and union variant; server-only changes do
 | Security / robustness              | `10-security.test.ts`        | 32      | 32      | 0     |
 | Research-flagged behaviours        | `11-research.test.ts`        | 8       | 8       | 0     |
 | Second server regressions          | `12-server-round2.test.ts`   | 13      | 13      | 0     |
-| **Total**                          |                              | **309** | **309** | **0** |
+| Round 3: invalidation, import sums | `13-round3.test.ts`          | 11      | 7       | 4     |
+| **Total**                          |                              | **320** | **316** | **4** |
 
 ## Not covered
 
-- **Recipe preview `checks` for Binance edge files.** Preview applies only to generic recipes, so the
-  HTTP API cannot produce those checks for a Binance import. Counts, row errors and missing history are asserted instead.
+- **Recipe preview `checks` for Binance edge files.** Preview applies only to generic recipes.
 - **XLSX numeric text** such as `9074.400000000001` getting a `parse_warning`. No fixture contains it.
-- **Brute-force lock expiry** (15 minutes) and **cookie expiry** (12 hours): need clock control in the container.
+- **Brute-force lock expiry** (15 minutes) and **cookie expiry** (12 hours): need clock control.
 - **The `Secure` cookie flag**, set only on HTTPS. The stack serves plain HTTP.
-- **Session revocation across a container restart** (whether the revocation list survives a restart) was not tested.
+- **Session revocation and invalidation metadata across a container restart.** The server's own unit
+  test covers persistence of invalidation metadata; the black-box suite does not restart the container for it.

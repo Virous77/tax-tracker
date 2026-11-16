@@ -66,20 +66,31 @@ test("transactions empty state", async ({ page }) => {
 	await snap(page, "empty-transactions");
 });
 
-// reportStatus contract: with no stored report Review must not claim the ledger is clean.
+// reportStatuses contract: with no stored report Review must not claim the ledger is clean,
+// and the All-years view names every missing year (computeTaxYears), not just the default.
 test("review empty state asks for a compute instead of claiming clean", async ({
 	page,
 }) => {
 	await page.goto("/review");
 	await expect(
-		page.getByRole("heading", { name: "Report not computed for 2026-27" }),
+		page.getByRole("heading", {
+			name: "Reports not computed for 2025-26, 2026-27",
+		}),
 	).toBeVisible();
 	await expect(
 		page.getByText("All ledger transactions are clean."),
 	).toHaveCount(0);
 	await expect(
+		page.getByRole("button", { name: "Compute 2025-26 & 2026-27 reports" }),
+	).toBeVisible();
+	await page.getByLabel("Tax year").selectOption("2026-27");
+	await expect(
+		page.getByRole("heading", { name: "Report not computed for 2026-27" }),
+	).toBeVisible();
+	await expect(
 		page.getByRole("button", { name: "Compute 2026-27 report" }),
 	).toBeVisible();
+	await page.getByLabel("Tax year").selectOption("");
 	await snap(page, "empty-review");
 });
 
@@ -96,6 +107,17 @@ test("report empty state offers to compute", async ({ page }) => {
 	await expect(
 		page.getByRole("heading", { name: "No report computed for 2025-26" }),
 	).toBeVisible();
+	await expect(page.getByText(/cleared because/)).toHaveCount(0);
+	for (const year of ["2025-26", "2026-27"]) {
+		const res = await page.request.get(`/api/reports/${year}`);
+		expect(res.status()).toBe(404);
+		expect(await res.json()).toMatchObject({
+			error: {
+				code: "report_not_computed",
+				details: { cause: "never_computed", invalidatedAt: null },
+			},
+		});
+	}
 	await snap(page, "empty-report");
 });
 

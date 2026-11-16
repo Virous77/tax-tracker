@@ -20,9 +20,14 @@ async function saveSettings(page: Page) {
 async function recompute(page: Page, year = "2026-27") {
 	await page.goto(`/report?taxYear=${year}`);
 	await settled(page);
-	// Saving settings invalidates stored reports (by design), so the empty state shows.
+	// Saving settings invalidates stored reports (by design); the empty state names the cause.
 	await expect(
-		page.getByRole("heading", { name: `No report computed for ${year}` }),
+		page.getByRole("heading", { name: `Report cleared for ${year}` }),
+	).toBeVisible();
+	await expect(
+		page.getByText(
+			/Your report was cleared because tax engine settings changed on \d{2} \w{3} \d{4}, \d{2}:\d{2} IST/,
+		),
 	).toBeVisible();
 	await page.getByRole("button", { name: `Compute ${year} report` }).click();
 	await expect(

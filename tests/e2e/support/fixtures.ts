@@ -183,7 +183,8 @@ export const test = base.extend<Fixtures>({
 				const text = msg.text().startsWith("Failed to load resource")
 					? `${msg.text()} ${msg.location().url}`
 					: msg.text();
-				// No stored report yet is answered with 404 by design (SPEC §8).
+				// No stored report yet is answered with 404 by design (SPEC §8). Chromium logs it
+				// as a failed resource; the response listener below checks it is report_not_computed.
 				if (/status of 404 .*\/api\/reports\/\d{4}-\d{2}$/.test(text)) return;
 				record("console.error", text);
 			});
@@ -193,6 +194,23 @@ export const test = base.extend<Fixtures>({
 				if (failure.includes("ERR_ABORTED")) return;
 				record("requestfailed", `${req.method()} ${req.url()} ${failure}`);
 			});
+			const pending: Promise<void>[] = [];
+			page.on("response", (res) => {
+				if (
+					res.status() === 404 &&
+					res.request().method() === "GET" &&
+					/\/api\/reports\/\d{4}-\d{2}$/.test(new URL(res.url()).pathname)
+				)
+					pending.push(
+						res
+							.json()
+							.then((body: { error?: { code?: string } }) => {
+								if (body?.error?.code !== "report_not_computed")
+									record("http404", `${res.url()} ${JSON.stringify(body)}`);
+							})
+							.catch(() => {}),
+					);
+			});
 			page.on("response", (res) => {
 				if (res.status() >= 500)
 					record(
@@ -201,6 +219,7 @@ export const test = base.extend<Fixtures>({
 					);
 			});
 			await use((pattern) => allowed.push(pattern));
+			await Promise.all(pending);
 			if (problems.length > 0) {
 				await testInfo.attach("browser-problems", {
 					body: JSON.stringify(problems, null, 2),

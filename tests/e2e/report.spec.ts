@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Locator, Page } from "@playwright/test";
+import { unzip } from "../api/zip";
 import { DISCLAIMER_TEXT, GENERATED } from "./support/env";
 import { expect, settled, snap, test } from "./support/fixtures";
 
@@ -245,9 +246,44 @@ test.describe("golden worked example built through the UI", () => {
 				const file = await download.path();
 				const bytes = readFileSync(file);
 				expect(bytes.length, `${kind} ${format} is empty`).toBeGreaterThan(0);
-				if (format === "CSV")
-					expect(bytes.toString("utf8")).toContain(DISCLAIMER_TEXT);
-				else expect(bytes.subarray(0, 2).toString()).toBe("PK");
+				if (format === "CSV") {
+					const text = bytes.toString("utf8");
+					expect(
+						text.split(/\r?\n/)[0],
+						`${kind} CSV starts with the disclaimer`,
+					).toBe(`"${DISCLAIMER_TEXT}"`);
+					for (const line of [
+						'"Setting","Value"',
+						'"Fee & GST treatment","Exclude fees"',
+						'"Lot pool scope","Global (all wallets)"',
+						'"Surcharge rate","0%"',
+						'"Specified person (TDS)","No"',
+						'"Transfer match window","72 hours"',
+						'"Section","Reference"',
+					])
+						expect(text, `${kind} CSV settings rows`).toContain(line);
+					expect(text, `${kind} CSV has no raw JSON settings cell`).not.toMatch(
+						/"(Settings|Sections)","\{/,
+					);
+					expect(text).not.toContain("feeTreatment");
+				} else {
+					expect(bytes.subarray(0, 2).toString()).toBe("PK");
+					const strings =
+						unzip(bytes).get("xl/sharedStrings.xml")?.toString("utf8") ?? "";
+					const sheets = [...unzip(bytes).entries()]
+						.filter(([name]) => name.startsWith("xl/worksheets/"))
+						.map(([, b]) => b.toString("utf8"))
+						.join("");
+					const all = strings + sheets;
+					for (const cell of [
+						"Not tax advice. Have a Chartered Accountant review before filing.",
+						"Setting",
+						"Fee &amp; GST treatment",
+						"Exclude fees",
+					])
+						expect(all, `${kind} XLSX contains ${cell}`).toContain(cell);
+					expect(all).not.toContain("feeTreatment");
+				}
 			}
 		}
 	});

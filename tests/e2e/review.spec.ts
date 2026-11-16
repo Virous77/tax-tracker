@@ -1,6 +1,6 @@
 import path from "node:path";
 import { FIXTURES, GENERATED } from "./support/env";
-import { expect, snap, test } from "./support/fixtures";
+import { expect, settled, snap, test } from "./support/fixtures";
 
 const group = (page: import("@playwright/test").Page, title: string) =>
 	page.locator("section").filter({
@@ -125,21 +125,77 @@ test.describe("after computing", () => {
 			await expect(g).toBeVisible();
 			await expect(g.getByText(code, { exact: true })).toBeVisible();
 			await expect(g).toContainText(explanation);
-			await expect(g.getByRole("link", { name: fix })).toBeVisible();
+			await expect(g.getByRole("link", { name: fix }).first()).toBeVisible();
 		}
 		await snap(page, "review-groups");
 	});
 
+	test("a sell without a buy shows both the negative holding and the unresolved slice", async ({
+		page,
+	}) => {
+		// One sell without history yields two distinct report checks (server README):
+		// a negative year-end holding and an unresolved FIFO slice. Both need a fix link.
+		await page.goto("/review?taxYear=2026-27");
+		const g = group(page, "Missing acquisition history");
+		const rows = g.locator("tbody tr");
+		await expect(rows).toHaveCount(2);
+		await expect(g.getByText("2 items")).toBeVisible();
+		const negative = rows.filter({ hasText: "Negative holding" });
+		await expect(negative).toContainText("Global");
+		await expect(negative).toContainText("ETH: computed -0.01");
+		await expect(negative).toContainText("Negative ETH holding: -0.01");
+		await expect(
+			negative.getByRole("link", { name: "View 1 transaction" }),
+		).toBeVisible();
+		const slice = rows.filter({ hasText: "Unresolved slice" });
+		await expect(slice).toContainText("Unresolved 0.01 ETH: missing_history.");
+		await expect(slice).toContainText("Reason: Missing acquisition history");
+		for (const row of [negative, slice])
+			await expect(
+				row.getByRole("link", { name: "Add missing buy" }),
+			).toHaveAttribute(
+				"href",
+				"/transactions?add=buy&asset=ETH&taxYear=2026-27",
+			);
+		// The swap itself is not repeated as a ledger item in this group.
+		await expect(rows.filter({ hasText: "Inspect" })).toHaveCount(0);
+		await snap(page, "review-negative-holding");
+	});
+
+	test("singular and plural item counts", async ({ page }) => {
+		await page.goto("/review?taxYear=2026-27");
+		await expect(
+			group(page, "TDS not deducted by platform").getByText("1 item", {
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(
+			group(page, "Missing acquisition history").getByText("2 items", {
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(page.getByText(/\b1 items\b|\b[02-9] item\b/)).toHaveCount(0);
+	});
+
 	test("year filter narrows the queue", async ({ page }) => {
 		await page.goto("/review");
+		const income = page.getByRole("row").filter({ hasText: "05 Oct 2025" });
+		await expect(income).toHaveCount(1);
 		await page.getByLabel("Tax year").selectOption("2026-27");
 		await expect(page).toHaveURL(/taxYear=2026-27/);
 		await expect(
-			page.getByRole("heading", { name: "Missing INR valuation" }),
-		).toHaveCount(0);
-		await expect(
 			page.getByRole("heading", { name: "Missing acquisition history" }),
 		).toBeVisible();
+		await settled(page);
+		// The 2025-26 income row leaves the ledger items. Its missing-INR warning is still
+		// carried by the 2026-27 report (full history), so it stays as a report-warning row
+		// linking back to the transaction (server README, "warning" report items).
+		await expect(income).toHaveCount(0);
+		const inr = group(page, "Missing INR valuation").locator("tbody tr");
+		await expect(inr).toHaveCount(1);
+		await expect(inr).toContainText("Tax year 2026-27");
+		await expect(inr).toContainText("Report warning");
+		await expect(inr.getByRole("button", { name: "Inspect" })).toHaveCount(0);
 	});
 
 	test("fix action for missing history opens a pre-filled missing buy and the item goes away", async ({
@@ -149,6 +205,7 @@ test.describe("after computing", () => {
 		await page.goto("/review?taxYear=2026-27");
 		await group(page, "Missing acquisition history")
 			.getByRole("link", { name: "Add missing buy" })
+			.first()
 			.click();
 		await expect(page).toHaveURL(/\/transactions\?.*add=buy/);
 		await expect(page).toHaveURL(/asset=ETH/);
@@ -206,19 +263,47 @@ test.describe("after computing", () => {
 test("All years: after Compute the banner no longer says that year is not computed", async ({
 	page,
 }) => {
-	// Review without ?taxYear needs every rule year computed for reportStatus "current",
-	// but the button only computes the default year, so the prompt never goes away.
+	// Review without ?taxYear needs every rule year computed; the button must compute
+	// every year in computeTaxYears, not the default year again and again (BUGS N1).
 	await page.goto("/review");
 	await expect(page.locator(".animate-pulse")).toHaveCount(0);
+	await expect(
+		page.getByText(/Reports not computed for 2025-26, 2026-27/),
+	).toBeVisible();
 	await page
-		.getByRole("button", { name: "Compute 2026-27 report" })
-		.first()
+		.getByRole("button", { name: "Compute 2025-26 & 2026-27 reports" })
 		.click();
 	await expect(
 		page.getByRole("heading", { name: "Missing acquisition history" }),
 	).toBeVisible();
 	await expect(
-		page.getByText(/Report not computed for 2026-27/),
-		"2026-27 was just computed; the banner should name the year still missing or go away",
+		page.getByText(/Reports? not computed for/),
+		"both years were just computed; the banner must go away",
+	).toHaveCount(0);
+	await page.reload();
+	await expect(
+		page.getByRole("heading", { name: "Missing acquisition history" }),
+	).toBeVisible();
+	await expect(page.getByText(/Reports? not computed for/)).toHaveCount(0);
+});
+
+test("All years with one year computed names only the missing year", async ({
+	page,
+	api,
+}) => {
+	await api.compute("2026-27");
+	await page.goto("/review");
+	await expect(page.locator(".animate-pulse")).toHaveCount(0);
+	const banner = page.getByRole("status").filter({ hasText: "not computed" });
+	await expect(banner).toContainText(
+		"Report not computed for 2025-26 — some checks",
+	);
+	await expect(banner).toContainText(
+		"Computed: 2026-27 · Not computed: 2025-26",
+	);
+	await banner.getByRole("button", { name: "Compute 2025-26 report" }).click();
+	await expect(banner).toHaveCount(0);
+	await expect(
+		page.getByRole("button", { name: /Compute .* report/ }),
 	).toHaveCount(0);
 });

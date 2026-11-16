@@ -22,8 +22,9 @@ cover every screen; the other files are per-scenario captures.
 ## Functional defects (ranked)
 
 ### 1. Critical — every browser write is rejected with 403 inside Docker (import, compute, settings, login…)
+
 - **Screen:** all screens. Seen on Import, Report, Settings and Login.
-- **Steps:** `APP_PORT=3102 docker compose up` → open `http://localhost:3102/import` → upload any file → *Upload & import*.
+- **Steps:** `APP_PORT=3102 docker compose up` → open `http://localhost:3102/import` → upload any file → _Upload & import_.
 - **Expected:** import summary. **Actual:** `403 forbidden "Cross-origin mutations are not allowed."`.
   In password mode a correct password also gets 403, so nobody can log in.
 - **Cause:** `apps/web/src/server/http.ts:126-127` compares `Origin` with `new URL(request.url).origin`.
@@ -35,20 +36,22 @@ cover every screen; the other files are per-scenario captures.
 - **Screenshot:** `test-results/import-without-the-test-on-*/test-failed-1.png` (kept only after a failing run).
 
 ### 2. High — the generic CSV wizard drops real trades as "duplicates" (data loss)
+
 - **Screen:** Import → generic recipe wizard.
 - **Steps:** import `tests/data/out/generic-ddmmyyyy.csv` (auto, IST) → map the columns → leave
-  *Trade / Order ID* as the wizard pre-filled it → *Confirm & import*.
+  _Trade / Order ID_ as the wizard pre-filled it → _Confirm & import_.
 - **Expected:** 4 inserted. **Actual:** 2 inserted, **2 "Duplicates skipped"** on an empty ledger. Each row's `sourceRef` is `Buy` or `Sell`.
 - **Cause:** `apps/web/src/components/import/RecipeWizard.tsx:212`. `guessColumn(h, ["id", …])`
-  matches substrings, and "S**id**e" contains "id", so the *Side* column becomes the dedupe key. This
+  matches substrings, and "S**id**e" contains "id", so the _Side_ column becomes the dedupe key. This
   breaks "never guess silently" and "never throw away rows". Match `id` only as a whole word, or
   leave the field empty.
 - **Test:** `recipe-wizard.spec.ts` › "the wizard's first guess does not use the Side column as the row ID".
 - **Screenshot:** `screenshots/wizard-row-preview.png` for context.
 
 ### 3. High — Settings shows `host.docker.internal` (and LAN / `.local` hosts) as "Local", but the server treats it as cloud and won't save it
+
 - **Screen:** Settings → AI Recipe Assistant.
-- **Steps:** set the base URL to `http://host.docker.internal:11502/v1`, a model and a key → *Save settings*.
+- **Steps:** set the base URL to `http://host.docker.internal:11502/v1`, a model and a key → _Save settings_.
 - **Expected:** the cloud warning and acknowledgement appear, then the save succeeds. **Actual:** the
   badge says "Local endpoint" and no acknowledgement checkbox appears. The save fails with
   `cloud_acknowledgement_required`, and the UI gives no way to acknowledge. Docker users who run
@@ -61,8 +64,9 @@ cover every screen; the other files are per-scenario captures.
 - **Screenshot:** `screenshots/settings-host-docker-internal.png`.
 
 ### 4. Medium — a balance mismatch never reaches the Review queue
+
 - **Screen:** Report → Year-End Balances, then Review.
-- **Steps:** golden example → enter `0.5` as actual ETH → *Save actual balances* → open Review for 2026-27.
+- **Steps:** golden example → enter `0.5` as actual ETH → _Save actual balances_ → open Review for 2026-27.
 - **Expected:** a "Computed vs actual balance mismatch" group. The UI already has text and a fix link for it in `lib/client/review-codes.ts`.
   **Actual:** the warning only shows under Report → Report Warnings (`balance_mismatch: ETH: computed 0, actual 0.5`).
 - **Cause:** the engine raises `balance_mismatch` without a `txId` (`packages/engine/src/balances.ts:57`),
@@ -71,6 +75,7 @@ cover every screen; the other files are per-scenario captures.
 - **Screenshot:** `screenshots/report-balances-mismatch.png`.
 
 ### 5. Medium — Review says "All ledger transactions are clean" before anything has been checked
+
 - **Screen:** Review (the Import result links here through "Check review flags").
 - **Steps:** import `sell-without-buy.csv` and `binance-transaction-statement.csv` → open Review without computing a report.
 - **Expected:** a prompt to compute first, or the known flags. **Actual:** "No review flags found — All
@@ -82,8 +87,9 @@ cover every screen; the other files are per-scenario captures.
 - **Screenshot:** `screenshots/empty-review.png` (same wording).
 
 ### 6. Medium — the Add-transaction validation error is a raw Zod JSON dump
+
 - **Screen:** Transactions → Add manual entry.
-- **Steps:** *Missing Buy*, asset `BTC`, quantity `not-a-number`, cost `1000` → *Add transaction*.
+- **Steps:** _Missing Buy_, asset `BTC`, quantity `not-a-number`, cost `1000` → _Add transaction_.
 - **Expected:** a readable sentence such as "Quantity must be a number". **Actual:** a red banner with
   `[ { "origin": "string", "code": "invalid_format", "pattern": "/^[+-]?(?:\\d+…` (see the screenshot).
 - **Cause:** `apps/web/src/lib/client/api.ts:303` parses the body with Zod in the browser, and
@@ -92,6 +98,7 @@ cover every screen; the other files are per-scenario captures.
 - **Screenshot:** `screenshots/transactions-validation-error.png`.
 
 ### 7. Medium (a11y) — keyboard users can't see focus on the file picker
+
 - **Screen:** Import.
 - **Steps:** Tab from "Import history" to the file input.
 - **Expected:** a visible focus ring on the drop zone. **Actual:** nothing visible. The input has `sr-only`
@@ -101,6 +108,7 @@ cover every screen; the other files are per-scenario captures.
 - **Screenshot:** `screenshots/import-dropzone-focus.png`.
 
 ### 8. Medium (a11y) — the mobile menu doesn't close on Escape and doesn't take focus
+
 - **Screen:** every screen at 375 px.
 - **Steps:** focus ☰ → Enter → Escape. Then reopen and press Tab.
 - **Expected:** Escape closes the menu; focus moves into it and returns to ☰ on close.
@@ -111,6 +119,7 @@ cover every screen; the other files are per-scenario captures.
 - **Screenshot:** `screenshots/mobile-nav-open-mobile.png`.
 
 ### 9. Medium (a11y) — dark-mode primary buttons have 2.94:1 contrast
+
 - **Screen:** all screens in dark mode: Compute/Recompute report, Save settings, Add manual entry, the ₹ logo.
 - **Expected:** at least 4.5:1 (WCAG AA). **Actual:** white text on `--accent: #5b9ec4` is 2.94:1
   (`app/globals.css:44` and `:68`). Use dark text on that colour or a darker accent.
@@ -118,27 +127,32 @@ cover every screen; the other files are per-scenario captures.
 - **Screenshot:** `screenshots/screen-overview-dark.png`.
 
 ### 10. Low (a11y) — light-mode muted text is 4.28:1
+
 - `--text-muted: #6e736c` on the subtle backgrounds (section-label keys on Report, review codes) is
   just under 4.5:1 (`app/globals.css:13`).
 - **Test:** `responsive-a11y.spec.ts` › "text meets WCAG AA contrast (light)".
 
 ### 11. Low (a11y) — all eight export links are named just "CSV" or "XLSX"
+
 - **Screen:** Report. Screen-reader users hear "CSV, XLSX, CSV, XLSX…" with no kind.
 - **Cause:** `components/report/ReportClient.tsx:280-295`. Add `aria-label="Download Schedule VDA as CSV"` and so on.
 - **Test:** `report.spec.ts` › "export links have distinguishable accessible names".
 
 ### 12. Low — after login the user always lands on Overview
+
 - **Screen:** Login (password mode).
 - **Steps:** open `/report?taxYear=2026-27` while logged out → log in.
 - **Expected:** back on the report. **Actual:** `/`. `proxy.ts:21` redirects to `/login` without `?next=`, although `LoginClient` already supports `next`.
 - **Test:** `password.spec.ts` › "after login the user lands on the page they asked for".
 
 ### 13. Low (a11y) — closing the Add-transaction drawer doesn't return focus
-- After Escape, focus goes to `<body>` instead of the *Add manual entry* button
+
+- After Escape, focus goes to `<body>` instead of the _Add manual entry_ button
   (`components/ui/Drawer.tsx`; no focus restore). A soft assertion in `responsive-a11y.spec.ts` ›
   "add-transaction drawer traps focus…". Focus trapping and Escape work in every dialog and drawer.
 
 ### 14. Low — the balance "Difference" sign differs between the UI and the API/exports
+
 - The UI shows `actual − computed` (`ReportClient.tsx:846`). The API's `balances[].difference` is
   `computed − actual` (`BTC computed 0, actual 5 → difference "-5"`). A CA comparing the screen with
   the export sees opposite signs. Found through the API; not asserted in a test.
@@ -167,6 +181,7 @@ cover every screen; the other files are per-scenario captures.
   explains why the numbers disappeared.
 
 ## Not tested
+
 - Real drag-and-drop onto the drop zone (Playwright can't send OS file drags); only the picker and keyboard paths were tested.
 - `mock-slow` (a 120 s upstream timeout), because of run time.
 - Firefox and WebKit; only Chromium was run.

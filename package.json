@@ -11,7 +11,9 @@
 		"test": "pnpm -r --if-present test",
 		"typecheck": "pnpm -r --if-present typecheck",
 		"lint": "biome check .",
-		"format": "biome format --write ."
+		"format": "biome format --write .",
+		"test:api": "vitest run --root tests/api",
+		"test:e2e": "playwright test -c tests/e2e/playwright.config.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.5",

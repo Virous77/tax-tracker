@@ -1,0 +1,19 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "250000.00",
+				"cost": "200000.00",
+				"taxableIncome": "50000.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "15000.00",
+				"surcharge": "2250.00",
+				"cess": "690.00",
+				"totalTax": "17940.00",
+				"totalTaxRounded": "17940",
+				"tdsCredit": "2500.00",
+				"netPayable": "15440.00"
+			}
+		}
+	]
+}

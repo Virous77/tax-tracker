@@ -1,0 +1,25 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "150.00",
+				"cost": "100.00",
+				"taxableIncome": "50.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "15.00",
+				"surcharge": "0.00",
+				"cess": "0.60",
+				"totalTax": "15.60",
+				"totalTaxRounded": "16",
+				"tdsCredit": "0.00",
+				"netPayable": "15.60"
+			},
+			"scheduleVdaRows": [
+				{
+					"dateOfAcquisition": "2026-03-31",
+					"dateOfTransfer": "2026-04-01"
+				}
+			]
+		}
+	]
+}

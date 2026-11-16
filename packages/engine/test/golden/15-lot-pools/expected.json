@@ -1,0 +1,46 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "300.00",
+				"cost": "100.00",
+				"taxableIncome": "200.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "60.00",
+				"surcharge": "0.00",
+				"cess": "2.40",
+				"totalTax": "62.40",
+				"totalTaxRounded": "62",
+				"tdsCredit": "0.00",
+				"netPayable": "62.40"
+			}
+		},
+		{
+			"totals": {
+				"consideration": "300.00",
+				"cost": "200.00",
+				"taxableIncome": "100.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "30.00",
+				"surcharge": "0.00",
+				"cess": "1.20",
+				"totalTax": "31.20",
+				"totalTaxRounded": "31",
+				"tdsCredit": "0.00",
+				"netPayable": "31.20"
+			},
+			"balances": [
+				{
+					"asset": "ETH",
+					"source": "binance",
+					"computed": "1"
+				},
+				{
+					"asset": "ETH",
+					"source": "coindcx",
+					"computed": "0"
+				}
+			]
+		}
+	]
+}

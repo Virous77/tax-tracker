@@ -1,0 +1,30 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "350.00",
+				"cost": "250.00",
+				"taxableIncome": "100.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "30.00",
+				"surcharge": "0.00",
+				"cess": "1.20",
+				"totalTax": "31.20",
+				"totalTaxRounded": "31",
+				"tdsCredit": "0.00",
+				"netPayable": "31.20"
+			},
+			"scheduleVdaRows": [
+				{
+					"asset": "BTC",
+					"income": "50.00"
+				},
+				{
+					"asset": "ETH",
+					"costOfAcquisition": "150.00",
+					"income": "50.00"
+				}
+			]
+		}
+	]
+}

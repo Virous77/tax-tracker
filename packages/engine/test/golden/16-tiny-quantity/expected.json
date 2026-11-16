@@ -1,0 +1,30 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "0.03",
+				"cost": "0.01",
+				"taxableIncome": "0.02",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "0.01",
+				"surcharge": "0.00",
+				"cess": "0.00",
+				"totalTax": "0.01",
+				"totalTaxRounded": "0",
+				"tdsCredit": "0.00",
+				"netPayable": "0.01"
+			},
+			"balances": [
+				{
+					"asset": "BTC",
+					"computed": "0.00000001"
+				}
+			],
+			"scheduleVdaRows": [
+				{
+					"quantity": "0.00000001"
+				}
+			]
+		}
+	]
+}

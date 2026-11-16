@@ -1,0 +1,47 @@
+{
+	"taxYear": "2025-26",
+	"act": "Income-tax Act, 1961",
+	"period": {
+		"start": "2025-04-01",
+		"end": "2026-03-31",
+		"timezone": "Asia/Kolkata"
+	},
+	"rate": "0.30",
+	"cess": "0.04",
+	"surchargeSlabs": [
+		{
+			"aboveInr": "5000000",
+			"rate": "0.10"
+		},
+		{
+			"aboveInr": "10000000",
+			"rate": "0.15"
+		},
+		{
+			"aboveInr": "20000000",
+			"rate": "0.25"
+		},
+		{
+			"aboveInr": "50000000",
+			"rate": "0.37"
+		}
+	],
+	"lossSetOff": false,
+	"lossCarryForward": false,
+	"deductions": ["cost_of_acquisition"],
+	"tds": {
+		"rate": "0.01",
+		"thresholdInr": "10000",
+		"specifiedPersonThresholdInr": "50000"
+	},
+	"giftThresholdInr": "50000",
+	"sections": {
+		"vdaTax": "Section 115BBH",
+		"vdaTds": "Section 194S",
+		"vdaDefinition": "Section 2(47A)",
+		"platformReporting": "Section 285BAA",
+		"currencyConversionRule": "Rule 115"
+	},
+	"sectionsVerified": false,
+	"sources": ["https://incometax.gov.in/", "https://incometaxindia.gov.in/"]
+}

@@ -1,0 +1,137 @@
+{
+	"cases": [
+		{
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "coindcx",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-04-01T06:00:00Z",
+					"type": "buy",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "1",
+					"inrValue": "1000"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "coindcx",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-04-02T06:00:00Z",
+					"type": "withdrawal",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "1"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "wallet",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2026-04-03T06:00:00Z",
+					"type": "deposit",
+					"raw": {
+						"fixtureRow": 3
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "0.99"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000004",
+					"source": "wallet",
+					"sourceRef": "4",
+					"importId": null,
+					"timestamp": "2026-04-04T06:00:00Z",
+					"type": "sell",
+					"raw": {
+						"fixtureRow": 4
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "0.99",
+					"inrValue": "1200"
+				}
+			],
+			"taxYear": "2026-27",
+			"settings": {
+				"lotPool": "per_source"
+			}
+		},
+		{
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "coindcx",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-04-01T06:00:00Z",
+					"type": "buy",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "1",
+					"inrValue": "1000"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "coindcx",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-04-02T06:00:00Z",
+					"type": "withdrawal",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "1"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "wallet",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2026-04-03T06:00:00Z",
+					"type": "deposit",
+					"raw": {
+						"fixtureRow": 3
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "0.99"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000004",
+					"source": "wallet",
+					"sourceRef": "4",
+					"importId": null,
+					"timestamp": "2026-04-04T06:00:00Z",
+					"type": "sell",
+					"raw": {
+						"fixtureRow": 4
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "0.99",
+					"inrValue": "1200"
+				}
+			],
+			"taxYear": "2026-27",
+			"settings": {
+				"lotPool": "per_source",
+				"feeTreatment": "include"
+			}
+		}
+	]
+}

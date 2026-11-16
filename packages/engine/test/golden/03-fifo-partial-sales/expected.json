@@ -1,0 +1,47 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "1250.00",
+				"cost": "650.00",
+				"taxableIncome": "600.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "180.00",
+				"surcharge": "0.00",
+				"cess": "7.20",
+				"totalTax": "187.20",
+				"totalTaxRounded": "187",
+				"tdsCredit": "0.00",
+				"netPayable": "187.20"
+			},
+			"scheduleVdaRows": [
+				{
+					"quantity": "1",
+					"costOfAcquisition": "100.00",
+					"income": "200.00"
+				},
+				{
+					"quantity": "0.5",
+					"costOfAcquisition": "100.00",
+					"income": "50.00"
+				},
+				{
+					"quantity": "1.5",
+					"costOfAcquisition": "300.00",
+					"income": "300.00"
+				},
+				{
+					"quantity": "0.5",
+					"costOfAcquisition": "150.00",
+					"income": "50.00"
+				}
+			],
+			"balances": [
+				{
+					"asset": "ETH",
+					"computed": "0.5"
+				}
+			]
+		}
+	]
+}

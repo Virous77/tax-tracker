@@ -1,0 +1,84 @@
+{
+	"cases": [
+		{
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "coindcx",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-04-01T06:00:00Z",
+					"type": "buy",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "1",
+					"inrValue": "100"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "coindcx",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-04-02T06:00:00Z",
+					"type": "buy",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "2",
+					"inrValue": "400"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "coindcx",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2026-04-03T06:00:00Z",
+					"type": "buy",
+					"raw": {
+						"fixtureRow": 3
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "1",
+					"inrValue": "300"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000004",
+					"source": "coindcx",
+					"sourceRef": "4",
+					"importId": null,
+					"timestamp": "2026-04-04T06:00:00Z",
+					"type": "sell",
+					"raw": {
+						"fixtureRow": 4
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "1.5",
+					"inrValue": "450"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000005",
+					"source": "coindcx",
+					"sourceRef": "5",
+					"importId": null,
+					"timestamp": "2026-04-05T06:00:00Z",
+					"type": "sell",
+					"raw": {
+						"fixtureRow": 5
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "2",
+					"inrValue": "800"
+				}
+			],
+			"taxYear": "2026-27"
+		}
+	]
+}

@@ -1,0 +1,127 @@
+{
+	"cases": [
+		{
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "coindcx",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-04-01T06:00:00Z",
+					"type": "buy",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "2",
+					"assetOut": "INR",
+					"amountOut": "16000",
+					"priceQuote": {
+						"asset": "USDT",
+						"price": "100"
+					}
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "coindcx",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-04-02T06:00:00Z",
+					"type": "sell",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "2",
+					"priceQuote": {
+						"asset": "USDT",
+						"price": "150"
+					}
+				}
+			],
+			"taxYear": "2026-27",
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2026-03-31",
+					"rate": "80",
+					"source": "test"
+				}
+			]
+		},
+		{
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "coindcx",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-04-01T06:00:00Z",
+					"type": "buy",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "USDT",
+					"amountIn": "200",
+					"assetOut": "INR",
+					"amountOut": "16000"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "coindcx",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2026-04-02T06:00:00Z",
+					"type": "swap",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "2",
+					"assetOut": "USDT",
+					"amountOut": "200",
+					"priceQuote": {
+						"asset": "USDT",
+						"price": "1"
+					}
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "coindcx",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-04-03T06:00:00Z",
+					"type": "sell",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "2",
+					"priceQuote": {
+						"asset": "USDT",
+						"price": "150"
+					},
+					"assetIn": "USDT",
+					"amountIn": "300"
+				}
+			],
+			"taxYear": "2026-27",
+			"settings": {
+				"usdtInrRate": "sbi_usd_tt"
+			},
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2026-03-31",
+					"rate": "80",
+					"source": "test"
+				}
+			]
+		}
+	]
+}

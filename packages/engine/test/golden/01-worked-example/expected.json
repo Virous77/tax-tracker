@@ -1,0 +1,28 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "250000.00",
+				"cost": "200000.00",
+				"taxableIncome": "50000.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "15000.00",
+				"surcharge": "0.00",
+				"cess": "600.00",
+				"totalTax": "15600.00",
+				"totalTaxRounded": "15600",
+				"tdsCredit": "2500.00",
+				"netPayable": "13100.00"
+			},
+			"scheduleVdaRows": [
+				{
+					"quantity": "1",
+					"costOfAcquisition": "200000.00",
+					"considerationReceived": "250000.00",
+					"income": "50000.00",
+					"loss": "0.00"
+				}
+			]
+		}
+	]
+}

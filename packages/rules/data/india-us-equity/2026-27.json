@@ -1,0 +1,18 @@
+{
+	"taxYear": "2026-27",
+	"act": "Income-tax Act, 2025",
+	"period": {
+		"start": "2026-04-01",
+		"end": "2027-03-31",
+		"timezone": "Asia/Kolkata"
+	},
+	"longTermHoldingMonths": 24,
+	"longTermRate": "0.125",
+	"indexation": false,
+	"shortTermRate": "slab",
+	"dividendRate": "slab",
+	"usWithholdingDefault": "0.25",
+	"fxRule": "sbi_tt_buying_last_day_of_previous_month",
+	"sectionsVerified": false,
+	"sources": ["https://incometax.gov.in/"]
+}

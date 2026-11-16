@@ -1,0 +1,24 @@
+{
+	"cases": [
+		{
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "coindcx",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-04-01T06:00:00Z",
+					"type": "sell",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "1",
+					"inrValue": "100"
+				}
+			],
+			"taxYear": "2026-27"
+		}
+	]
+}

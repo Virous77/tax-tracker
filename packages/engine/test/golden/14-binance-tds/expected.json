@@ -1,0 +1,38 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "30000.00",
+				"cost": "20000.00",
+				"taxableIncome": "10000.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "3000.00",
+				"surcharge": "0.00",
+				"cess": "120.00",
+				"totalTax": "3120.00",
+				"totalTaxRounded": "3120",
+				"tdsCredit": "0.00",
+				"netPayable": "3120.00"
+			},
+			"tds": {
+				"bySource": [
+					{
+						"source": "binance",
+						"deductedByPlatform": false,
+						"possiblyDueInr": "300.00"
+					}
+				]
+			},
+			"warningCodes": ["tds_not_deducted"]
+		},
+		{
+			"tds": {
+				"bySource": [
+					{
+						"possiblyDueInr": "0.00"
+					}
+				]
+			}
+		}
+	]
+}

@@ -1,0 +1,42 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "150.00",
+				"cost": "0.00",
+				"taxableIncome": "150.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "45.00",
+				"surcharge": "0.00",
+				"cess": "1.80",
+				"totalTax": "46.80",
+				"totalTaxRounded": "47",
+				"tdsCredit": "0.00",
+				"netPayable": "46.80"
+			},
+			"income": {
+				"rows": [
+					{
+						"fmvInr": "100.00",
+						"incomeKind": "staking"
+					}
+				]
+			}
+		},
+		{
+			"totals": {
+				"consideration": "150.00",
+				"cost": "100.00",
+				"taxableIncome": "50.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "15.00",
+				"surcharge": "0.00",
+				"cess": "0.60",
+				"totalTax": "15.60",
+				"totalTaxRounded": "16",
+				"tdsCredit": "0.00",
+				"netPayable": "15.60"
+			}
+		}
+	]
+}

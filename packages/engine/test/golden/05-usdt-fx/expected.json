@@ -1,0 +1,84 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "24000.00",
+				"cost": "16000.00",
+				"taxableIncome": "8000.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "2400.00",
+				"surcharge": "0.00",
+				"cess": "96.00",
+				"totalTax": "2496.00",
+				"totalTaxRounded": "2496",
+				"tdsCredit": "0.00",
+				"netPayable": "2496.00"
+			},
+			"valuations": [
+				{
+					"valueInr": "16000.00",
+					"inrRateSource": "trade_inr"
+				},
+				{
+					"valueInr": "24000.00",
+					"inrRateSource": "trade_usdt_x_usd_inr",
+					"fx": {
+						"rate": "80",
+						"rateDate": "2026-03-31"
+					}
+				}
+			]
+		},
+		{
+			"totals": {
+				"consideration": "40000.00",
+				"cost": "32000.00",
+				"taxableIncome": "8000.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "2400.00",
+				"surcharge": "0.00",
+				"cess": "96.00",
+				"totalTax": "2496.00",
+				"totalTaxRounded": "2496",
+				"tdsCredit": "0.00",
+				"netPayable": "2496.00"
+			},
+			"valuations": [
+				{
+					"valueInr": "16000.00",
+					"inrRateSource": "trade_inr"
+				},
+				{
+					"valueInr": "16000.00",
+					"inrRateSource": "trade_usdt_x_usd_inr",
+					"fx": {
+						"rate": "80",
+						"rateDate": "2026-03-31"
+					}
+				},
+				{
+					"valueInr": "24000.00",
+					"inrRateSource": "trade_usdt_x_usd_inr",
+					"fx": {
+						"rate": "80",
+						"rateDate": "2026-03-31"
+					}
+				}
+			],
+			"scheduleVdaRows": [
+				{
+					"asset": "USDT",
+					"costOfAcquisition": "16000.00",
+					"considerationReceived": "16000.00",
+					"income": "0.00"
+				},
+				{
+					"asset": "ETH",
+					"costOfAcquisition": "16000.00",
+					"considerationReceived": "24000.00",
+					"income": "8000.00"
+				}
+			]
+		}
+	]
+}

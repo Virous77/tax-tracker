@@ -176,6 +176,25 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.6(@types/node@26.6.6))
 
+  apps/cli:
+    dependencies:
+      '@tax/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@tax/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@tax/rates':
+        specifier: workspace:*
+        version: link:../../packages/rates
+      '@tax/rules':
+        specifier: workspace:*
+        version: link:../../packages/rules
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+
   apps/web:
     dependencies:
       next:
@@ -197,6 +216,55 @@ importers:
       '@types/react-dom':
         specifier: 19.3.0
         version: 19.3.0(@types/react@19.3.0)
+
+  packages/core:
+    dependencies:
+      decimal.js:
+        specifier: 10.6.0
+        version: 10.6.0
+      zod:
+        specifier: 4.1.12
+        version: 4.1.12
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+
+  packages/engine:
+    dependencies:
+      '@tax/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tax/rules':
+        specifier: workspace:*
+        version: link:../rules
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+
+  packages/rates:
+    dependencies:
+      '@tax/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+
+  packages/rules:
+    dependencies:
+      '@tax/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: 4.1.12
+        version: 4.1.12
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
 
 packages:
 
@@ -780,6 +848,9 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
+  decimal.js@10.6.0:
+    resolution: {integrity: sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==}
+
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
@@ -1092,6 +1163,9 @@ packages:
     resolution: {integrity: sha512-Tb2FUhB4vUsGQlfSquQLYkApkuPAFQXGFzxWKHHumVz2dK+X1RUm/HnID4+TfIGYJ1kTcwOaCk/buYCEJr6YjQ==}
     engines: {node: '>=20.11'}
     hasBin: true
+
+  zod@4.1.12:
+    resolution: {integrity: sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ==}
 
 snapshots:
 
@@ -1442,6 +1516,8 @@ snapshots:
 
   csstype@3.2.3: {}
 
+  decimal.js@10.6.0: {}
+
   detect-libc@2.1.2: {}
 
   es-module-lexer@2.3.2: {}
@@ -1702,3 +1778,5 @@ snapshots:
       - msw
 
   why-is-node-running@3.2.1: {}
+
+  zod@4.1.12: {}

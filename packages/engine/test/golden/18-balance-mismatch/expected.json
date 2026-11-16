@@ -1,0 +1,28 @@
+{
+	"cases": [
+		{
+			"totals": {
+				"consideration": "100.00",
+				"cost": "50.00",
+				"taxableIncome": "50.00",
+				"lossesNotSetOff": "0.00",
+				"baseTax": "15.00",
+				"surcharge": "0.00",
+				"cess": "0.60",
+				"totalTax": "15.60",
+				"totalTaxRounded": "16",
+				"tdsCredit": "0.00",
+				"netPayable": "15.60"
+			},
+			"balances": [
+				{
+					"asset": "ETH",
+					"computed": "1.5",
+					"actual": "1.4",
+					"difference": "0.1"
+				}
+			],
+			"warningCodes": ["balance_mismatch"]
+		}
+	]
+}

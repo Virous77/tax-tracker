@@ -1,0 +1,79 @@
+{
+	"cases": [
+		{
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "coindcx",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-04-01T06:00:00Z",
+					"type": "income",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "1",
+					"inrValue": "100",
+					"incomeKind": "staking"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "coindcx",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-04-02T06:00:00Z",
+					"type": "sell",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "1",
+					"inrValue": "150"
+				}
+			],
+			"taxYear": "2026-27"
+		},
+		{
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "coindcx",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-04-01T06:00:00Z",
+					"type": "income",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "ETH",
+					"amountIn": "1",
+					"inrValue": "100",
+					"incomeKind": "staking"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "coindcx",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-04-02T06:00:00Z",
+					"type": "sell",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "ETH",
+					"amountOut": "1",
+					"inrValue": "150"
+				}
+			],
+			"taxYear": "2026-27",
+			"settings": {
+				"incomeCostBasis": "fmv_at_receipt"
+			}
+		}
+	]
+}

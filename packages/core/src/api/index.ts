@@ -270,6 +270,7 @@ export const ReviewQuerySchema = z.object({
 });
 export const ReviewRequestSchema = ReviewQuerySchema;
 export const ReviewResponseSchema = z.object({
+	reportStatus: z.enum(["current", "stale", "missing"]),
 	groups: z.array(
 		z.object({
 			code: ReviewCodeSchema,

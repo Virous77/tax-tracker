@@ -1,5 +1,6 @@
 export * from "./api/index.js";
 export * from "./decimal.js";
+export * from "./endpoint.js";
 export * from "./ledger.js";
 export * from "./recipe.js";
 export * from "./report.js";

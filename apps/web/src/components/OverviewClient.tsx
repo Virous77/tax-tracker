@@ -74,7 +74,9 @@ export function OverviewClient() {
 		try {
 			const [rep, review, txPage] = await Promise.all([
 				api.getReportOrNull(year),
-				api.getReview(year).catch(() => ({ groups: [] })),
+				api
+					.getReview(year)
+					.catch(() => ({ reportStatus: "missing" as const, groups: [] })),
 				api.listTransactions({ page: 1, pageSize: 1 }).catch(() => null),
 			]);
 			setReport(rep);
@@ -110,7 +112,9 @@ export function OverviewClient() {
 			setStatusMessage(
 				`Report computed for tax year ${taxYear} (${computed.generatedFrom.txCount} transactions evaluated).`,
 			);
-			const review = await api.getReview(taxYear).catch(() => ({ groups: [] }));
+			const review = await api
+				.getReview(taxYear)
+				.catch(() => ({ reportStatus: "missing" as const, groups: [] }));
 			setReviewCount(review.groups.reduce((acc, g) => acc + g.count, 0));
 		} catch (err) {
 			setError(getErrorMessage(err));

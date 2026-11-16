@@ -1,5 +1,6 @@
 "use client";
 
+import { isLocalAiEndpoint } from "@tax/core";
 import {
 	AlertTriangle,
 	CheckCircle2,
@@ -18,7 +19,6 @@ import {
 	getErrorMessage,
 	type TaxYearInfo,
 } from "@/lib/client/api";
-import { isLocalEndpoint } from "@/lib/client/format";
 
 export function SettingsClient() {
 	const router = useRouter();
@@ -70,8 +70,10 @@ export function SettingsClient() {
 	async function handleSave(e: React.FormEvent) {
 		e.preventDefault();
 		if (!settings) return;
-		const local = isLocalEndpoint(settings.ai.baseUrl);
+		const trimmedBaseUrl = settings.ai.baseUrl.trim();
+		const local = isLocalAiEndpoint(trimmedBaseUrl);
 		if (!local && !settings.ai.cloudAcknowledged) {
+			setSavedMsg(null);
 			setError(
 				"Please acknowledge the cloud privacy warning before saving a non-local AI endpoint.",
 			);
@@ -94,7 +96,7 @@ export function SettingsClient() {
 				transferMatchWindowHours: Number(settings.transferMatchWindowHours),
 				transferAmountTolerance: settings.transferAmountTolerance,
 				ai: {
-					baseUrl: settings.ai.baseUrl.trim(),
+					baseUrl: trimmedBaseUrl,
 					model: settings.ai.model.trim(),
 					cloudAcknowledged: settings.ai.cloudAcknowledged,
 					...(apiKeyDraft.trim() !== "" ? { apiKey: apiKeyDraft.trim() } : {}),
@@ -136,7 +138,7 @@ export function SettingsClient() {
 		);
 	}
 
-	const isLocal = isLocalEndpoint(settings.ai.baseUrl);
+	const isLocal = isLocalAiEndpoint(settings.ai.baseUrl.trim());
 
 	return (
 		<div className="space-y-6">

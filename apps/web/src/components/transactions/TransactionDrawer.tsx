@@ -14,9 +14,11 @@ import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { api, getErrorMessage } from "@/lib/client/api";
+import { api, getErrorMessage, ValidationError } from "@/lib/client/api";
 import {
+	formatIncomeKind,
 	formatInrNullable,
+	formatInrRateSource,
 	formatIstDateTime,
 	formatQty,
 	formatSourceLabel,
@@ -43,6 +45,7 @@ export function TransactionDrawer({
 	const [deleting, setDeleting] = useState(false);
 	const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [inrError, setInrError] = useState<string | null>(null);
 
 	const typeId = useId();
 	const incomeKindId = useId();
@@ -57,6 +60,7 @@ export function TransactionDrawer({
 		setUserNote(tx.userNote ?? "");
 		setResolveFlags(new Set());
 		setError(null);
+		setInrError(null);
 	}, [tx]);
 
 	async function handleSave(e: React.FormEvent) {
@@ -64,6 +68,7 @@ export function TransactionDrawer({
 		e.preventDefault();
 		setSaving(true);
 		setError(null);
+		setInrError(null);
 		try {
 			const patch: {
 				type?: TxType;
@@ -89,7 +94,12 @@ export function TransactionDrawer({
 			const updated = await api.patchTransaction(tx.id, patch);
 			onUpdated(updated);
 		} catch (err) {
-			setError(getErrorMessage(err));
+			if (err instanceof ValidationError) {
+				setInrError(err.fieldErrors.inrValue ?? null);
+				setError(err.message);
+			} else {
+				setError(getErrorMessage(err));
+			}
 		} finally {
 			setSaving(false);
 		}
@@ -179,7 +189,9 @@ export function TransactionDrawer({
 							{tx.inrRateSource ? (
 								<div>
 									<dt className="text-[var(--text-muted)]">INR Rate Source</dt>
-									<dd className="font-mono-code mt-0.5">{tx.inrRateSource}</dd>
+									<dd className="mt-0.5 font-medium">
+										{formatInrRateSource(tx.inrRateSource)}
+									</dd>
 								</div>
 							) : null}
 						</dl>
@@ -230,7 +242,7 @@ export function TransactionDrawer({
 											<option value="">Select kind…</option>
 											{IncomeKindSchema.options.map((k) => (
 												<option key={k} value={k}>
-													{k}
+													{formatIncomeKind(k)}
 												</option>
 											))}
 										</select>
@@ -249,10 +261,23 @@ export function TransactionDrawer({
 										type="text"
 										inputMode="decimal"
 										value={inrValue}
-										onChange={(e) => setInrValue(e.target.value)}
+										aria-invalid={Boolean(inrError)}
+										aria-describedby={inrError ? `${inrId}-error` : undefined}
+										onChange={(e) => {
+											setInrValue(e.target.value);
+											setInrError(null);
+										}}
 										placeholder="e.g. 250000.00"
-										className="num mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+										className={`num mt-1 w-full rounded border ${inrError ? "border-[var(--loss)]" : "border-[var(--border)]"} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
 									/>
+									{inrError ? (
+										<p
+											id={`${inrId}-error`}
+											className="mt-1 text-xs text-[var(--loss)]"
+										>
+											{inrError}
+										</p>
+									) : null}
 								</div>
 							</div>
 

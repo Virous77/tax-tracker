@@ -40,7 +40,7 @@ import {
 	TaxYearsResponseSchema,
 	type TransactionsQuery,
 } from "@tax/core/api";
-import type { z } from "zod";
+import { z } from "zod";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -61,7 +61,149 @@ export class ApiError extends Error {
 	}
 }
 
+export class ValidationError extends Error {
+	readonly fieldErrors: Record<string, string>;
+
+	constructor(message: string, fieldErrors: Record<string, string>) {
+		super(message);
+		this.name = "ValidationError";
+		this.fieldErrors = fieldErrors;
+	}
+}
+
+const FIELD_LABELS: Record<string, string> = {
+	timestamp: "Date & time",
+	assetIn: "Asset received",
+	amountIn: "Quantity received",
+	assetOut: "Asset sold / paid",
+	amountOut: "Quantity sold / paid",
+	inrValue: "INR value",
+	tdsInr: "TDS deducted",
+	incomeKind: "Income kind",
+	type: "Transaction type",
+	"ai.baseUrl": "OpenAI-compatible base URL",
+	"ai.model": "Model name",
+	transferMatchWindowHours: "Transfer match window",
+	transferAmountTolerance: "Transfer amount tolerance",
+	defaultTaxYear: "Default tax year",
+	recipeName: "Recipe name",
+	"recipe.name": "Recipe name",
+	"recipe.dateFormat": "Date format",
+};
+
+const DECIMAL_FIELDS = new Set([
+	"amountIn",
+	"amountOut",
+	"inrValue",
+	"tdsInr",
+	"transferAmountTolerance",
+]);
+
+function humanizeIssue(issue: z.core.$ZodIssue): {
+	field: string;
+	message: string;
+} {
+	const field = issue.path.map(String).join(".") || "_form";
+	const label = FIELD_LABELS[field] ?? field;
+
+	if (DECIMAL_FIELDS.has(field)) {
+		if (issue.message === "Must be positive") {
+			return { field, message: `${label} must be greater than zero.` };
+		}
+		if (issue.message === "Must be nonnegative") {
+			return { field, message: `${label} must be zero or greater.` };
+		}
+		if (
+			issue.code === "invalid_format" ||
+			issue.code === "invalid_type" ||
+			issue.message === "Must be finite"
+		) {
+			return { field, message: `${label} must be a valid number.` };
+		}
+	}
+
+	if (field === "assetIn" || field === "assetOut") {
+		if (issue.code === "too_small" || issue.code === "invalid_type") {
+			return { field, message: `${label} is required.` };
+		}
+		if (issue.code === "invalid_format") {
+			return {
+				field,
+				message: `${label} must start with a letter or digit (A–Z, 0–9).`,
+			};
+		}
+	}
+
+	if (field === "timestamp") {
+		return { field, message: "Date & time must be a valid IST date and time." };
+	}
+
+	if (field === "ai.baseUrl") {
+		return {
+			field,
+			message:
+				"OpenAI-compatible base URL must be a valid URL (for example http://ollama:11434/v1).",
+		};
+	}
+
+	if (issue.code === "custom") {
+		if (issue.message.endsWith("requires assetIn")) {
+			return { field: "assetIn", message: "Asset received is required." };
+		}
+		if (issue.message.endsWith("requires amountIn")) {
+			return { field: "amountIn", message: "Quantity received is required." };
+		}
+		if (issue.message.startsWith("buy requires assetOut")) {
+			return {
+				field: "assetOut",
+				message: "Enter Cost in INR or a quote asset paid.",
+			};
+		}
+		if (issue.message.startsWith("buy requires amountOut")) {
+			return {
+				field: "amountOut",
+				message: "Enter Cost in INR or a quote quantity paid.",
+			};
+		}
+		if (issue.message.endsWith("requires assetOut")) {
+			return { field: "assetOut", message: "Asset sold is required." };
+		}
+		if (issue.message.endsWith("requires amountOut")) {
+			return { field: "amountOut", message: "Quantity sold is required." };
+		}
+	}
+
+	if (issue.code === "invalid_type") {
+		return { field, message: `${label} is required.` };
+	}
+
+	const clean = issue.message.replace(/\.$/, "");
+	return { field, message: `${label}: ${clean}.` };
+}
+
+export function formatZodError(err: z.ZodError): ValidationError {
+	const fieldErrors: Record<string, string> = {};
+	const summaryParts: string[] = [];
+
+	for (const issue of err.issues) {
+		const { field, message } = humanizeIssue(issue);
+		if (!fieldErrors[field]) fieldErrors[field] = message;
+		if (!summaryParts.includes(message)) summaryParts.push(message);
+	}
+
+	const summary =
+		summaryParts.length === 0
+			? "Please check the highlighted fields."
+			: summaryParts.length === 1
+				? (summaryParts[0] ?? "Please check the highlighted fields.")
+				: `Please check ${summaryParts.length} fields below.`;
+
+	return new ValidationError(summary, fieldErrors);
+}
+
 export function getErrorMessage(err: unknown): string {
+	if (err instanceof ValidationError) return err.message;
+	if (err instanceof z.ZodError) return formatZodError(err).message;
 	if (err instanceof ApiError) return err.message;
 	if (err instanceof Error) return err.message;
 	return "Something went wrong";
@@ -167,6 +309,15 @@ export type SuggestRecipeData = z.infer<typeof SuggestRecipeResponseSchema>;
 export type PreviewRecipeData = z.infer<typeof PreviewRecipeResponseSchema>;
 export type TransactionsPage = z.infer<typeof ListTransactionsResponseSchema>;
 
+function parseRequest<T extends z.ZodType>(
+	schema: T,
+	input: z.input<T>,
+): z.output<T> {
+	const parsed = schema.safeParse(input);
+	if (!parsed.success) throw formatZodError(parsed.error);
+	return parsed.data;
+}
+
 export const api = {
 	health() {
 		return requestJson("/api/health", { schema: HealthResponseSchema });
@@ -177,7 +328,7 @@ export const api = {
 	},
 
 	putSettings(patch: SettingsUpdate): Promise<AppSettings> {
-		const body = PutSettingsRequestSchema.parse(patch);
+		const body = parseRequest(PutSettingsRequestSchema, patch);
 		return requestJson("/api/settings", {
 			method: "PUT",
 			body: JSON.stringify(body),
@@ -219,7 +370,7 @@ export const api = {
 		id: string,
 		input: { recipe: Recipe; saveRecipe: boolean; recipeName?: string },
 	): Promise<ImportSummary> {
-		const body = ConfirmImportRequestSchema.parse(input);
+		const body = parseRequest(ConfirmImportRequestSchema, input);
 		return requestJson(`/api/imports/${encodeURIComponent(id)}/confirm`, {
 			method: "POST",
 			body: JSON.stringify(body),
@@ -300,7 +451,7 @@ export const api = {
 	createTransaction(
 		input: z.input<typeof CreateTransactionRequestSchema>,
 	): Promise<LedgerTx> {
-		const body = CreateTransactionRequestSchema.parse(input);
+		const body = parseRequest(CreateTransactionRequestSchema, input);
 		return requestJson("/api/transactions", {
 			method: "POST",
 			body: JSON.stringify(body),
@@ -318,7 +469,7 @@ export const api = {
 			resolveFlags?: ReviewCode[];
 		},
 	): Promise<LedgerTx> {
-		const body = PatchTransactionRequestSchema.parse(patch);
+		const body = parseRequest(PatchTransactionRequestSchema, patch);
 		return requestJson(`/api/transactions/${encodeURIComponent(id)}`, {
 			method: "PATCH",
 			body: JSON.stringify(body),

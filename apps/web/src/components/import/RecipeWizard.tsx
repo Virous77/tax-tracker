@@ -1,6 +1,10 @@
 "use client";
 
-import type { ImportSheetSchema, Recipe } from "@tax/core";
+import {
+	type ImportSheetSchema,
+	isLocalAiEndpoint,
+	type Recipe,
+} from "@tax/core";
 import {
 	AlertTriangle,
 	CheckCircle2,
@@ -142,21 +146,46 @@ function computeFingerprint(headers: string[], sheet = "CSV"): string {
 	);
 }
 
+function tokenizeHeader(value: string): string[] {
+	return value
+		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+		.toLowerCase()
+		.split(/[^a-z0-9]+/)
+		.filter(Boolean);
+}
+
+function hasTokenPhrase(tokens: string[], phrase: string[]): boolean {
+	if (phrase.length === 0 || phrase.length > tokens.length) return false;
+	for (let i = 0; i <= tokens.length - phrase.length; i++) {
+		if (phrase.every((word, j) => tokens[i + j] === word)) return true;
+	}
+	return false;
+}
+
 function guessColumn(
 	headers: string[],
 	candidates: string[],
-	excludeSubstrings: string[] = [],
+	excludeWords: string[] = [],
 ): string {
-	const lower = headers
-		.map((h) => ({ raw: h, norm: h.toLowerCase().trim() }))
-		.filter((h) => !excludeSubstrings.some((ex) => h.norm.includes(ex)));
-	for (const c of candidates) {
-		const exact = lower.find((h) => h.norm === c);
+	const excludeSet = new Set(excludeWords.flatMap(tokenizeHeader));
+	const tokenized = headers
+		.map((raw) => ({ raw, tokens: tokenizeHeader(raw) }))
+		.filter((h) => !h.tokens.some((t) => excludeSet.has(t)));
+	const candidatePhrases = candidates
+		.map(tokenizeHeader)
+		.filter((p) => p.length > 0);
+
+	for (const phrase of candidatePhrases) {
+		const exact = tokenized.find(
+			(h) =>
+				h.tokens.length === phrase.length &&
+				phrase.every((word, i) => h.tokens[i] === word),
+		);
 		if (exact) return exact.raw;
 	}
-	for (const c of candidates) {
-		const partial = lower.find((h) => h.norm.includes(c));
-		if (partial) return partial.raw;
+	for (const phrase of candidatePhrases) {
+		const match = tokenized.find((h) => hasTokenPhrase(h.tokens, phrase));
+		if (match) return match.raw;
 	}
 	return "";
 }
@@ -167,50 +196,117 @@ function buildInitialRecipe(
 ): Recipe {
 	const h = sheet.headers;
 	const timestamp =
-		guessColumn(h, ["timestamp", "date", "time", "created_at", "utc_time"]) ||
+		guessColumn(h, [
+			"timestamp",
+			"date",
+			"time",
+			"created at",
+			"utc time",
+			"datetime",
+			"txn date",
+		]) ||
 		h[0] ||
 		"timestamp";
 	const amount =
-		guessColumn(h, [
-			"amount",
-			"quantity",
-			"qty",
-			"volume",
-			"size",
-			"executed",
-		]) ||
+		guessColumn(
+			h,
+			["amount", "quantity", "qty", "volume", "size", "executed"],
+			["fee", "charge", "charges", "commission", "tds", "inr", "price", "rate"],
+		) ||
 		h[1] ||
 		h[0] ||
 		"amount";
-	const side = guessColumn(h, ["side", "action", "direction", "trade"]);
-	const type = guessColumn(h, [
-		"type",
-		"operation",
-		"transaction type",
-		"tx_type",
-	]);
-	const pair = guessColumn(h, ["pair", "market", "symbol", "instrument"]);
+	const side = guessColumn(
+		h,
+		["side", "action", "direction"],
+		["type", "price", "fee"],
+	);
+	const type = guessColumn(
+		h,
+		["type", "operation", "transaction type", "tx type"],
+		["side", "fee", "price"],
+	);
+	const pair = guessColumn(
+		h,
+		["pair", "market", "symbol", "instrument"],
+		["fee", "price"],
+	);
 	const baseAsset = pair
 		? ""
 		: guessColumn(
 				h,
-				["base", "base_asset", "coin", "asset", "currency"],
-				["fee"],
+				["base", "base asset", "coin", "asset", "currency"],
+				["fee", "charge", "charges", "commission", "quote"],
 			);
 	const quoteAsset = pair
 		? ""
-		: guessColumn(h, ["quote", "quote_asset"], ["fee"]);
-	const price = guessColumn(h, ["price", "rate"]);
-	const total = guessColumn(h, ["total", "value", "inr", "gross"]);
+		: guessColumn(
+				h,
+				["quote", "quote asset"],
+				["fee", "charge", "charges", "commission", "base"],
+			);
+	const price = guessColumn(
+		h,
+		["price", "rate", "unit price"],
+		["fee", "tds", "total"],
+	);
+	const total = guessColumn(
+		h,
+		["total", "net amount", "value", "inr", "gross"],
+		["fee", "tds", "id", "hash", "rate"],
+	);
 	const feeAmount = guessColumn(
 		h,
-		["fee", "fee_amount", "commission"],
-		["currency", "asset", "coin"],
+		["fee", "fee amount", "commission", "charges"],
+		["currency", "asset", "coin", "rate", "id"],
 	);
-	const feeAsset = guessColumn(h, ["fee_asset", "fee_coin", "fee currency"]);
-	const tds = guessColumn(h, ["tds", "tds_inr"]);
-	const id = guessColumn(h, ["id", "trade_id", "order_id", "tx_id"]);
-	const txHash = guessColumn(h, ["txhash", "tx_hash", "hash"]);
+	const feeAsset = guessColumn(h, [
+		"fee asset",
+		"fee coin",
+		"fee currency",
+		"charges coin",
+		"charge coin",
+	]);
+	const tds = guessColumn(h, ["tds", "tds inr", "tds amount"]);
+	const id = guessColumn(
+		h,
+		[
+			"id",
+			"order id",
+			"trade id",
+			"txid",
+			"tx id",
+			"transaction id",
+			"reference",
+			"ref",
+			"order ref",
+		],
+		[
+			"user",
+			"account",
+			"client",
+			"customer",
+			"member",
+			"side",
+			"type",
+			"price",
+			"rate",
+			"fee",
+			"asset",
+			"coin",
+			"amount",
+			"qty",
+			"quantity",
+			"total",
+			"value",
+			"hash",
+		],
+	);
+	const txHash = guessColumn(
+		h,
+		["txhash", "tx hash", "hash", "transaction hash"],
+		["id"],
+	);
 
 	return {
 		id: `custom-${Date.now().toString(36)}`,
@@ -642,11 +738,20 @@ export function RecipeWizard({
 									{payloadPreview.endpoint}
 								</code>
 							</p>
-							<Badge tone={payloadPreview.isLocal ? "positive" : "warning"}>
-								{payloadPreview.isLocal
-									? "Local endpoint"
-									: "Cloud endpoint — leaves machine"}
-							</Badge>
+							{(() => {
+								const previewIsLocal =
+									payloadPreview.endpoint &&
+									URL.canParse(payloadPreview.endpoint)
+										? isLocalAiEndpoint(payloadPreview.endpoint)
+										: payloadPreview.isLocal;
+								return (
+									<Badge tone={previewIsLocal ? "positive" : "warning"}>
+										{previewIsLocal
+											? "Local endpoint"
+											: "Cloud endpoint — leaves machine"}
+									</Badge>
+								);
+							})()}
 						</div>
 						<pre className="font-mono-code max-h-60 overflow-auto rounded border border-[var(--border)] bg-[var(--bg-surface)] p-2.5 text-[11px] leading-relaxed text-[var(--text-secondary)]">
 							{JSON.stringify(payloadPreview.sentPayload, null, 2)}
@@ -862,7 +967,7 @@ export function RecipeWizard({
 									>
 										{SIDE_TARGETS.map((t) => (
 											<option key={t} value={t}>
-												{t}
+												{formatTxType(t)}
 											</option>
 										))}
 									</select>

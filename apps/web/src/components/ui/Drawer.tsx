@@ -19,15 +19,36 @@ export function Drawer({
 	children: ReactNode;
 }) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
+	const openerRef = useRef<HTMLElement | null>(null);
+	const wasOpenRef = useRef(false);
 	const titleId = useId();
 
 	useEffect(() => {
 		const el = dialogRef.current;
-		if (!el) return;
-		if (open && !el.open) {
-			el.showModal();
-		} else if (!open && el.open) {
-			el.close();
+		if (open) {
+			if (!wasOpenRef.current) {
+				const active = document.activeElement;
+				openerRef.current =
+					active instanceof HTMLElement && active !== document.body
+						? active
+						: null;
+				wasOpenRef.current = true;
+			}
+			if (el && !el.open) {
+				el.showModal();
+			}
+		} else {
+			if (el?.open) {
+				el.close();
+			}
+			if (wasOpenRef.current) {
+				wasOpenRef.current = false;
+				const opener = openerRef.current;
+				openerRef.current = null;
+				if (opener?.isConnected) {
+					opener.focus();
+				}
+			}
 		}
 	}, [open]);
 

@@ -7,8 +7,16 @@ import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { api, getErrorMessage } from "@/lib/client/api";
 
 function safeNextPath(raw: string | null): string {
-	if (!raw?.startsWith("/") || raw.startsWith("//")) return "/";
-	return raw;
+	if (!raw?.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) {
+		return "/";
+	}
+	try {
+		const url = new URL(raw, "http://localhost");
+		if (url.origin !== "http://localhost") return "/";
+		return `${url.pathname}${url.search}${url.hash}`;
+	} catch {
+		return "/";
+	}
 }
 
 export function LoginClient() {

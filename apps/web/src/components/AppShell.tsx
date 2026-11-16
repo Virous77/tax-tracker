@@ -18,7 +18,13 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 
 type ThemePref = "system" | "light" | "dark";
 
@@ -45,6 +51,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 	const pathname = usePathname();
 	const [mobileOpen, setMobileOpen] = useState(false);
 	const [theme, setTheme] = useState<ThemePref>("system");
+	const mobileToggleRef = useRef<HTMLButtonElement>(null);
+	const mobilePanelRef = useRef<HTMLElement>(null);
+	const restoreFocusOnCloseRef = useRef(true);
+	const wasMobileOpenRef = useRef(false);
 
 	useEffect(() => {
 		const saved = localStorage.getItem("tax-tracker-theme");
@@ -53,6 +63,64 @@ export function AppShell({ children }: { children: ReactNode }) {
 			applyTheme(saved);
 		}
 	}, []);
+
+	const closeMobileMenu = useCallback((restoreFocus = true) => {
+		restoreFocusOnCloseRef.current = restoreFocus;
+		setMobileOpen(false);
+	}, []);
+
+	useEffect(() => {
+		if (mobileOpen) {
+			wasMobileOpenRef.current = true;
+			restoreFocusOnCloseRef.current = true;
+			const panel = mobilePanelRef.current;
+			if (panel) {
+				const focusable = panel.querySelector<HTMLElement>(
+					'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+				);
+				focusable?.focus();
+			}
+
+			const onKeyDown = (e: KeyboardEvent) => {
+				if (e.key === "Escape") {
+					e.preventDefault();
+					closeMobileMenu(true);
+					return;
+				}
+				if (e.key === "Tab" && panel) {
+					const items = [
+						...panel.querySelectorAll<HTMLElement>(
+							'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+						),
+					];
+					if (items.length === 0) return;
+					const first = items[0];
+					const last = items[items.length - 1];
+					const active = document.activeElement;
+					if (!panel.contains(active)) {
+						e.preventDefault();
+						first?.focus();
+						return;
+					}
+					if (e.shiftKey && active === first) {
+						e.preventDefault();
+						last?.focus();
+					} else if (!e.shiftKey && active === last) {
+						e.preventDefault();
+						first?.focus();
+					}
+				}
+			};
+			window.addEventListener("keydown", onKeyDown);
+			return () => window.removeEventListener("keydown", onKeyDown);
+		}
+		if (wasMobileOpenRef.current) {
+			wasMobileOpenRef.current = false;
+			if (restoreFocusOnCloseRef.current) {
+				mobileToggleRef.current?.focus();
+			}
+		}
+	}, [mobileOpen, closeMobileMenu]);
 
 	function cycleTheme() {
 		const order: ThemePref[] = ["system", "light", "dark"];
@@ -85,7 +153,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 				<div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-4">
 					<Link
 						href="/"
-						onClick={() => setMobileOpen(false)}
+						onClick={() => closeMobileMenu(false)}
 						className="flex items-center gap-2 text-sm font-semibold tracking-tight text-[var(--text-primary)]"
 					>
 						<span className="flex h-7 w-7 items-center justify-center rounded bg-[var(--accent)] text-xs font-bold text-white">
@@ -95,7 +163,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 					</Link>
 					<button
 						type="button"
-						onClick={() => setMobileOpen(false)}
+						onClick={() => closeMobileMenu(true)}
 						aria-label="Close navigation menu"
 						className="rounded p-1 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] lg:hidden"
 					>
@@ -115,7 +183,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 							<Link
 								key={item.href}
 								href={item.href}
-								onClick={() => setMobileOpen(false)}
+								onClick={() => closeMobileMenu(false)}
 								aria-current={active ? "page" : undefined}
 								className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
 									active
@@ -162,6 +230,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 			<header className="sticky top-0 z-20 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 lg:hidden">
 				<div className="flex items-center gap-2.5">
 					<button
+						ref={mobileToggleRef}
 						type="button"
 						onClick={() => setMobileOpen(true)}
 						aria-label="Open navigation menu"
@@ -187,14 +256,23 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 			{/* Mobile Drawer Overlay */}
 			{mobileOpen ? (
-				<div className="fixed inset-0 z-40 flex lg:hidden">
+				<div
+					role="dialog"
+					aria-modal="true"
+					aria-label="Navigation menu"
+					className="fixed inset-0 z-40 flex lg:hidden"
+				>
 					<button
 						type="button"
+						tabIndex={-1}
 						aria-label="Close navigation menu"
-						onClick={() => setMobileOpen(false)}
+						onClick={() => closeMobileMenu(true)}
 						className="fixed inset-0 bg-black/50"
 					/>
-					<aside className="relative z-10 h-full w-64 border-r border-[var(--border)] bg-[var(--bg-surface)]">
+					<aside
+						ref={mobilePanelRef}
+						className="relative z-10 h-full w-64 border-r border-[var(--border)] bg-[var(--bg-surface)]"
+					>
 						{navContent}
 					</aside>
 				</div>

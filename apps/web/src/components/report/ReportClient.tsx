@@ -29,17 +29,82 @@ import {
 } from "@/components/ui/TaxYearSelect";
 import { api, getErrorMessage, type TaxYearInfo } from "@/lib/client/api";
 import {
+	formatEngineSettingLabel,
+	formatEngineSettingValue,
+	formatIncomeKind,
 	formatInr,
 	formatInrNullable,
 	formatIstDate,
 	formatQty,
+	formatSectionLabel,
 	formatSourceLabel,
+	formatTxType,
 	isPositiveDecimal,
 	isZeroDecimal,
 } from "@/lib/client/format";
+import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
 
 function balanceKey(asset: string, source?: string): string {
 	return `${asset}::${source ?? ""}`;
+}
+
+interface GroupedWarning {
+	code: VdaReport["warnings"][number]["code"];
+	message: string;
+	count: number;
+	txIds: string[];
+}
+
+function groupReportWarnings(
+	warnings: VdaReport["warnings"],
+): GroupedWarning[] {
+	const byKey = new Map<string, GroupedWarning & { txIdSet: Set<string> }>();
+	for (const w of warnings) {
+		const key = `${w.code}\0${w.message}`;
+		let entry = byKey.get(key);
+		if (!entry) {
+			entry = {
+				code: w.code,
+				message: w.message,
+				count: 0,
+				txIds: [],
+				txIdSet: new Set<string>(),
+			};
+			byKey.set(key, entry);
+		}
+		entry.count += w.count ?? 1;
+		if (w.txId) entry.txIdSet.add(w.txId);
+		if (w.txIds) {
+			for (const id of w.txIds) entry.txIdSet.add(id);
+		}
+	}
+	return [...byKey.values()].map(({ txIdSet, ...rest }) => ({
+		...rest,
+		txIds: [...txIdSet],
+	}));
+}
+
+function warningTxHref(
+	taxYear: string,
+	txIds: string[],
+	ledger: VdaReport["ledger"],
+): string | null {
+	if (txIds.length === 0) return null;
+	if (txIds.length === 1) {
+		const tx = ledger.find((t) => t.id === txIds[0]);
+		const params = new URLSearchParams({ taxYear });
+		if (tx) params.set("q", tx.sourceRef);
+		else params.set("flagged", "true");
+		return `/transactions?${params.toString()}`;
+	}
+	const matching = ledger.filter((t) => txIds.includes(t.id));
+	const sources = new Set(matching.map((t) => t.source));
+	const params = new URLSearchParams({ taxYear, flagged: "true" });
+	if (sources.size === 1) {
+		const only = [...sources][0];
+		if (only) params.set("source", only);
+	}
+	return `/transactions?${params.toString()}`;
 }
 
 export function ReportClient() {
@@ -279,6 +344,7 @@ export function ReportClient() {
 										<a
 											href={api.getExportUrl(taxYear, "csv", exp.kind)}
 											download
+											aria-label={`Download ${exp.label} as CSV`}
 											className="inline-flex items-center gap-1 border-l border-[var(--border)] px-2 py-1 font-medium text-[var(--accent-text)] hover:bg-[var(--bg-hover)]"
 										>
 											<Download className="h-3 w-3" aria-hidden="true" />
@@ -287,6 +353,7 @@ export function ReportClient() {
 										<a
 											href={api.getExportUrl(taxYear, "xlsx", exp.kind)}
 											download
+											aria-label={`Download ${exp.label} as XLSX`}
 											className="inline-flex items-center gap-1 border-l border-[var(--border)] px-2 py-1 font-medium text-[var(--accent-text)] hover:bg-[var(--bg-hover)]"
 										>
 											XLSX
@@ -303,7 +370,9 @@ export function ReportClient() {
 									key={k}
 									className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-2.5 py-1"
 								>
-									<span className="text-[var(--text-muted)]">{k}: </span>
+									<span className="text-[var(--text-muted)]">
+										{formatSectionLabel(k)}:{" "}
+									</span>
 									<span className="font-medium">{v}</span>
 								</div>
 							))}
@@ -401,7 +470,9 @@ export function ReportClient() {
 													{formatQty(u.quantity)}
 												</td>
 												<td className="px-3 py-2">
-													<Badge tone="loss">{u.reason}</Badge>
+													<Badge tone="loss">
+														{REVIEW_CODE_INFO[u.reason]?.title ?? u.reason}
+													</Badge>
 												</td>
 												<td className="px-3 py-2 text-right">
 													<Link
@@ -423,7 +494,8 @@ export function ReportClient() {
 					<section className="space-y-3">
 						<div className="flex flex-wrap items-center justify-between gap-2">
 							<h2 className="text-base font-semibold tracking-tight">
-								Schedule VDA ({report.scheduleVdaRows.length} rows)
+								Schedule VDA ({report.scheduleVdaRows.length} row
+								{report.scheduleVdaRows.length === 1 ? "" : "s"})
 							</h2>
 							<p className="text-xs text-[var(--text-secondary)]">
 								Losses not set off:{" "}
@@ -588,9 +660,21 @@ export function ReportClient() {
 											</tr>
 										) : (
 											report.tds.bySource.map((src) => {
-												const possiblyDue = isPositiveDecimal(
+												const possiblyDuePositive = isPositiveDecimal(
 													src.possiblyDueInr,
 												);
+												const shortfall = D(src.possiblyDueInr).minus(
+													src.tdsInr,
+												);
+												const coveredByRecorded =
+													possiblyDuePositive &&
+													shortfall.lte("0") &&
+													isPositiveDecimal(src.tdsInr);
+												const remainingDue =
+													shortfall.gt("0") && isPositiveDecimal(src.tdsInr)
+														? shortfall.toFixed()
+														: src.possiblyDueInr;
+
 												return (
 													<tr
 														key={src.source}
@@ -617,12 +701,27 @@ export function ReportClient() {
 															{formatInr(src.tdsInr)}
 														</td>
 														<td className="num-right px-4 py-2.5">
-															{possiblyDue ? (
-																<Badge tone="warning">
-																	<span className="num">
-																		{formatInr(src.possiblyDueInr)}
-																	</span>
+															{src.deductedByPlatform === true ? (
+																<span className="text-xs text-[var(--text-muted)]">
+																	— (deducted by platform)
+																</span>
+															) : coveredByRecorded ? (
+																<Badge tone="positive">
+																	Covered by recorded TDS
 																</Badge>
+															) : possiblyDuePositive ? (
+																<div className="inline-flex items-center gap-1.5">
+																	<Badge tone="warning">
+																		<span className="num">
+																			{formatInr(remainingDue)}
+																		</span>
+																	</Badge>
+																	{isPositiveDecimal(src.tdsInr) ? (
+																		<span className="text-xs text-[var(--text-muted)]">
+																			after recorded TDS
+																		</span>
+																	) : null}
+																</div>
 															) : (
 																<span className="num text-[var(--text-muted)]">
 																	{formatInr(src.possiblyDueInr)}
@@ -736,10 +835,14 @@ export function ReportClient() {
 														{formatIstDate(inc.date)}
 													</td>
 													<td className="px-4 py-2.5">
-														<Badge tone="neutral">{inc.type}</Badge>
+														<Badge tone="neutral">
+															{formatTxType(inc.type)}
+														</Badge>
 													</td>
 													<td className="px-4 py-2.5 text-xs text-[var(--text-secondary)]">
-														{inc.incomeKind ?? "—"}
+														{inc.incomeKind
+															? formatIncomeKind(inc.incomeKind)
+															: "—"}
 													</td>
 													<td className="num px-4 py-2.5 whitespace-nowrap">
 														{formatQty(inc.quantity)} {inc.asset}
@@ -758,7 +861,7 @@ export function ReportClient() {
 															type="button"
 															onClick={() =>
 																setIncomeRawInspect({
-																	title: `${inc.type} · ${inc.asset}`,
+																	title: `${formatTxType(inc.type)} · ${inc.asset}`,
 																	raw: inc.trail,
 																})
 															}
@@ -785,7 +888,7 @@ export function ReportClient() {
 								</h2>
 								<p className="text-xs text-[var(--text-secondary)]">
 									Compare computed year-end holdings against your actual wallet
-									or exchange balances.
+									or exchange balances (Difference = Actual − Computed).
 								</p>
 							</div>
 							{report.balances.length > 0 ? (
@@ -912,31 +1015,70 @@ export function ReportClient() {
 						<dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3 lg:grid-cols-5">
 							{Object.entries(report.generatedFrom.settings).map(([k, v]) => (
 								<div key={k}>
-									<dt className="text-[var(--text-muted)]">{k}</dt>
-									<dd className="font-mono-code mt-0.5 font-medium">
-										{String(v)}
+									<dt className="text-[var(--text-muted)]">
+										{formatEngineSettingLabel(k)}
+									</dt>
+									<dd className="mt-0.5 font-medium">
+										{formatEngineSettingValue(k, v)}
 									</dd>
 								</div>
 							))}
 						</dl>
 
-						{report.warnings.length > 0 ? (
-							<div className="space-y-1.5 border-t border-[var(--border)] pt-3 text-xs">
-								<h3 className="font-semibold text-[var(--warning)]">
-									Report Warnings ({report.warnings.length})
-								</h3>
-								<ul className="list-disc space-y-0.5 pl-5 text-[var(--text-secondary)]">
-									{report.warnings.map((w) => (
-										<li key={`${w.code}:${w.txId ?? ""}:${w.message}`}>
-											<code className="font-mono-code font-medium">
-												{w.code}
-											</code>
-											: {w.message}
-										</li>
-									))}
-								</ul>
-							</div>
-						) : null}
+						{(() => {
+							const groupedWarnings = groupReportWarnings(report.warnings);
+							if (groupedWarnings.length === 0) return null;
+							const totalOccurrences = groupedWarnings.reduce(
+								(sum, w) => sum + w.count,
+								0,
+							);
+							return (
+								<div className="space-y-1.5 border-t border-[var(--border)] pt-3 text-xs">
+									<h3 className="font-semibold text-[var(--warning)]">
+										Report Warnings ({groupedWarnings.length}
+										{totalOccurrences !== groupedWarnings.length
+											? ` distinct · ${totalOccurrences} total`
+											: ""}
+										)
+									</h3>
+									<ul className="list-disc space-y-1 pl-5 text-[var(--text-secondary)]">
+										{groupedWarnings.map((w) => {
+											const href = warningTxHref(
+												taxYear,
+												w.txIds,
+												report.ledger,
+											);
+											return (
+												<li key={`${w.code}:${w.message}`}>
+													<code className="font-mono-code font-medium">
+														{w.code}
+													</code>
+													: {w.message}
+													{w.count > 1 ? (
+														<span className="ml-1.5 font-medium text-[var(--text-primary)]">
+															(×{w.count})
+														</span>
+													) : null}
+													{href ? (
+														<>
+															{" "}
+															<Link
+																href={href}
+																className="font-medium text-[var(--accent-text)] underline"
+															>
+																{w.txIds.length === 1
+																	? "View transaction"
+																	: `View ${w.txIds.length} transactions`}
+															</Link>
+														</>
+													) : null}
+												</li>
+											);
+										})}
+									</ul>
+								</div>
+							);
+						})()}
 					</section>
 				</>
 			)}

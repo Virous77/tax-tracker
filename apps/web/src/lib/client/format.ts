@@ -94,7 +94,8 @@ export function formatSourceLabel(source: string): string {
 	if (source === "binance") return "Binance";
 	if (source === "coindcx") return "CoinDCX";
 	if (source === "manual") return "Manual";
-	if (source.startsWith("csv:")) return `CSV (${source.slice(4)})`;
+	if (source === "generic") return "Generic CSV";
+	if (source.startsWith("csv:")) return `Generic CSV (${source.slice(4)})`;
 	if (source.startsWith("evm:")) return `EVM (${source.slice(4)})`;
 	return source;
 }
@@ -116,30 +117,116 @@ export function formatTxType(type: TxType): string {
 	return TX_TYPE_LABELS[type] ?? type;
 }
 
-export function isLocalEndpoint(url: string): boolean {
-	try {
-		const parsed = new URL(url);
-		const host = parsed.hostname.toLowerCase();
-		if (
-			host === "localhost" ||
-			host === "127.0.0.1" ||
-			host === "::1" ||
-			host === "[::1]" ||
-			host === "0.0.0.0" ||
-			host === "ollama" ||
-			host === "host.docker.internal" ||
-			host.endsWith(".local")
-		) {
-			return true;
+const SECTION_LABELS: Record<string, string> = {
+	vdaTax: "VDA Tax",
+	vdaTds: "VDA TDS",
+	vdaDefinition: "VDA Definition",
+	platformReporting: "Platform Reporting",
+	currencyConversionRule: "Currency Conversion Rule",
+};
+
+export function formatSectionLabel(key: string): string {
+	if (SECTION_LABELS[key]) return SECTION_LABELS[key];
+	return key
+		.replace(/([A-Z])/g, " $1")
+		.replace(/^./, (c) => c.toUpperCase())
+		.trim();
+}
+
+const ENGINE_SETTING_LABELS: Record<string, string> = {
+	feeTreatment: "Fee & GST treatment",
+	lotMethod: "Lot matching method",
+	lotPool: "Lot pool scope",
+	usdtInrRate: "USDT / stablecoin INR rate",
+	incomeCostBasis: "Income receipt cost basis",
+	headOfIncome: "Head of income",
+	surchargeRate: "Surcharge rate",
+	specifiedPerson: "Specified person (TDS)",
+	transferMatchWindowHours: "Transfer match window",
+	transferAmountTolerance: "Transfer amount tolerance",
+};
+
+export function formatEngineSettingLabel(key: string): string {
+	if (ENGINE_SETTING_LABELS[key]) return ENGINE_SETTING_LABELS[key];
+	return key
+		.replace(/([A-Z])/g, " $1")
+		.replace(/^./, (c) => c.toUpperCase())
+		.trim();
+}
+
+export function formatEngineSettingValue(key: string, value: unknown): string {
+	const str = String(value);
+	switch (key) {
+		case "feeTreatment":
+			return str === "include" ? "Include fees" : "Exclude fees";
+		case "lotMethod":
+			return str === "FIFO" ? "FIFO (First-In, First-Out)" : str;
+		case "lotPool":
+			return str === "per_source"
+				? "Per-source (by exchange)"
+				: "Global (all wallets)";
+		case "usdtInrRate":
+			return str === "sbi_usd_tt"
+				? "SBI TT buying USD/INR"
+				: "Ledger USDT/INR (fallback SBI TT)";
+		case "incomeCostBasis":
+			return str === "fmv_at_receipt"
+				? "FMV at receipt"
+				: "₹0 (conservative default)";
+		case "headOfIncome":
+			return str === "business" ? "Business Income" : "Capital Gains";
+		case "surchargeRate": {
+			const map: Record<string, string> = {
+				"0": "0%",
+				"0.10": "10%",
+				"0.15": "15%",
+				"0.25": "25%",
+				"0.37": "37%",
+			};
+			return map[str] ?? str;
 		}
-		if (host.startsWith("10.") || host.startsWith("192.168.")) return true;
-		const m172 = /^172\.(\d+)\./.exec(host);
-		if (m172?.[1]) {
-			const octet = Number(m172[1]);
-			if (octet >= 16 && octet <= 31) return true;
-		}
-		return false;
-	} catch {
-		return false;
+		case "specifiedPerson":
+			return value ? "Yes (₹50,000 threshold)" : "No (₹10,000 threshold)";
+		case "transferMatchWindowHours":
+			return `${str} hours`;
+		case "transferAmountTolerance":
+			try {
+				return `${D(str).mul("100").toString()}%`;
+			} catch {
+				return str;
+			}
+		default:
+			return str;
 	}
+}
+
+const INR_RATE_SOURCE_LABELS: Record<string, string> = {
+	trade_inr: "Direct INR trade",
+	trade_usdt_x_usd_inr: "USDT trade × SBI USD/INR",
+	market_price_cache: "Cached market price",
+	manual: "Manual entry",
+	fmv_receipt: "FMV at receipt",
+};
+
+export function formatInrRateSource(source: string): string {
+	return INR_RATE_SOURCE_LABELS[source] ?? source;
+}
+
+export function formatSignStyle(signStyle: string): string {
+	if (signStyle === "side_column") return "Side / type column";
+	if (signStyle === "negative_is_sell") return "Negative amount is sell";
+	return signStyle;
+}
+
+const INCOME_KIND_LABELS: Record<string, string> = {
+	staking: "Staking",
+	mining: "Mining",
+	airdrop: "Airdrop",
+	referral: "Referral",
+	interest: "Interest",
+	other: "Other",
+};
+
+export function formatIncomeKind(kind: string): string {
+	return INCOME_KIND_LABELS[kind] ?? kind;
 }

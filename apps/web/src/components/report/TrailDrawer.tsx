@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Drawer } from "@/components/ui/Drawer";
 import {
 	formatInrNullable,
+	formatInrRateSource,
 	formatIstDate,
 	formatIstDateTime,
 	formatQty,
@@ -131,10 +132,7 @@ export function TrailDrawer({
 									<div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[var(--text-secondary)]">
 										{val.inrRateSource ? (
 											<span>
-												Source:{" "}
-												<code className="font-mono-code">
-													{val.inrRateSource}
-												</code>
+												Source: {formatInrRateSource(val.inrRateSource)}
 											</span>
 										) : null}
 										{val.fx ? (

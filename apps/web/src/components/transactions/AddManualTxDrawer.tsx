@@ -10,7 +10,8 @@ import { Plus } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { api, getErrorMessage } from "@/lib/client/api";
+import { api, getErrorMessage, ValidationError } from "@/lib/client/api";
+import { formatIncomeKind } from "@/lib/client/format";
 
 export type ManualPreset = "buy" | "gift" | "income" | "sell";
 
@@ -39,6 +40,7 @@ export function AddManualTxDrawer({
 	const [userNote, setUserNote] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
 	const dtId = useId();
 	const assetInId = useId();
@@ -49,6 +51,15 @@ export function AddManualTxDrawer({
 	const kindId = useId();
 	const tdsId = useId();
 	const noteId = useId();
+
+	function clearFieldError(field: string) {
+		setFieldErrors((prev) => {
+			if (!prev[field]) return prev;
+			const next = { ...prev };
+			delete next[field];
+			return next;
+		});
+	}
 
 	useEffect(() => {
 		if (!open) return;
@@ -66,20 +77,27 @@ export function AddManualTxDrawer({
 		setTdsInr("");
 		setUserNote("");
 		setError(null);
+		setFieldErrors({});
 	}, [open, initialPreset, initialAsset]);
 
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault();
 		setSaving(true);
 		setError(null);
+		setFieldErrors({});
 		try {
 			const parsedInstant = new Date(`${istDateTime}:00+05:30`);
 			if (!Number.isFinite(parsedInstant.getTime())) {
-				throw new Error("Please enter a valid date and time in IST.");
+				const msg = "Please enter a valid date and time in IST.";
+				setFieldErrors({ timestamp: msg });
+				setError(msg);
+				return;
 			}
 			const iso = parsedInstant.toISOString();
 			const normAssetIn = assetIn.trim().toUpperCase();
+			const trimmedAmountIn = amountIn.trim();
 			const normAssetOut = assetOut.trim().toUpperCase();
+			const trimmedAmountOut = amountOut.trim();
 			const trimmedInr = inrValue.trim();
 
 			const payload = {
@@ -88,12 +106,10 @@ export function AddManualTxDrawer({
 				timestamp: iso,
 				type,
 				...(type === "income" ? { incomeKind } : {}),
-				...(normAssetIn && amountIn.trim()
-					? { assetIn: normAssetIn, amountIn: amountIn.trim() }
-					: {}),
-				...(normAssetOut && amountOut.trim()
-					? { assetOut: normAssetOut, amountOut: amountOut.trim() }
-					: {}),
+				...(normAssetIn ? { assetIn: normAssetIn } : {}),
+				...(trimmedAmountIn ? { amountIn: trimmedAmountIn } : {}),
+				...(normAssetOut ? { assetOut: normAssetOut } : {}),
+				...(trimmedAmountOut ? { amountOut: trimmedAmountOut } : {}),
 				...(trimmedInr !== ""
 					? {
 							inrValue: trimmedInr,
@@ -109,9 +125,9 @@ export function AddManualTxDrawer({
 					istDateTime,
 					type,
 					assetIn: normAssetIn || undefined,
-					amountIn: amountIn.trim() || undefined,
+					amountIn: trimmedAmountIn || undefined,
 					assetOut: normAssetOut || undefined,
-					amountOut: amountOut.trim() || undefined,
+					amountOut: trimmedAmountOut || undefined,
 					inrValue: trimmedInr || undefined,
 					note: userNote.trim() || undefined,
 				},
@@ -122,7 +138,12 @@ export function AddManualTxDrawer({
 			const created = await api.createTransaction(payload);
 			onCreated(created);
 		} catch (err) {
-			setError(getErrorMessage(err));
+			if (err instanceof ValidationError) {
+				setFieldErrors(err.fieldErrors);
+				setError(err.message);
+			} else {
+				setError(getErrorMessage(err));
+			}
 		} finally {
 			setSaving(false);
 		}
@@ -131,6 +152,12 @@ export function AddManualTxDrawer({
 	const needsIn = ["buy", "income", "gift", "deposit", "swap"].includes(type);
 	const needsOut =
 		["sell", "withdrawal", "swap"].includes(type) || type === "buy";
+
+	function inputBorderClass(field: string): string {
+		return fieldErrors[field]
+			? "border-[var(--loss)]"
+			: "border-[var(--border)]";
+	}
 
 	return (
 		<Drawer
@@ -158,7 +185,11 @@ export function AddManualTxDrawer({
 							<button
 								key={tab.id}
 								type="button"
-								onClick={() => setType(tab.id)}
+								onClick={() => {
+									setType(tab.id);
+									setError(null);
+									setFieldErrors({});
+								}}
 								className={`rounded border px-3 py-1.5 text-xs font-medium ${
 									type === tab.id
 										? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-text)]"
@@ -183,9 +214,21 @@ export function AddManualTxDrawer({
 						type="datetime-local"
 						required
 						value={istDateTime}
-						onChange={(e) => setIstDateTime(e.target.value)}
-						className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+						aria-invalid={Boolean(fieldErrors.timestamp)}
+						aria-describedby={
+							fieldErrors.timestamp ? `${dtId}-error` : undefined
+						}
+						onChange={(e) => {
+							setIstDateTime(e.target.value);
+							clearFieldError("timestamp");
+						}}
+						className={`mt-1 w-full rounded border ${inputBorderClass("timestamp")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
 					/>
+					{fieldErrors.timestamp ? (
+						<p id={`${dtId}-error`} className="mt-1 text-xs text-[var(--loss)]">
+							{fieldErrors.timestamp}
+						</p>
+					) : null}
 				</div>
 
 				{type === "income" ? (
@@ -199,12 +242,15 @@ export function AddManualTxDrawer({
 						<select
 							id={kindId}
 							value={incomeKind}
-							onChange={(e) => setIncomeKind(e.target.value as IncomeKind)}
+							onChange={(e) => {
+								setIncomeKind(e.target.value as IncomeKind);
+								clearFieldError("incomeKind");
+							}}
 							className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
 						>
 							{IncomeKindSchema.options.map((k) => (
 								<option key={k} value={k}>
-									{k}
+									{formatIncomeKind(k)}
 								</option>
 							))}
 						</select>
@@ -226,9 +272,24 @@ export function AddManualTxDrawer({
 								required
 								placeholder="BTC"
 								value={assetIn}
-								onChange={(e) => setAssetIn(e.target.value)}
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase"
+								aria-invalid={Boolean(fieldErrors.assetIn)}
+								aria-describedby={
+									fieldErrors.assetIn ? `${assetInId}-error` : undefined
+								}
+								onChange={(e) => {
+									setAssetIn(e.target.value);
+									clearFieldError("assetIn");
+								}}
+								className={`mt-1 w-full rounded border ${inputBorderClass("assetIn")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase`}
 							/>
+							{fieldErrors.assetIn ? (
+								<p
+									id={`${assetInId}-error`}
+									className="mt-1 text-xs text-[var(--loss)]"
+								>
+									{fieldErrors.assetIn}
+								</p>
+							) : null}
 						</div>
 						<div>
 							<label
@@ -244,9 +305,24 @@ export function AddManualTxDrawer({
 								inputMode="decimal"
 								placeholder="0.5"
 								value={amountIn}
-								onChange={(e) => setAmountIn(e.target.value)}
-								className="num mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+								aria-invalid={Boolean(fieldErrors.amountIn)}
+								aria-describedby={
+									fieldErrors.amountIn ? `${amountInId}-error` : undefined
+								}
+								onChange={(e) => {
+									setAmountIn(e.target.value);
+									clearFieldError("amountIn");
+								}}
+								className={`num mt-1 w-full rounded border ${inputBorderClass("amountIn")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
 							/>
+							{fieldErrors.amountIn ? (
+								<p
+									id={`${amountInId}-error`}
+									className="mt-1 text-xs text-[var(--loss)]"
+								>
+									{fieldErrors.amountIn}
+								</p>
+							) : null}
 						</div>
 					</div>
 				) : null}
@@ -268,9 +344,24 @@ export function AddManualTxDrawer({
 								required={type !== "buy"}
 								placeholder={type === "buy" ? "INR or USDT" : "ETH"}
 								value={assetOut}
-								onChange={(e) => setAssetOut(e.target.value)}
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase"
+								aria-invalid={Boolean(fieldErrors.assetOut)}
+								aria-describedby={
+									fieldErrors.assetOut ? `${assetOutId}-error` : undefined
+								}
+								onChange={(e) => {
+									setAssetOut(e.target.value);
+									clearFieldError("assetOut");
+								}}
+								className={`mt-1 w-full rounded border ${inputBorderClass("assetOut")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase`}
 							/>
+							{fieldErrors.assetOut ? (
+								<p
+									id={`${assetOutId}-error`}
+									className="mt-1 text-xs text-[var(--loss)]"
+								>
+									{fieldErrors.assetOut}
+								</p>
+							) : null}
 						</div>
 						<div>
 							<label
@@ -286,9 +377,24 @@ export function AddManualTxDrawer({
 								inputMode="decimal"
 								placeholder="1.0"
 								value={amountOut}
-								onChange={(e) => setAmountOut(e.target.value)}
-								className="num mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+								aria-invalid={Boolean(fieldErrors.amountOut)}
+								aria-describedby={
+									fieldErrors.amountOut ? `${amountOutId}-error` : undefined
+								}
+								onChange={(e) => {
+									setAmountOut(e.target.value);
+									clearFieldError("amountOut");
+								}}
+								className={`num mt-1 w-full rounded border ${inputBorderClass("amountOut")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
 							/>
+							{fieldErrors.amountOut ? (
+								<p
+									id={`${amountOutId}-error`}
+									className="mt-1 text-xs text-[var(--loss)]"
+								>
+									{fieldErrors.amountOut}
+								</p>
+							) : null}
 						</div>
 					</div>
 				) : null}
@@ -314,9 +420,24 @@ export function AddManualTxDrawer({
 							required={type === "buy" && !assetOut.trim()}
 							placeholder="200000.00"
 							value={inrValue}
-							onChange={(e) => setInrValue(e.target.value)}
-							className="num mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+							aria-invalid={Boolean(fieldErrors.inrValue)}
+							aria-describedby={
+								fieldErrors.inrValue ? `${inrId}-error` : undefined
+							}
+							onChange={(e) => {
+								setInrValue(e.target.value);
+								clearFieldError("inrValue");
+							}}
+							className={`num mt-1 w-full rounded border ${inputBorderClass("inrValue")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
 						/>
+						{fieldErrors.inrValue ? (
+							<p
+								id={`${inrId}-error`}
+								className="mt-1 text-xs text-[var(--loss)]"
+							>
+								{fieldErrors.inrValue}
+							</p>
+						) : null}
 						{type === "gift" ? (
 							<p className="mt-1 text-[11px] text-[var(--text-muted)]">
 								Enter donor cost or receipt FMV in INR for gift threshold
@@ -338,9 +459,24 @@ export function AddManualTxDrawer({
 							inputMode="decimal"
 							placeholder="0"
 							value={tdsInr}
-							onChange={(e) => setTdsInr(e.target.value)}
-							className="num mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+							aria-invalid={Boolean(fieldErrors.tdsInr)}
+							aria-describedby={
+								fieldErrors.tdsInr ? `${tdsId}-error` : undefined
+							}
+							onChange={(e) => {
+								setTdsInr(e.target.value);
+								clearFieldError("tdsInr");
+							}}
+							className={`num mt-1 w-full rounded border ${inputBorderClass("tdsInr")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
 						/>
+						{fieldErrors.tdsInr ? (
+							<p
+								id={`${tdsId}-error`}
+								className="mt-1 text-xs text-[var(--loss)]"
+							>
+								{fieldErrors.tdsInr}
+							</p>
+						) : null}
 					</div>
 				</div>
 

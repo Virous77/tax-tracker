@@ -24,16 +24,37 @@ export function ConfirmDialog({
 	onCancel: () => void;
 }) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
+	const openerRef = useRef<HTMLElement | null>(null);
+	const wasOpenRef = useRef(false);
 	const titleId = useId();
 	const descId = useId();
 
 	useEffect(() => {
 		const el = dialogRef.current;
-		if (!el) return;
-		if (open && !el.open) {
-			el.showModal();
-		} else if (!open && el.open) {
-			el.close();
+		if (open) {
+			if (!wasOpenRef.current) {
+				const active = document.activeElement;
+				openerRef.current =
+					active instanceof HTMLElement && active !== document.body
+						? active
+						: null;
+				wasOpenRef.current = true;
+			}
+			if (el && !el.open) {
+				el.showModal();
+			}
+		} else {
+			if (el?.open) {
+				el.close();
+			}
+			if (wasOpenRef.current) {
+				wasOpenRef.current = false;
+				const opener = openerRef.current;
+				openerRef.current = null;
+				if (opener?.isConnected) {
+					opener.focus();
+				}
+			}
 		}
 	}, [open]);
 
@@ -81,7 +102,7 @@ export function ConfirmDialog({
 						onClick={onConfirm}
 						className={`rounded px-3.5 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${
 							destructive
-								? "bg-[var(--loss)] hover:opacity-90"
+								? "bg-[var(--loss-solid)] hover:opacity-90"
 								: "bg-[var(--accent)] hover:bg-[var(--accent-hover)]"
 						}`}
 					>

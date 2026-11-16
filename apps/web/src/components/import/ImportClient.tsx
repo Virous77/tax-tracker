@@ -333,10 +333,10 @@ export function ImportClient() {
 							<ArrowRight className="h-4 w-4" aria-hidden="true" />
 						</Link>
 						<Link
-							href="/review"
+							href="/"
 							className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--bg-hover)]"
 						>
-							Check review flags
+							Overview &amp; compute report
 						</Link>
 						<button
 							type="button"
@@ -365,7 +365,7 @@ export function ImportClient() {
 							}}
 							onDragLeave={() => setDragging(false)}
 							onDrop={onDrop}
-							className={`mt-2 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors ${
+							className={`relative mt-2 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors focus-within:border-[var(--accent)] focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--accent)] ${
 								dragging
 									? "border-[var(--accent)] bg-[var(--accent-soft)]"
 									: "border-[var(--border-strong)] bg-[var(--bg-subtle)] hover:border-[var(--accent)]"
@@ -376,7 +376,7 @@ export function ImportClient() {
 								type="file"
 								accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 								onChange={(e) => handleFilePick(e.target.files?.[0] ?? null)}
-								className="sr-only"
+								className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
 							/>
 							{file ? (
 								<div className="flex flex-col items-center gap-1.5">

@@ -15,7 +15,11 @@ import {
 	type ImportDetail,
 	type ImportSummary,
 } from "@/lib/client/api";
-import { formatIstDateTime, formatSourceLabel } from "@/lib/client/format";
+import {
+	formatIstDateTime,
+	formatSignStyle,
+	formatSourceLabel,
+} from "@/lib/client/format";
 
 export function ImportsClient() {
 	const [imports, setImports] = useState<ImportSummary[]>([]);
@@ -136,111 +140,215 @@ export function ImportsClient() {
 					}
 				/>
 			) : (
-				<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-					<div className="overflow-x-auto">
-						<table className="w-full border-collapse text-left text-sm">
-							<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
-								<tr>
-									<th className="px-4 py-2.5 font-medium">File</th>
-									<th className="px-4 py-2.5 font-medium">Source</th>
-									<th className="px-4 py-2.5 font-medium">TZ</th>
-									<th className="px-4 py-2.5 font-medium">Status</th>
-									<th className="num-right px-4 py-2.5 font-medium">Read</th>
-									<th className="num-right px-4 py-2.5 font-medium">
-										Inserted
-									</th>
-									<th className="num-right px-4 py-2.5 font-medium">Dupes</th>
-									<th className="num-right px-4 py-2.5 font-medium">Errors</th>
-									<th className="px-4 py-2.5 font-medium">Imported at</th>
-									<th className="px-4 py-2.5 text-right font-medium">
-										Actions
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{imports.map((imp) => (
-									<tr
-										key={imp.id}
-										className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
-									>
-										<td className="max-w-52 truncate px-4 py-2.5 font-medium">
+				<>
+					{/* Mobile card view */}
+					<div className="space-y-3 md:hidden">
+						{imports.map((imp) => (
+							<div
+								key={imp.id}
+								className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4"
+							>
+								<div className="flex items-start justify-between gap-2">
+									<div className="min-w-0">
+										<p className="truncate text-sm font-medium">
 											{imp.fileName}
-										</td>
-										<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
-											{formatSourceLabel(imp.source)}
-										</td>
-										<td className="px-4 py-2.5 whitespace-nowrap">
-											<Badge tone="neutral">{imp.timezone}</Badge>
-										</td>
-										<td className="px-4 py-2.5 whitespace-nowrap">
-											<Badge
-												tone={
-													imp.status === "imported"
-														? "positive"
-														: imp.status === "pending_recipe"
-															? "warning"
-															: "loss"
-												}
-											>
-												{imp.status === "pending_recipe"
-													? "Needs recipe"
-													: imp.status}
-											</Badge>
-										</td>
-										<td className="num-right px-4 py-2.5">{imp.rowsRead}</td>
-										<td className="num-right px-4 py-2.5 text-[var(--positive)]">
+										</p>
+										<p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+											{formatSourceLabel(imp.source)} · {imp.timezone} ·{" "}
+											{formatIstDateTime(imp.createdAt)}
+										</p>
+									</div>
+									<Badge
+										tone={
+											imp.status === "imported"
+												? "positive"
+												: imp.status === "pending_recipe"
+													? "warning"
+													: "loss"
+										}
+									>
+										{imp.status === "pending_recipe"
+											? "Needs recipe"
+											: imp.status}
+									</Badge>
+								</div>
+
+								<dl className="grid grid-cols-4 gap-2 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-xs">
+									<div>
+										<dt className="text-[var(--text-muted)]">Read</dt>
+										<dd className="num font-medium">{imp.rowsRead}</dd>
+									</div>
+									<div>
+										<dt className="text-[var(--text-muted)]">Inserted</dt>
+										<dd className="num font-medium text-[var(--positive)]">
 											{imp.rowsInserted}
-										</td>
-										<td className="num-right px-4 py-2.5 text-[var(--text-secondary)]">
+										</dd>
+									</div>
+									<div>
+										<dt className="text-[var(--text-muted)]">Dupes</dt>
+										<dd className="num font-medium text-[var(--text-secondary)]">
 											{imp.rowsDuplicate}
-										</td>
-										<td
-											className={`num-right px-4 py-2.5 ${
+										</dd>
+									</div>
+									<div>
+										<dt className="text-[var(--text-muted)]">Errors</dt>
+										<dd
+											className={`num font-medium ${
 												imp.rowsError > 0
-													? "font-medium text-[var(--loss)]"
+													? "text-[var(--loss)]"
 													: "text-[var(--text-secondary)]"
 											}`}
 										>
 											{imp.rowsError}
-										</td>
-										<td className="px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
-											{formatIstDateTime(imp.createdAt)}
-										</td>
-										<td className="px-4 py-2.5 text-right whitespace-nowrap">
-											<div className="inline-flex items-center gap-1.5">
-												{imp.status === "pending_recipe" ? (
-													<Link
-														href={`/import?importId=${encodeURIComponent(imp.id)}`}
-														className="inline-flex items-center gap-1 rounded border border-[var(--accent)] px-2 py-1 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--accent-soft)]"
-													>
-														<Wrench className="h-3 w-3" aria-hidden="true" />
-														Map
-													</Link>
-												) : null}
-												<button
-													type="button"
-													onClick={() => openDetail(imp.id)}
-													aria-label={`Inspect ${imp.fileName}`}
-													className="rounded border border-[var(--border)] p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-												>
-													<Eye className="h-3.5 w-3.5" aria-hidden="true" />
-												</button>
-												<button
-													type="button"
-													onClick={() => setDeleteTarget(imp)}
-													aria-label={`Delete ${imp.fileName}`}
-													className="rounded border border-[var(--border)] p-1.5 text-[var(--loss)] hover:bg-[var(--loss-soft)]"
-												>
-													<Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-												</button>
-											</div>
-										</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
+										</dd>
+									</div>
+								</dl>
+
+								<div className="flex flex-wrap items-center justify-end gap-2">
+									{imp.status === "pending_recipe" ? (
+										<Link
+											href={`/import?importId=${encodeURIComponent(imp.id)}`}
+											className="inline-flex items-center gap-1 rounded border border-[var(--accent)] px-2.5 py-1.5 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--accent-soft)]"
+										>
+											<Wrench className="h-3.5 w-3.5" aria-hidden="true" />
+											Map
+										</Link>
+									) : null}
+									<button
+										type="button"
+										onClick={() => openDetail(imp.id)}
+										aria-label={`Inspect ${imp.fileName}`}
+										className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+									>
+										<Eye className="h-3.5 w-3.5" aria-hidden="true" />
+										Inspect
+									</button>
+									<button
+										type="button"
+										onClick={() => setDeleteTarget(imp)}
+										aria-label={`Delete ${imp.fileName}`}
+										className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--loss)] hover:bg-[var(--loss-soft)]"
+									>
+										<Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+										Delete
+									</button>
+								</div>
+							</div>
+						))}
 					</div>
-				</div>
+
+					{/* Desktop table view */}
+					<div className="hidden overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] md:block">
+						<div className="overflow-x-auto">
+							<table className="w-full border-collapse text-left text-sm">
+								<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
+									<tr>
+										<th className="px-4 py-2.5 font-medium">File</th>
+										<th className="px-4 py-2.5 font-medium">Source</th>
+										<th className="px-4 py-2.5 font-medium">TZ</th>
+										<th className="px-4 py-2.5 font-medium">Status</th>
+										<th className="num-right px-4 py-2.5 font-medium">Read</th>
+										<th className="num-right px-4 py-2.5 font-medium">
+											Inserted
+										</th>
+										<th className="num-right px-4 py-2.5 font-medium">Dupes</th>
+										<th className="num-right px-4 py-2.5 font-medium">
+											Errors
+										</th>
+										<th className="px-4 py-2.5 font-medium">Imported at</th>
+										<th className="px-4 py-2.5 text-right font-medium">
+											Actions
+										</th>
+									</tr>
+								</thead>
+								<tbody>
+									{imports.map((imp) => (
+										<tr
+											key={imp.id}
+											className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
+										>
+											<td className="max-w-52 truncate px-4 py-2.5 font-medium">
+												{imp.fileName}
+											</td>
+											<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
+												{formatSourceLabel(imp.source)}
+											</td>
+											<td className="px-4 py-2.5 whitespace-nowrap">
+												<Badge tone="neutral">{imp.timezone}</Badge>
+											</td>
+											<td className="px-4 py-2.5 whitespace-nowrap">
+												<Badge
+													tone={
+														imp.status === "imported"
+															? "positive"
+															: imp.status === "pending_recipe"
+																? "warning"
+																: "loss"
+													}
+												>
+													{imp.status === "pending_recipe"
+														? "Needs recipe"
+														: imp.status}
+												</Badge>
+											</td>
+											<td className="num-right px-4 py-2.5">{imp.rowsRead}</td>
+											<td className="num-right px-4 py-2.5 text-[var(--positive)]">
+												{imp.rowsInserted}
+											</td>
+											<td className="num-right px-4 py-2.5 text-[var(--text-secondary)]">
+												{imp.rowsDuplicate}
+											</td>
+											<td
+												className={`num-right px-4 py-2.5 ${
+													imp.rowsError > 0
+														? "font-medium text-[var(--loss)]"
+														: "text-[var(--text-secondary)]"
+												}`}
+											>
+												{imp.rowsError}
+											</td>
+											<td className="px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
+												{formatIstDateTime(imp.createdAt)}
+											</td>
+											<td className="px-4 py-2.5 text-right whitespace-nowrap">
+												<div className="inline-flex items-center gap-1.5">
+													{imp.status === "pending_recipe" ? (
+														<Link
+															href={`/import?importId=${encodeURIComponent(imp.id)}`}
+															className="inline-flex items-center gap-1 rounded border border-[var(--accent)] px-2 py-1 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--accent-soft)]"
+														>
+															<Wrench className="h-3 w-3" aria-hidden="true" />
+															Map
+														</Link>
+													) : null}
+													<button
+														type="button"
+														onClick={() => openDetail(imp.id)}
+														aria-label={`Inspect ${imp.fileName}`}
+														className="rounded border border-[var(--border)] p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+													>
+														<Eye className="h-3.5 w-3.5" aria-hidden="true" />
+													</button>
+													<button
+														type="button"
+														onClick={() => setDeleteTarget(imp)}
+														aria-label={`Delete ${imp.fileName}`}
+														className="rounded border border-[var(--border)] p-1.5 text-[var(--loss)] hover:bg-[var(--loss-soft)]"
+													>
+														<Trash2
+															className="h-3.5 w-3.5"
+															aria-hidden="true"
+														/>
+													</button>
+												</div>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</>
 			)}
 
 			{recipes.length > 0 ? (
@@ -268,7 +376,7 @@ export function ImportsClient() {
 										>
 											<td className="px-4 py-2 font-medium">{rec.name}</td>
 											<td className="px-4 py-2 text-xs text-[var(--text-secondary)]">
-												{rec.signStyle}
+												{formatSignStyle(rec.signStyle)}
 											</td>
 											<td className="font-mono-code px-4 py-2 text-xs text-[var(--text-secondary)]">
 												{rec.dateFormat}

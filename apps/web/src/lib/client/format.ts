@@ -1,6 +1,53 @@
 import { D, formatDecimal, formatInr, istDate, type TxType } from "@tax/core";
+import type { ReportMissingDetails } from "@tax/core/api";
 
 export { formatInr };
+
+export function pluralise(
+	count: number,
+	singular: string,
+	plural = `${singular}s`,
+): string {
+	return count === 1 ? singular : plural;
+}
+
+const MISSING_CAUSE_LABELS: Record<
+	Exclude<ReportMissingDetails["cause"], "never_computed">,
+	string
+> = {
+	ledger_changed: "transactions changed",
+	settings_changed: "tax engine settings changed",
+	balances_changed: "actual balances changed",
+};
+
+export function formatReportMissingState(
+	missing: ReportMissingDetails | null,
+	taxYear: string,
+	context: "overview" | "report",
+): { title: string; description: string } {
+	if (missing && missing.cause !== "never_computed") {
+		const causeText = MISSING_CAUSE_LABELS[missing.cause];
+		const when = missing.invalidatedAt
+			? formatIstDateTime(missing.invalidatedAt)
+			: null;
+		return {
+			title: `Report cleared for ${taxYear}`,
+			description: `Your report was cleared because ${causeText}${when ? ` on ${when}` : ""} — compute again to refresh Schedule VDA rows, totals, and review checks.`,
+		};
+	}
+
+	return context === "overview"
+		? {
+				title: `No computed report for ${taxYear}`,
+				description:
+					"Your transactions are in the ledger. Run Compute report to calculate Schedule VDA gains, tax, and TDS credit for this tax year.",
+			}
+		: {
+				title: `No report computed for ${taxYear}`,
+				description:
+					"Compute the report to generate Schedule VDA rows, TDS totals, and year-end balance checks.",
+			};
+}
 
 const istDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
 	timeZone: "Asia/Kolkata",

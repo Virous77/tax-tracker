@@ -119,4 +119,62 @@ export const REVIEW_CODE_INFO: Record<ReviewCode, ReviewCodeInfo> = {
 			return `/transactions?${params.toString()}`;
 		},
 	},
+	ca_verification_pending: {
+		code: "ca_verification_pending",
+		title: "Section numbers pending CA verification",
+		severity: "info",
+		explanation:
+			"The statutory section citations in this tax year's rule file have not yet been marked as verified by a Chartered Accountant. Confirm the legal references on your report before filing.",
+		fixLabel: "Review sections in Report",
+		fixHref: (_tx, taxYear) =>
+			taxYear ? `/report?taxYear=${encodeURIComponent(taxYear)}` : "/report",
+	},
+	import_incomplete: {
+		code: "import_incomplete",
+		title: "Incomplete import or excluded rows",
+		severity: "warning",
+		explanation:
+			"One or more uploaded files are still awaiting a recipe mapping, failed to import, or had row errors that were excluded from the ledger. Resolve those imports so no trades are missed.",
+		fixLabel: "Inspect imports",
+		fixHref: () => "/imports",
+	},
+	fx_unavailable: {
+		code: "fx_unavailable",
+		title: "SBI FX reference rate unavailable",
+		severity: "error",
+		explanation:
+			"Bundled SBI TT buying USD/INR reference rates were unavailable for this valuation, so USD/USDT amounts could not be converted to INR automatically. Enter an INR value manually or check the rate table.",
+		fixLabel: "Edit INR value",
+		fixHref: (tx, taxYear) => {
+			const params = new URLSearchParams({ flagged: "true", q: tx.sourceRef });
+			if (taxYear) params.set("taxYear", taxYear);
+			return `/transactions?${params.toString()}`;
+		},
+	},
+	ambiguous_transfer: {
+		code: "ambiguous_transfer",
+		title: "Ambiguous self-transfer match",
+		severity: "warning",
+		explanation:
+			"More than one deposit or withdrawal on another source matched this transfer's asset, quantity, and time window. Verify the pair so FIFO lot cost basis moves to the right wallet.",
+		fixLabel: "Inspect in Transactions",
+		fixHref: (tx, taxYear) => {
+			const params = new URLSearchParams({ flagged: "true", q: tx.sourceRef });
+			if (taxYear) params.set("taxYear", taxYear);
+			return `/transactions?${params.toString()}`;
+		},
+	},
+	fee_review_required: {
+		code: "fee_review_required",
+		title: "Fee treatment requires review",
+		severity: "warning",
+		explanation:
+			"The trading fee or GST on this transaction needs checking (for example, fees exceeding consideration or unusual fee currency). Review the fee breakdown and your Fee & GST setting.",
+		fixLabel: "Inspect in Transactions",
+		fixHref: (tx, taxYear) => {
+			const params = new URLSearchParams({ flagged: "true", q: tx.sourceRef });
+			if (taxYear) params.set("taxYear", taxYear);
+			return `/transactions?${params.toString()}`;
+		},
+	},
 };

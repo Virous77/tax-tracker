@@ -27,7 +27,12 @@ import {
 	FALLBACK_TAX_YEARS,
 	TaxYearSelect,
 } from "@/components/ui/TaxYearSelect";
-import { api, getErrorMessage, type TaxYearInfo } from "@/lib/client/api";
+import {
+	api,
+	getErrorMessage,
+	type ReportMissingDetails,
+	type TaxYearInfo,
+} from "@/lib/client/api";
 import {
 	formatEngineSettingLabel,
 	formatEngineSettingValue,
@@ -36,11 +41,13 @@ import {
 	formatInrNullable,
 	formatIstDate,
 	formatQty,
+	formatReportMissingState,
 	formatSectionLabel,
 	formatSourceLabel,
 	formatTxType,
 	isPositiveDecimal,
 	isZeroDecimal,
+	pluralise,
 } from "@/lib/client/format";
 import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
 
@@ -51,6 +58,8 @@ function balanceKey(asset: string, source?: string): string {
 interface GroupedWarning {
 	code: VdaReport["warnings"][number]["code"];
 	message: string;
+	asset?: string;
+	source?: string;
 	count: number;
 	txIds: string[];
 }
@@ -60,12 +69,14 @@ function groupReportWarnings(
 ): GroupedWarning[] {
 	const byKey = new Map<string, GroupedWarning & { txIdSet: Set<string> }>();
 	for (const w of warnings) {
-		const key = `${w.code}\0${w.message}`;
+		const key = `${w.code}\0${w.message}\0${w.asset ?? ""}\0${w.source ?? ""}`;
 		let entry = byKey.get(key);
 		if (!entry) {
 			entry = {
 				code: w.code,
 				message: w.message,
+				...(w.asset ? { asset: w.asset } : {}),
+				...(w.source ? { source: w.source } : {}),
 				count: 0,
 				txIds: [],
 				txIdSet: new Set<string>(),
@@ -88,19 +99,28 @@ function warningTxHref(
 	taxYear: string,
 	txIds: string[],
 	ledger: VdaReport["ledger"],
+	asset?: string,
+	source?: string,
 ): string | null {
 	if (txIds.length === 0) return null;
 	if (txIds.length === 1) {
 		const tx = ledger.find((t) => t.id === txIds[0]);
 		const params = new URLSearchParams({ taxYear });
 		if (tx) params.set("q", tx.sourceRef);
-		else params.set("flagged", "true");
+		else {
+			params.set("flagged", "true");
+			if (asset) params.set("asset", asset);
+			if (source) params.set("source", source);
+		}
 		return `/transactions?${params.toString()}`;
 	}
 	const matching = ledger.filter((t) => txIds.includes(t.id));
 	const sources = new Set(matching.map((t) => t.source));
 	const params = new URLSearchParams({ taxYear, flagged: "true" });
-	if (sources.size === 1) {
+	if (asset) params.set("asset", asset);
+	if (source) {
+		params.set("source", source);
+	} else if (sources.size === 1) {
 		const only = [...sources][0];
 		if (only) params.set("source", only);
 	}
@@ -115,6 +135,8 @@ export function ReportClient() {
 	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
 	const [taxYear, setTaxYear] = useState<string>(urlTaxYear || "2026-27");
 	const [report, setReport] = useState<VdaReport | null>(null);
+	const [reportMissing, setReportMissing] =
+		useState<ReportMissingDetails | null>(null);
 	const [actualDrafts, setActualDrafts] = useState<Record<string, string>>({});
 	const [checkedChecklist, setCheckedChecklist] = useState<
 		Record<string, boolean>
@@ -162,11 +184,13 @@ export function ReportClient() {
 		setError(null);
 		setBalanceSavedMsg(null);
 		try {
-			const [rep, savedActuals] = await Promise.all([
-				api.getReportOrNull(year),
+			const [repState, savedActuals] = await Promise.all([
+				api.getReportState(year),
 				api.getActualBalances(year).catch(() => []),
 			]);
+			const rep = repState.status === "ready" ? repState.report : null;
 			setReport(rep);
+			setReportMissing(repState.status === "missing" ? repState.missing : null);
 
 			const drafts: Record<string, string> = {};
 			if (rep) {
@@ -205,6 +229,7 @@ export function ReportClient() {
 		try {
 			const rep = await api.computeReport(taxYear);
 			setReport(rep);
+			setReportMissing(null);
 		} catch (err) {
 			setError(getErrorMessage(err));
 		} finally {
@@ -232,6 +257,7 @@ export function ReportClient() {
 			await api.putActualBalances(taxYear, payload);
 			const rep = await api.computeReport(taxYear);
 			setReport(rep);
+			setReportMissing(null);
 			setBalanceSavedMsg(
 				"Actual balances saved and reconciliation checks updated.",
 			);
@@ -285,22 +311,31 @@ export function ReportClient() {
 			{loading ? (
 				<div className="h-64 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]" />
 			) : !report ? (
-				<EmptyState
-					icon={<FileSpreadsheet className="h-8 w-8" />}
-					title={`No report computed for ${taxYear}`}
-					description="Compute the report to generate Schedule VDA rows, TDS totals, and year-end balance checks."
-					action={
-						<button
-							type="button"
-							disabled={computing}
-							onClick={handleCompute}
-							className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-						>
-							<Calculator className="h-4 w-4" aria-hidden="true" />
-							{computing ? "Computing…" : `Compute ${taxYear} report`}
-						</button>
-					}
-				/>
+				(() => {
+					const missingCopy = formatReportMissingState(
+						reportMissing,
+						taxYear,
+						"report",
+					);
+					return (
+						<EmptyState
+							icon={<FileSpreadsheet className="h-8 w-8" />}
+							title={missingCopy.title}
+							description={missingCopy.description}
+							action={
+								<button
+									type="button"
+									disabled={computing}
+									onClick={handleCompute}
+									className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+								>
+									<Calculator className="h-4 w-4" aria-hidden="true" />
+									{computing ? "Computing…" : `Compute ${taxYear} report`}
+								</button>
+							}
+						/>
+					);
+				})()
 			) : (
 				<>
 					{/* Exports & Legal Section Labels */}
@@ -320,7 +355,9 @@ export function ReportClient() {
 									<code className="font-mono-code">
 										{report.generatedFrom.ruleFile}
 									</code>{" "}
-									· {report.generatedFrom.txCount} transactions evaluated
+									· {report.generatedFrom.txCount}{" "}
+									{pluralise(report.generatedFrom.txCount, "transaction")}{" "}
+									evaluated
 								</p>
 							</div>
 
@@ -494,8 +531,8 @@ export function ReportClient() {
 					<section className="space-y-3">
 						<div className="flex flex-wrap items-center justify-between gap-2">
 							<h2 className="text-base font-semibold tracking-tight">
-								Schedule VDA ({report.scheduleVdaRows.length} row
-								{report.scheduleVdaRows.length === 1 ? "" : "s"})
+								Schedule VDA ({report.scheduleVdaRows.length}{" "}
+								{pluralise(report.scheduleVdaRows.length, "row")})
 							</h2>
 							<p className="text-xs text-[var(--text-secondary)]">
 								Losses not set off:{" "}
@@ -1047,13 +1084,29 @@ export function ReportClient() {
 												taxYear,
 												w.txIds,
 												report.ledger,
+												w.asset,
+												w.source,
 											);
+											const isNotice = w.code === "ca_verification_pending";
 											return (
-												<li key={`${w.code}:${w.message}`}>
-													<code className="font-mono-code font-medium">
+												<li
+													key={`${w.code}:${w.message}:${w.asset ?? ""}:${w.source ?? ""}`}
+												>
+													<code
+														className={`font-mono-code font-medium ${
+															isNotice ? "text-[var(--accent-text)]" : ""
+														}`}
+													>
 														{w.code}
 													</code>
 													: {w.message}
+													{w.asset || w.source ? (
+														<span className="ml-1.5 inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]">
+															{w.asset ?? ""}
+															{w.asset && w.source ? " · " : ""}
+															{w.source ? formatSourceLabel(w.source) : ""}
+														</span>
+													) : null}
 													{w.count > 1 ? (
 														<span className="ml-1.5 font-medium text-[var(--text-primary)]">
 															(×{w.count})
@@ -1068,7 +1121,7 @@ export function ReportClient() {
 															>
 																{w.txIds.length === 1
 																	? "View transaction"
-																	: `View ${w.txIds.length} transactions`}
+																	: `View ${w.txIds.length} ${pluralise(w.txIds.length, "transaction")}`}
 															</Link>
 														</>
 													) : null}

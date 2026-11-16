@@ -32,6 +32,8 @@ import {
 	PutActualBalancesResponseSchema,
 	PutSettingsRequestSchema,
 	PutSettingsResponseSchema,
+	type ReportMissingDetails,
+	ReportMissingDetailsSchema,
 	ReviewResponseSchema,
 	type SentPayload,
 	SettingsResponseSchema,
@@ -318,6 +320,10 @@ function parseRequest<T extends z.ZodType>(
 	return parsed.data;
 }
 
+export type ReportState =
+	| { status: "ready"; report: VdaReport }
+	| { status: "missing"; missing: ReportMissingDetails | null };
+
 export const api = {
 	health() {
 		return requestJson("/api/health", { schema: HealthResponseSchema });
@@ -517,15 +523,31 @@ export const api = {
 		});
 	},
 
-	async getReportOrNull(taxYear: string): Promise<VdaReport | null> {
+	async getReportState(taxYear: string): Promise<ReportState> {
 		try {
-			return await requestJson(`/api/reports/${encodeURIComponent(taxYear)}`, {
-				schema: GetReportResponseSchema,
-			});
+			const report = await requestJson(
+				`/api/reports/${encodeURIComponent(taxYear)}`,
+				{ schema: GetReportResponseSchema },
+			);
+			return { status: "ready", report };
 		} catch (err) {
-			if (err instanceof ApiError && err.status === 404) return null;
+			if (err instanceof ApiError && err.status === 404) {
+				if (err.code === "report_not_computed") {
+					const parsed = ReportMissingDetailsSchema.safeParse(err.details);
+					return {
+						status: "missing",
+						missing: parsed.success ? parsed.data : null,
+					};
+				}
+				return { status: "missing", missing: null };
+			}
 			throw err;
 		}
+	},
+
+	async getReportOrNull(taxYear: string): Promise<VdaReport | null> {
+		const state = await this.getReportState(taxYear);
+		return state.status === "ready" ? state.report : null;
 	},
 
 	getExportUrl(
@@ -555,4 +577,10 @@ export const api = {
 	},
 };
 
-export type { AppSettings, ImportDetail, ImportSummary, SentPayload };
+export type {
+	AppSettings,
+	ImportDetail,
+	ImportSummary,
+	ReportMissingDetails,
+	SentPayload,
+};

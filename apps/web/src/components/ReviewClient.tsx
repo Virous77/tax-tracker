@@ -32,25 +32,171 @@ import {
 	formatQty,
 	formatSourceLabel,
 	formatTxType,
+	isNegativeDecimal,
+	pluralise,
 } from "@/lib/client/format";
 import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
 
-function reportItemHref(
+function reportItemActions(
 	code: keyof typeof REVIEW_CODE_INFO,
 	item: ReportReviewItem,
-): string {
+): {
+	txHref: string | null;
+	txLabel: string | null;
+	fixHref: string | null;
+	fixLabel: string | null;
+} {
 	if (item.kind === "balance") {
-		return `/report?taxYear=${encodeURIComponent(item.taxYear)}#balances`;
+		const txCount = item.balance.txIds.length;
+		const txParams = new URLSearchParams({ asset: item.balance.asset });
+		if (item.balance.source) txParams.set("source", item.balance.source);
+		const txHref = txCount > 0 ? `/transactions?${txParams.toString()}` : null;
+		const txLabel =
+			txCount > 0
+				? `View ${txCount} ${pluralise(txCount, "transaction")}`
+				: null;
+
+		if (code === "missing_history") {
+			const params = new URLSearchParams({
+				add: "buy",
+				asset: item.balance.asset,
+				taxYear: item.taxYear,
+			});
+			return {
+				txHref,
+				txLabel,
+				fixHref: `/transactions?${params.toString()}`,
+				fixLabel: "Add missing buy",
+			};
+		}
+		return {
+			txHref,
+			txLabel,
+			fixHref: `/report?taxYear=${encodeURIComponent(item.taxYear)}#balances`,
+			fixLabel: REVIEW_CODE_INFO[code].fixLabel,
+		};
 	}
-	if (code === "missing_history") {
+
+	if (item.kind === "unresolved") {
+		const reason = item.unresolved.reason;
+		const txParams = new URLSearchParams({
+			taxYear: item.taxYear,
+			asset: item.unresolved.asset,
+		});
+		const txHref = `/transactions?${txParams.toString()}`;
+		const txLabel = "View transaction";
+
+		if (reason === "missing_history") {
+			const params = new URLSearchParams({
+				add: "buy",
+				asset: item.unresolved.asset,
+				taxYear: item.taxYear,
+			});
+			return {
+				txHref,
+				txLabel,
+				fixHref: `/transactions?${params.toString()}`,
+				fixLabel: "Add missing buy",
+			};
+		}
+		if (reason === "missing_inr_value" || reason === "fx_unavailable") {
+			const params = new URLSearchParams({
+				taxYear: item.taxYear,
+				asset: item.unresolved.asset,
+				flagged: "true",
+			});
+			return {
+				txHref,
+				txLabel,
+				fixHref: `/transactions?${params.toString()}`,
+				fixLabel: REVIEW_CODE_INFO[reason].fixLabel,
+			};
+		}
+		return {
+			txHref,
+			txLabel,
+			fixHref: `/report?taxYear=${encodeURIComponent(item.taxYear)}#unresolved`,
+			fixLabel:
+				REVIEW_CODE_INFO[reason]?.fixLabel ?? REVIEW_CODE_INFO[code].fixLabel,
+		};
+	}
+
+	const txIds = [
+		...new Set([
+			...(item.warning.txIds ?? []),
+			...(item.warning.txId ? [item.warning.txId] : []),
+		]),
+	];
+	let txHref: string | null = null;
+	let txLabel: string | null = null;
+	if (txIds.length > 0 || item.warning.asset) {
+		const params = new URLSearchParams();
+		if (item.warning.asset) params.set("asset", item.warning.asset);
+		if (item.warning.source) params.set("source", item.warning.source);
+		if (txIds.length > 0) params.set("flagged", "true");
+		txHref = `/transactions?${params.toString()}`;
+		txLabel =
+			txIds.length > 0
+				? `View ${txIds.length} ${pluralise(txIds.length, "transaction")}`
+				: `View ${item.warning.asset} transactions`;
+	}
+
+	if (code === "import_incomplete") {
+		return {
+			txHref,
+			txLabel,
+			fixHref: "/imports",
+			fixLabel: "Inspect imports",
+		};
+	}
+	if (code === "ca_verification_pending") {
+		return {
+			txHref,
+			txLabel,
+			fixHref: `/report?taxYear=${encodeURIComponent(item.taxYear)}`,
+			fixLabel: REVIEW_CODE_INFO[code].fixLabel,
+		};
+	}
+	if (code === "missing_history" && item.warning.asset) {
 		const params = new URLSearchParams({
 			add: "buy",
-			asset: item.unresolved.asset,
+			asset: item.warning.asset,
 			taxYear: item.taxYear,
 		});
-		return `/transactions?${params.toString()}`;
+		return {
+			txHref,
+			txLabel,
+			fixHref: `/transactions?${params.toString()}`,
+			fixLabel: "Add missing buy",
+		};
 	}
-	return `/report?taxYear=${encodeURIComponent(item.taxYear)}#unresolved`;
+	if (code === "tds_not_deducted") {
+		return {
+			txHref,
+			txLabel,
+			fixHref: `/report?taxYear=${encodeURIComponent(item.taxYear)}#tds`,
+			fixLabel: REVIEW_CODE_INFO[code].fixLabel,
+		};
+	}
+
+	return {
+		txHref,
+		txLabel,
+		fixHref: txHref
+			? null
+			: `/report?taxYear=${encodeURIComponent(item.taxYear)}`,
+		fixLabel: txHref ? null : REVIEW_CODE_INFO[code].fixLabel,
+	};
+}
+
+function formatComputeLabel(years: string[]): string {
+	if (years.length <= 1) {
+		return `Compute ${years[0] ?? ""} report`;
+	}
+	if (years.length === 2) {
+		return `Compute ${years[0]} & ${years[1]} reports`;
+	}
+	return `Compute all ${years.length} missing reports`;
 }
 
 export function ReviewClient() {
@@ -63,6 +209,11 @@ export function ReviewClient() {
 	const [data, setData] = useState<ReviewData | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [computing, setComputing] = useState(false);
+	const [computeProgress, setComputeProgress] = useState<{
+		year: string;
+		index: number;
+		total: number;
+	} | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [selectedTx, setSelectedTx] = useState<LedgerTx | null>(null);
 
@@ -106,23 +257,62 @@ export function ReviewClient() {
 		router.replace(`/review${qs ? `?${qs}` : ""}`);
 	}
 
-	const computeTargetYear = taxYear || defaultTaxYear;
+	const missingYears = data
+		? data.reportStatuses
+				.filter((entry) => entry.status === "missing")
+				.map((entry) => entry.taxYear)
+		: [];
+	const currentYears = data
+		? data.reportStatuses
+				.filter((entry) => entry.status === "current")
+				.map((entry) => entry.taxYear)
+		: [];
+	const computeTargets =
+		data && data.computeTaxYears.length > 0
+			? data.computeTaxYears
+			: [taxYear || defaultTaxYear];
 
 	async function handleCompute() {
 		setComputing(true);
 		setError(null);
+		let computedAny = false;
 		try {
-			await api.computeReport(computeTargetYear);
+			for (let i = 0; i < computeTargets.length; i++) {
+				const targetYear = computeTargets[i];
+				if (!targetYear) continue;
+				setComputeProgress({
+					year: targetYear,
+					index: i + 1,
+					total: computeTargets.length,
+				});
+				await api.computeReport(targetYear);
+				computedAny = true;
+			}
 			await loadReview();
 		} catch (err) {
 			setError(getErrorMessage(err));
+			if (computedAny) {
+				await loadReview().catch(() => {});
+			}
 		} finally {
 			setComputing(false);
+			setComputeProgress(null);
 		}
 	}
 
 	const totalItems = data?.groups.reduce((sum, g) => sum + g.count, 0) ?? 0;
-	const reportMissingOrStale = data && data.reportStatus !== "current";
+	const reportMissing = data && data.reportStatus === "missing";
+	const missingListText =
+		missingYears.length > 0
+			? missingYears.join(", ")
+			: taxYear || defaultTaxYear;
+	const computeButtonText = computing
+		? computeProgress && computeProgress.total > 1
+			? `Computing ${computeProgress.year} (${computeProgress.index}/${computeProgress.total})…`
+			: computeProgress
+				? `Computing ${computeProgress.year}…`
+				: "Computing…"
+		: formatComputeLabel(computeTargets);
 
 	return (
 		<div className="space-y-6">
@@ -144,7 +334,7 @@ export function ReviewClient() {
 
 			{error ? <ErrorBanner message={error} onRetry={loadReview} /> : null}
 
-			{!loading && reportMissingOrStale && totalItems > 0 ? (
+			{!loading && reportMissing && totalItems > 0 ? (
 				<div
 					role="status"
 					className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning-soft)] px-4 py-3 text-sm"
@@ -154,12 +344,18 @@ export function ReviewClient() {
 							className="mt-0.5 h-4 w-4 shrink-0 text-[var(--warning)]"
 							aria-hidden="true"
 						/>
-						<div>
+						<div className="space-y-0.5">
 							<p className="font-medium text-[var(--text-primary)]">
-								{data.reportStatus === "stale"
-									? `Report out of date for ${computeTargetYear} — recompute to refresh balance and missing history checks.`
-									: `Report not computed for ${computeTargetYear} — some checks (balances, missing history) appear only after computing.`}
+								{missingYears.length > 1
+									? `Reports not computed for ${missingListText} — some checks (balances, missing history) appear only after computing.`
+									: `Report not computed for ${missingListText} — some checks (balances, missing history) appear only after computing.`}
 							</p>
+							{!taxYear && currentYears.length > 0 ? (
+								<p className="text-xs text-[var(--text-secondary)]">
+									Computed: {currentYears.join(", ")} · Not computed:{" "}
+									{missingYears.join(", ")}
+								</p>
+							) : null}
 						</div>
 					</div>
 					<button
@@ -169,11 +365,7 @@ export function ReviewClient() {
 						className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-3.5 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
 					>
 						<Calculator className="h-3.5 w-3.5" aria-hidden="true" />
-						{computing
-							? "Computing…"
-							: data.reportStatus === "stale"
-								? `Recompute ${computeTargetYear} report`
-								: `Compute ${computeTargetYear} report`}
+						{computeButtonText}
 					</button>
 				</div>
 			) : null}
@@ -208,15 +400,11 @@ export function ReviewClient() {
 					<EmptyState
 						icon={<Calculator className="h-8 w-8 text-[var(--warning)]" />}
 						title={
-							data.reportStatus === "stale"
-								? `Report out of date for ${computeTargetYear}`
-								: `Report not computed for ${computeTargetYear}`
+							missingYears.length > 1
+								? `Reports not computed for ${missingListText}`
+								: `Report not computed for ${missingListText}`
 						}
-						description={
-							data.reportStatus === "stale"
-								? `Recompute the ${computeTargetYear} report to refresh FIFO lot matching, balance reconciliation, and valuation checks.`
-								: `Some checks (balances, missing history, FIFO valuation) appear only after computing the ${computeTargetYear} report.`
-						}
+						description={`Some checks (balances, missing history, FIFO valuation) appear only after computing ${missingYears.length > 1 ? `reports for ${missingListText}` : `the ${missingListText} report`}.`}
 						action={
 							<button
 								type="button"
@@ -225,11 +413,7 @@ export function ReviewClient() {
 								className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
 							>
 								<Calculator className="h-4 w-4" aria-hidden="true" />
-								{computing
-									? "Computing…"
-									: data.reportStatus === "stale"
-										? `Recompute ${computeTargetYear} report`
-										: `Compute ${computeTargetYear} report`}
+								{computeButtonText}
 							</button>
 						}
 					/>
@@ -254,8 +438,8 @@ export function ReviewClient() {
 										<div className="flex items-center gap-2">
 											<h2 className="text-sm font-semibold">{info.title}</h2>
 											<Badge tone={tone}>
-												<span className="num">{group.count}</span> item
-												{group.count === 1 ? "" : "s"}
+												<span className="num">{group.count}</span>{" "}
+												{pluralise(group.count, "item")}
 											</Badge>
 										</div>
 										<code className="font-mono-code text-xs text-[var(--text-muted)]">
@@ -286,7 +470,7 @@ export function ReviewClient() {
 										</thead>
 										<tbody>
 											{group.items.map((tx) => {
-												const flagDetail = tx.reviewFlags.find(
+												const matchingFlags = tx.reviewFlags.filter(
 													(f) => f.code === group.code,
 												);
 												return (
@@ -318,7 +502,17 @@ export function ReviewClient() {
 															{formatInrNullable(tx.inrValue)}
 														</td>
 														<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
-															{flagDetail?.message ?? "—"}
+															{matchingFlags.length === 0 ? (
+																"—"
+															) : matchingFlags.length === 1 ? (
+																<span>{matchingFlags[0]?.message}</span>
+															) : (
+																<ul className="list-disc space-y-1 pl-4">
+																	{matchingFlags.map((flag) => (
+																		<li key={flag.message}>{flag.message}</li>
+																	))}
+																</ul>
+															)}
 														</td>
 														<td className="px-4 py-2.5 text-right whitespace-nowrap">
 															<div className="inline-flex items-center gap-2">
@@ -351,8 +545,15 @@ export function ReviewClient() {
 											{group.reportItems.map((ri, idx) => {
 												const key =
 													ri.kind === "balance"
-														? `${group.code}-bal-${ri.taxYear}-${ri.balance.asset}-${ri.balance.source ?? "global"}`
-														: `${group.code}-unres-${ri.taxYear}-${ri.unresolved.txId}-${ri.unresolved.asset}-${idx}`;
+														? `${group.code}-bal-${ri.taxYear}-${ri.balance.asset}-${ri.balance.source ?? "global"}-${idx}`
+														: ri.kind === "unresolved"
+															? `${group.code}-unres-${ri.taxYear}-${ri.unresolved.txId}-${ri.unresolved.asset}-${ri.unresolved.reason}-${idx}`
+															: `${group.code}-warn-${ri.taxYear}-${ri.warning.asset ?? ""}-${ri.warning.source ?? ""}-${idx}`;
+												const actions = reportItemActions(group.code, ri);
+												const isNegativeBalance =
+													ri.kind === "balance" &&
+													isNegativeDecimal(ri.balance.computed) &&
+													group.code === "missing_history";
 												return (
 													<tr
 														key={key}
@@ -362,18 +563,38 @@ export function ReviewClient() {
 															Tax year {ri.taxYear}
 														</td>
 														<td className="px-4 py-2.5 whitespace-nowrap">
-															<Badge tone="neutral">
-																{ri.kind === "balance"
-																	? "Year-end balance"
-																	: "Unresolved slice"}
-															</Badge>
+															{ri.kind === "balance" ? (
+																<Badge
+																	tone={isNegativeBalance ? "loss" : "neutral"}
+																>
+																	{isNegativeBalance
+																		? "Negative holding"
+																		: "Year-end balance"}
+																</Badge>
+															) : ri.kind === "unresolved" ? (
+																<Badge tone="loss">Unresolved slice</Badge>
+															) : (
+																<Badge
+																	tone={
+																		group.code === "ca_verification_pending"
+																			? "accent"
+																			: "neutral"
+																	}
+																>
+																	{group.code === "ca_verification_pending"
+																		? "Report notice"
+																		: "Report warning"}
+																</Badge>
+															)}
 														</td>
 														<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
 															{ri.kind === "balance"
 																? ri.balance.source
 																	? formatSourceLabel(ri.balance.source)
 																	: "Global"
-																: "Computed report"}
+																: ri.kind === "warning" && ri.warning.source
+																	? formatSourceLabel(ri.warning.source)
+																	: "Computed report"}
 														</td>
 														<td className="num px-4 py-2.5 whitespace-nowrap">
 															{ri.kind === "balance"
@@ -382,25 +603,59 @@ export function ReviewClient() {
 																			? `, actual ${formatQty(ri.balance.actual)}`
 																			: ""
 																	}`
-																: `${formatQty(ri.unresolved.quantity)} ${ri.unresolved.asset}`}
+																: ri.kind === "unresolved"
+																	? `${formatQty(ri.unresolved.quantity)} ${ri.unresolved.asset}`
+																	: (ri.warning.asset ?? "—")}
 														</td>
 														<td className="num-right px-4 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
 															—
 														</td>
 														<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
-															{ri.message}
+															{ri.kind === "unresolved" ? (
+																<div className="space-y-0.5">
+																	<p>{ri.message}</p>
+																	<p className="text-[11px] text-[var(--text-muted)]">
+																		Reason:{" "}
+																		{REVIEW_CODE_INFO[ri.unresolved.reason]
+																			?.title ?? ri.unresolved.reason}
+																	</p>
+																</div>
+															) : ri.kind === "warning" &&
+																ri.warning.count &&
+																ri.warning.count > 1 ? (
+																<span>
+																	{ri.message}{" "}
+																	<span className="font-medium text-[var(--text-primary)]">
+																		(×{ri.warning.count})
+																	</span>
+																</span>
+															) : (
+																ri.message
+															)}
 														</td>
 														<td className="px-4 py-2.5 text-right whitespace-nowrap">
-															<Link
-																href={reportItemHref(group.code, ri)}
-																className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
-															>
-																{info.fixLabel}
-																<ArrowRight
-																	className="h-3 w-3"
-																	aria-hidden="true"
-																/>
-															</Link>
+															<div className="inline-flex items-center gap-2">
+																{actions.txHref && actions.txLabel ? (
+																	<Link
+																		href={actions.txHref}
+																		className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+																	>
+																		{actions.txLabel}
+																	</Link>
+																) : null}
+																{actions.fixHref && actions.fixLabel ? (
+																	<Link
+																		href={actions.fixHref}
+																		className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
+																	>
+																		{actions.fixLabel}
+																		<ArrowRight
+																			className="h-3 w-3"
+																			aria-hidden="true"
+																		/>
+																	</Link>
+																) : null}
+															</div>
 														</td>
 													</tr>
 												);

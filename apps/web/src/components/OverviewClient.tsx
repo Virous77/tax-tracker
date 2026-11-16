@@ -19,11 +19,18 @@ import {
 	FALLBACK_TAX_YEARS,
 	TaxYearSelect,
 } from "@/components/ui/TaxYearSelect";
-import { api, getErrorMessage, type TaxYearInfo } from "@/lib/client/api";
+import {
+	api,
+	getErrorMessage,
+	type ReportMissingDetails,
+	type TaxYearInfo,
+} from "@/lib/client/api";
 import {
 	formatInr,
+	formatReportMissingState,
 	isNegativeDecimal,
 	isPositiveDecimal,
+	pluralise,
 } from "@/lib/client/format";
 
 export function OverviewClient() {
@@ -34,6 +41,8 @@ export function OverviewClient() {
 	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
 	const [taxYear, setTaxYear] = useState<string>(urlTaxYear || "2026-27");
 	const [report, setReport] = useState<VdaReport | null>(null);
+	const [reportMissing, setReportMissing] =
+		useState<ReportMissingDetails | null>(null);
 	const [txTotal, setTxTotal] = useState<number | null>(null);
 	const [reviewCount, setReviewCount] = useState<number>(0);
 	const [loading, setLoading] = useState(true);
@@ -72,14 +81,20 @@ export function OverviewClient() {
 		setLoading(true);
 		setError(null);
 		try {
-			const [rep, review, txPage] = await Promise.all([
-				api.getReportOrNull(year),
+			const [repState, review, txPage] = await Promise.all([
+				api.getReportState(year),
 				api
 					.getReview(year)
 					.catch(() => ({ reportStatus: "missing" as const, groups: [] })),
 				api.listTransactions({ page: 1, pageSize: 1 }).catch(() => null),
 			]);
-			setReport(rep);
+			if (repState.status === "ready") {
+				setReport(repState.report);
+				setReportMissing(null);
+			} else {
+				setReport(null);
+				setReportMissing(repState.missing);
+			}
 			const totalFlags = review.groups.reduce((acc, g) => acc + g.count, 0);
 			setReviewCount(totalFlags);
 			setTxTotal(txPage ? txPage.total : null);
@@ -109,8 +124,9 @@ export function OverviewClient() {
 		try {
 			const computed = await api.computeReport(taxYear);
 			setReport(computed);
+			setReportMissing(null);
 			setStatusMessage(
-				`Report computed for tax year ${taxYear} (${computed.generatedFrom.txCount} transactions evaluated).`,
+				`Report computed for tax year ${taxYear} (${computed.generatedFrom.txCount} ${pluralise(computed.generatedFrom.txCount, "transaction")} evaluated).`,
 			);
 			const review = await api
 				.getReview(taxYear)
@@ -182,8 +198,8 @@ export function OverviewClient() {
 						/>
 						<span>
 							<strong className="font-semibold num">{reviewCount}</strong>{" "}
-							flagged transaction item{reviewCount === 1 ? "" : "s"} need review
-							before filing.
+							{pluralise(reviewCount, "flagged transaction item")}{" "}
+							{pluralise(reviewCount, "needs", "need")} review before filing.
 						</span>
 					</div>
 					<Link
@@ -207,9 +223,8 @@ export function OverviewClient() {
 							<strong className="font-semibold num">
 								{report.unresolved.length}
 							</strong>{" "}
-							unresolved disposal slice
-							{report.unresolved.length === 1 ? "" : "s"} excluded from totals
-							due to missing history or INR value.
+							{pluralise(report.unresolved.length, "unresolved disposal slice")}{" "}
+							excluded from totals due to missing history or INR value.
 						</span>
 					</div>
 					<Link
@@ -235,7 +250,11 @@ export function OverviewClient() {
 				<EmptyState
 					icon={<Upload className="h-8 w-8" />}
 					title="No transactions yet — import an export file"
-					description="Upload your Binance, CoinDCX, or generic CSV/XLSX trade history to build your ledger and compute Schedule VDA."
+					description={
+						reportMissing && reportMissing.cause !== "never_computed"
+							? `${formatReportMissingState(reportMissing, taxYear, "overview").description} Upload your Binance, CoinDCX, or generic CSV/XLSX trade history to build your ledger.`
+							: "Upload your Binance, CoinDCX, or generic CSV/XLSX trade history to build your ledger and compute Schedule VDA."
+					}
 					action={
 						<div className="flex flex-wrap justify-center gap-3">
 							<Link
@@ -255,22 +274,31 @@ export function OverviewClient() {
 					}
 				/>
 			) : !report ? (
-				<EmptyState
-					icon={<FileSpreadsheet className="h-8 w-8" />}
-					title={`No computed report for ${taxYear}`}
-					description="Your transactions are in the ledger. Run Compute report to calculate Schedule VDA gains, tax, and TDS credit for this tax year."
-					action={
-						<button
-							type="button"
-							disabled={computing}
-							onClick={handleCompute}
-							className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-						>
-							<Calculator className="h-4 w-4" aria-hidden="true" />
-							{computing ? "Computing…" : `Compute ${taxYear} report`}
-						</button>
-					}
-				/>
+				(() => {
+					const missingCopy = formatReportMissingState(
+						reportMissing,
+						taxYear,
+						"overview",
+					);
+					return (
+						<EmptyState
+							icon={<FileSpreadsheet className="h-8 w-8" />}
+							title={missingCopy.title}
+							description={missingCopy.description}
+							action={
+								<button
+									type="button"
+									disabled={computing}
+									onClick={handleCompute}
+									className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+								>
+									<Calculator className="h-4 w-4" aria-hidden="true" />
+									{computing ? "Computing…" : `Compute ${taxYear} report`}
+								</button>
+							}
+						/>
+					);
+				})()
 			) : (
 				<>
 					<div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-secondary)]">
@@ -278,12 +306,14 @@ export function OverviewClient() {
 							<span>{report.act}</span>
 							<span>·</span>
 							<span className="num">
-								{report.generatedFrom.txCount} ledger transactions evaluated
+								{report.generatedFrom.txCount}{" "}
+								{pluralise(report.generatedFrom.txCount, "ledger transaction")}{" "}
+								evaluated
 							</span>
 							<span>·</span>
 							<span className="num">
-								{report.scheduleVdaRows.length} Schedule VDA row
-								{report.scheduleVdaRows.length === 1 ? "" : "s"}
+								{report.scheduleVdaRows.length}{" "}
+								{pluralise(report.scheduleVdaRows.length, "Schedule VDA row")}
 							</span>
 							{!report.sectionsVerified ? (
 								<Badge tone="warning">
@@ -412,8 +442,8 @@ export function OverviewClient() {
 								Income &amp; Gifts
 							</p>
 							<p className="num mt-2 text-2xl font-semibold tracking-tight">
-								{report.income.rows.length} row
-								{report.income.rows.length === 1 ? "" : "s"}
+								{report.income.rows.length}{" "}
+								{pluralise(report.income.rows.length, "row")}
 							</p>
 							<dl className="mt-3 space-y-1 border-t border-[var(--border)] pt-2.5 text-xs text-[var(--text-secondary)]">
 								<div className="flex justify-between">

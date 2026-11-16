@@ -173,7 +173,7 @@ export function ImportsClient() {
 									</Badge>
 								</div>
 
-								<dl className="grid grid-cols-4 gap-2 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-xs">
+								<dl className="grid grid-cols-5 gap-2 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-xs">
 									<div>
 										<dt className="text-[var(--text-muted)]">Read</dt>
 										<dd className="num font-medium">{imp.rowsRead}</dd>
@@ -188,6 +188,12 @@ export function ImportsClient() {
 										<dt className="text-[var(--text-muted)]">Dupes</dt>
 										<dd className="num font-medium text-[var(--text-secondary)]">
 											{imp.rowsDuplicate}
+										</dd>
+									</div>
+									<div>
+										<dt className="text-[var(--text-muted)]">Skipped</dt>
+										<dd className="num font-medium text-[var(--text-secondary)]">
+											{imp.rowsSkipped}
 										</dd>
 									</div>
 									<div>
@@ -268,7 +274,12 @@ export function ImportsClient() {
 											className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
 										>
 											<td className="max-w-52 truncate px-4 py-2.5 font-medium">
-												{imp.fileName}
+												<span>{imp.fileName}</span>
+												{imp.rowsSkipped > 0 ? (
+													<span className="num block text-[11px] font-normal text-[var(--text-muted)]">
+														{imp.rowsSkipped} skipped (overlap)
+													</span>
+												) : null}
 											</td>
 											<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
 												{formatSourceLabel(imp.source)}
@@ -432,6 +443,50 @@ export function ImportsClient() {
 							</div>
 						</dl>
 
+						<div className="space-y-1.5">
+							<dl className="grid grid-cols-5 gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs">
+								<div>
+									<dt className="text-[var(--text-muted)]">Read</dt>
+									<dd className="num mt-0.5 font-semibold">
+										{detail.rowsRead}
+									</dd>
+								</div>
+								<div>
+									<dt className="text-[var(--text-muted)]">Inserted</dt>
+									<dd className="num mt-0.5 font-semibold text-[var(--positive)]">
+										{detail.rowsInserted}
+									</dd>
+								</div>
+								<div>
+									<dt className="text-[var(--text-muted)]">Dupes</dt>
+									<dd className="num mt-0.5 font-semibold text-[var(--text-secondary)]">
+										{detail.rowsDuplicate}
+									</dd>
+								</div>
+								<div>
+									<dt className="text-[var(--text-muted)]">Skipped</dt>
+									<dd className="num mt-0.5 font-semibold text-[var(--text-secondary)]">
+										{detail.rowsSkipped}
+									</dd>
+								</div>
+								<div>
+									<dt className="text-[var(--text-muted)]">Errors</dt>
+									<dd
+										className={`num mt-0.5 font-semibold ${
+											detail.rowsError > 0
+												? "text-[var(--loss)]"
+												: "text-[var(--text-secondary)]"
+										}`}
+									>
+										{detail.rowsError}
+									</dd>
+								</div>
+							</dl>
+							<p className="num text-[11px] text-[var(--text-muted)]">
+								{`${detail.rowsRead} read = ${detail.rowsInserted} inserted + ${detail.rowsDuplicate} duplicates + ${detail.rowsSkipped} skipped + ${detail.rowsError} errors`}
+							</p>
+						</div>
+
 						{detail.sheets && detail.sheets.length > 0 ? (
 							<div className="space-y-2">
 								<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
@@ -472,6 +527,32 @@ export function ImportsClient() {
 										</li>
 									))}
 								</ul>
+							</div>
+						) : null}
+
+						{detail.skippedRows.length > 0 || detail.rowsSkipped > 0 ? (
+							<div className="space-y-2">
+								<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
+									Skipped — covered by another export (
+									{detail.skippedRows.length})
+								</h3>
+								{detail.skippedRows.length > 0 ? (
+									<div className="max-h-60 space-y-1.5 overflow-y-auto">
+										{detail.skippedRows.map((sr) => (
+											<div
+												key={`${sr.sheet}:${sr.rowIndex}:${sr.reason}`}
+												className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-2.5 text-xs"
+											>
+												<p className="font-medium text-[var(--text-primary)]">
+													{sr.sheet ? `${sr.sheet} · ` : ""}Row {sr.rowIndex}
+												</p>
+												<p className="mt-0.5 text-[var(--text-secondary)]">
+													{sr.reason}
+												</p>
+											</div>
+										))}
+									</div>
+								) : null}
 							</div>
 						) : null}
 

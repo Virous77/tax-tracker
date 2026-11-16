@@ -214,37 +214,52 @@ export function ImportClient() {
 						</p>
 					) : null}
 
-					<div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-						<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-							<p className="text-xs text-[var(--text-secondary)]">Rows read</p>
-							<p className="num mt-1 text-lg font-semibold">
-								{result.rowsRead}
-							</p>
+					<div className="space-y-1.5">
+						<div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+							<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<p className="text-xs text-[var(--text-secondary)]">
+									Rows read
+								</p>
+								<p className="num mt-1 text-lg font-semibold">
+									{result.rowsRead}
+								</p>
+							</div>
+							<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<p className="text-xs text-[var(--text-secondary)]">Inserted</p>
+								<p className="num mt-1 text-lg font-semibold text-[var(--positive)]">
+									{result.rowsInserted}
+								</p>
+							</div>
+							<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<p className="text-xs text-[var(--text-secondary)]">
+									Duplicates skipped
+								</p>
+								<p className="num mt-1 text-lg font-semibold">
+									{result.rowsDuplicate}
+								</p>
+							</div>
+							<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<p className="text-xs text-[var(--text-secondary)]">Skipped</p>
+								<p className="num mt-1 text-lg font-semibold text-[var(--text-secondary)]">
+									{result.rowsSkipped}
+								</p>
+							</div>
+							<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<p className="text-xs text-[var(--text-secondary)]">
+									Row errors
+								</p>
+								<p
+									className={`num mt-1 text-lg font-semibold ${
+										result.rowsError > 0 ? "text-[var(--loss)]" : ""
+									}`}
+								>
+									{result.rowsError}
+								</p>
+							</div>
 						</div>
-						<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-							<p className="text-xs text-[var(--text-secondary)]">Inserted</p>
-							<p className="num mt-1 text-lg font-semibold text-[var(--positive)]">
-								{result.rowsInserted}
-							</p>
-						</div>
-						<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-							<p className="text-xs text-[var(--text-secondary)]">
-								Duplicates skipped
-							</p>
-							<p className="num mt-1 text-lg font-semibold">
-								{result.rowsDuplicate}
-							</p>
-						</div>
-						<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-							<p className="text-xs text-[var(--text-secondary)]">Row errors</p>
-							<p
-								className={`num mt-1 text-lg font-semibold ${
-									result.rowsError > 0 ? "text-[var(--loss)]" : ""
-								}`}
-							>
-								{result.rowsError}
-							</p>
-						</div>
+						<p className="num text-[11px] text-[var(--text-muted)]">
+							{`${result.rowsRead} read = ${result.rowsInserted} inserted + ${result.rowsDuplicate} duplicates + ${result.rowsSkipped} skipped + ${result.rowsError} errors`}
+						</p>
 					</div>
 
 					{result.sheets && result.sheets.length > 0 ? (
@@ -282,6 +297,48 @@ export function ImportClient() {
 									</li>
 								))}
 							</ul>
+						</div>
+					) : null}
+
+					{result.skippedRows.length > 0 || result.rowsSkipped > 0 ? (
+						<div className="space-y-2">
+							<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
+								Skipped — covered by another export ({result.skippedRows.length}
+								)
+							</h3>
+							{result.skippedRows.length > 0 ? (
+								<div className="max-h-64 overflow-auto rounded border border-[var(--border)] bg-[var(--bg-subtle)]">
+									<table className="w-full border-collapse text-left text-xs">
+										<thead className="bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
+											<tr>
+												<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+													Sheet
+												</th>
+												<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+													Row
+												</th>
+												<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+													Reason
+												</th>
+											</tr>
+										</thead>
+										<tbody>
+											{result.skippedRows.map((sr) => (
+												<tr
+													key={`${sr.sheet}:${sr.rowIndex}:${sr.reason}`}
+													className="border-b border-[var(--border)] last:border-b-0"
+												>
+													<td className="px-3 py-2">{sr.sheet || "—"}</td>
+													<td className="num px-3 py-2">{sr.rowIndex}</td>
+													<td className="px-3 py-2 text-[var(--text-secondary)]">
+														{sr.reason}
+													</td>
+												</tr>
+											))}
+										</tbody>
+									</table>
+								</div>
+							) : null}
 						</div>
 					) : null}
 

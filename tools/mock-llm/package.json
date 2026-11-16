@@ -1,0 +1,6 @@
+{
+	"name": "mock-llm",
+	"private": true,
+	"type": "module",
+	"main": "server.test.mjs"
+}

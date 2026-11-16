@@ -309,16 +309,18 @@ describe("source selection", () => {
 		expect((await allTx()).length).toBe(0);
 	});
 
-	it("wrong explicit source never invents rows: every row is an error", async () => {
-		const s = await importOk(fixture("binance-withdrawals.csv"), "wd.csv", {
-			source: "coindcx",
-		});
-		expect(s.rowsInserted).toBe(0);
-		expect(s.rowsError).toBe(s.rowsRead);
-		const x = await importOk(fixture("coindcx-report.xlsx"), "c.xlsx", {
-			source: "binance",
-		});
-		expect(x.rowsInserted).toBe(0);
+	it("wrong explicit source returns 422 naming the expected headers", async () => {
+		for (const [file, source, header] of [
+			["binance-withdrawals.csv", "coindcx", "Side (Buy/Sell)"],
+			["coindcx-report.xlsx", "binance", "Date(UTC)"],
+		]) {
+			const error = fail(
+				await upload(fixture(file), file, { source }),
+				422,
+				"unprocessable_file",
+			);
+			expect(error?.message).toContain(header);
+		}
 		expect((await allTx()).length).toBe(0);
 	});
 

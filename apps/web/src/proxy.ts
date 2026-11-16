@@ -18,6 +18,8 @@ export function proxy(request: NextRequest) {
 			{ error: { code: "unauthorized", message: "Sign in to continue." } },
 			{ status: 401, headers: { "Cache-Control": "no-store" } },
 		);
-	return NextResponse.redirect(new URL("/login", request.url));
+	const login = new URL("/login", request.url);
+	login.searchParams.set("next", `${path}${request.nextUrl.search}`);
+	return NextResponse.redirect(login);
 }
 export const config = { matcher: ["/((?!_next/static|_next/image).*)"] };

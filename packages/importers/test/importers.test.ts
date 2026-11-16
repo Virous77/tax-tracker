@@ -254,3 +254,29 @@ describe("boundary checks", () => {
 		]);
 	});
 });
+
+it("generic identities survive recipe renaming and preserve identical rows", () => {
+	const input = file("generic-signed-amounts.csv");
+	const sheets = readSheets(input);
+	const mapping = recipe(input.name);
+	const rows = sheets[0];
+	if (!rows?.rows[0]) throw new Error("Missing fixture row");
+	rows.rows = [rows.rows[0], rows.rows[0]];
+	const columns = { ...mapping.columns, id: undefined };
+	const a = applyRecipe(
+		sheets,
+		{ ...mapping, id: "layout-a", columns },
+		{ timezone: "IST" },
+	).transactions;
+	const b = applyRecipe(
+		sheets,
+		{ ...mapping, id: "layout-b", columns },
+		{ timezone: "IST" },
+	).transactions;
+	expect(a).toHaveLength(2);
+	expect(a.map(({ source, sourceRef }) => [source, sourceRef])).toEqual(
+		b.map(({ source, sourceRef }) => [source, sourceRef]),
+	);
+	expect(a[0]?.sourceRef).not.toBe(a[1]?.sourceRef);
+	expect(a[0]?.source).toBe(`csv:${mapping.fingerprint}`);
+});

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { LedgerTxSchema, taxYearOf } from "@tax/core";
+import { D, LedgerTxSchema, taxYearOf } from "@tax/core";
 import {
 	CreateTransactionRequestSchema,
 	PatchTransactionRequestSchema,
+	type ReportReviewItem,
 	type TransactionsQuery,
 } from "@tax/core/api";
 import type { TaxDatabase } from "@tax/db";
@@ -20,7 +21,7 @@ function reviewedLedger(db: TaxDatabase) {
 			...tx.reviewFlags,
 			...flags.filter(
 				(flag) =>
-					flag.txId === tx.id &&
+					(flag.txId === tx.id || flag.txIds?.includes(tx.id)) &&
 					!tx.reviewFlags.some(
 						(original) =>
 							original.code === flag.code && original.message === flag.message,
@@ -128,24 +129,81 @@ export function deleteTransaction(db: TaxDatabase, id: string): void {
 	db.transactions.deleteManual(id);
 }
 export function review(db: TaxDatabase, taxYear?: string) {
+	const years = taxYear ? [taxYear] : listTaxYears().map((year) => year.id);
+	const reports = years.flatMap((year) => {
+		const report = db.reports.latest(year);
+		return report ? [report] : [];
+	});
+	const reportItems: { code: string; item: ReportReviewItem }[] =
+		reports.flatMap((report) => [
+			...report.balances
+				.filter(
+					(balance) =>
+						balance.difference !== undefined && !D(balance.difference).isZero(),
+				)
+				.map((balance) => ({
+					code: "balance_mismatch",
+					item: {
+						kind: "balance" as const,
+						taxYear: report.taxYear,
+						message: `${balance.asset}${balance.source ? ` at ${balance.source}` : ""}: computed ${balance.computed}, actual ${balance.actual}`,
+						balance,
+					},
+				})),
+			...report.unresolved
+				.filter((item) => item.reason === "missing_history")
+				.map((unresolved) => ({
+					code: unresolved.reason,
+					item: {
+						kind: "unresolved" as const,
+						taxYear: report.taxYear,
+						message: `Missing acquisition history for ${unresolved.quantity} ${unresolved.asset}.`,
+						unresolved,
+					},
+				})),
+		]);
+	const unresolvedTxIds = new Set(
+		reportItems.flatMap(({ item }) =>
+			item.kind === "unresolved" ? [item.unresolved.txId] : [],
+		),
+	);
 	const groups = new Map<
 		string,
 		{
 			code: string;
 			count: number;
 			items: ReturnType<typeof db.transactions.all>;
+			reportItems: ReportReviewItem[];
 		}
 	>();
 	for (const tx of reviewedLedger(db)) {
 		if (taxYear && taxYearOf(tx.timestamp) !== taxYear) continue;
 		for (const code of new Set(tx.reviewFlags.map((flag) => flag.code))) {
-			const group = groups.get(code) ?? { code, count: 0, items: [] };
+			if (code === "missing_history" && unresolvedTxIds.has(tx.id)) continue;
+			const group = groups.get(code) ?? {
+				code,
+				count: 0,
+				items: [],
+				reportItems: [],
+			};
 			group.items.push(tx);
 			group.count++;
 			groups.set(code, group);
 		}
 	}
+	for (const { code, item } of reportItems) {
+		const group = groups.get(code) ?? {
+			code,
+			count: 0,
+			items: [],
+			reportItems: [],
+		};
+		group.reportItems.push(item);
+		group.count++;
+		groups.set(code, group);
+	}
 	return {
+		reportStatus: reports.length === years.length ? "current" : "missing",
 		groups: [...groups.values()].sort((a, b) => a.code.localeCompare(b.code)),
 	};
 }

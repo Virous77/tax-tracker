@@ -50,7 +50,7 @@ export class BalanceBook {
 				txIds: [],
 			};
 			row.actual = item.amount;
-			row.difference = D(row.computed).minus(item.amount).toFixed();
+			row.difference = D(item.amount).minus(row.computed).toFixed();
 			this.rows.set(key, row);
 			if (!D(row.difference).isZero())
 				warn({

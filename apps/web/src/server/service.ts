@@ -1,7 +1,7 @@
 import * as api from "@tax/core/api";
 import { listTaxYears } from "@tax/rules";
 import { previewPayload, suggestRecipe } from "./ai/index";
-import { login, sessionCookie } from "./auth";
+import { invalidateSessions, login, sessionCookie } from "./auth";
 import { database } from "./context";
 import { ApiError, required } from "./errors";
 import { exportReport } from "./exports";
@@ -134,6 +134,7 @@ export async function execute(
 			};
 		}
 		case "logout":
+			invalidateSessions();
 			return {
 				value: undefined,
 				headers: {

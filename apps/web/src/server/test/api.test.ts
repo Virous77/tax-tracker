@@ -5,9 +5,15 @@ import { join } from "node:path";
 import { EngineSettingsSchema, type Recipe } from "@tax/core";
 import { headerFingerprint } from "@tax/importers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSession, login, validSession } from "../auth";
+import {
+	createSession,
+	invalidateSessions,
+	login,
+	validSession,
+} from "../auth";
 import { closeDatabases, database } from "../context";
 import { type Endpoint, handle } from "../http";
+import { groupWarnings } from "../reports";
 
 let directory: string;
 beforeEach(async () => {
@@ -583,4 +589,95 @@ it("requires a signed cookie at the API boundary and clears it on logout", async
 	const logout = await call("logout", "POST", {});
 	expect(logout.status).toBe(204);
 	expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+});
+
+it("uses the browser Host for Docker origins and ignores forwarded headers", async () => {
+	for (const [origin, host, status] of [
+		["http://localhost:3101", "localhost:3101", 200],
+		["http://evil.example", "localhost:3101", 403],
+		["https://localhost:3101", "localhost:3101", 403],
+	] as const) {
+		const result = await handle(
+			"putSettings",
+			new Request("http://0.0.0.0:3000/api/settings", {
+				method: "PUT",
+				body: "{}",
+				headers: {
+					"content-type": "application/json",
+					origin,
+					host,
+					"x-forwarded-host": "evil.example",
+					"x-forwarded-proto": "https",
+				},
+			}),
+		);
+		expect(result.status).toBe(status);
+	}
+});
+
+it("revokes sessions persistently even when APP_SECRET is configured", () => {
+	vi.stubEnv("APP_SECRET", "fixed-secret");
+	const copied = createSession();
+	expect(validSession(copied)).toBe(true);
+	invalidateSessions();
+	expect(validSession(copied)).toBe(false);
+	expect(validSession(createSession())).toBe(true);
+});
+
+it("groups identical warnings without losing counts or transaction attribution", async () => {
+	const grouped = groupWarnings([
+		{ code: "parse_warning", message: "Check GST", txId: "a" },
+		{ code: "parse_warning", message: "Check GST", txId: "b" },
+		{ code: "parse_warning", message: "Check GST", txId: "a" },
+		{ code: "parse_warning", message: "Different warning" },
+	]);
+	expect(grouped).toEqual([
+		{
+			code: "parse_warning",
+			message: "Check GST",
+			count: 3,
+			txIds: ["a", "b"],
+		},
+		{
+			code: "parse_warning",
+			message: "Different warning",
+			count: 1,
+			txIds: [],
+		},
+	]);
+	const imported = await (await upload()).json();
+	const ledger = database().transactions.all();
+	await call("computeReport", "POST", {}, { taxYear: "2026-27" });
+	const report = database().reports.latest("2026-27");
+	if (!report) throw new Error("Missing report");
+	report.warnings = groupWarnings(
+		ledger.map((tx) => ({
+			code: "parse_warning",
+			message: "Grouped warning",
+			txId: tx.id,
+		})),
+	);
+	database().reports.save(report);
+	const reviewed = await (await call("review")).json();
+	expect(
+		reviewed.groups.find(
+			(group: { code: string }) => group.code === "parse_warning",
+		).items,
+	).toHaveLength(imported.rowsInserted);
+});
+
+it("refuses AI requests for imported and failed files before making a network call", async () => {
+	const imported = await (await upload()).json();
+	const fetcher = vi.fn();
+	vi.stubGlobal("fetch", fetcher);
+	for (const status of ["imported", "failed"] as const) {
+		const detail = database().imports.get(imported.id);
+		if (!detail) throw new Error("Missing import");
+		database().imports.save({ ...detail, status });
+		for (const endpoint of ["previewPayload", "suggestRecipe"] as const)
+			expect(
+				(await call(endpoint, "POST", { importId: imported.id })).status,
+			).toBe(409);
+	}
+	expect(fetcher).not.toHaveBeenCalled();
 });

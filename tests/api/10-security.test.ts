@@ -3,6 +3,7 @@ import {
 	addManual,
 	allTx,
 	api,
+	BASE_URL,
 	call,
 	fail,
 	fixture,
@@ -123,6 +124,17 @@ describe("methods and bodies", () => {
 			}),
 		});
 		fail(res, 413);
+	});
+
+	it("same-origin mutations use the public localhost port in Docker", async () => {
+		ok(
+			await call("PUT", "/api/settings", {
+				json: { surchargeRate: "0" },
+				headers: { origin: new URL(BASE_URL).origin },
+			}),
+			200,
+			api.PutSettingsResponseSchema,
+		);
 	});
 
 	it("cross-origin mutations are refused even without a password", async () => {

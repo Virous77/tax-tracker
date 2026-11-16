@@ -17,7 +17,11 @@ async function importBody(request: Request) {
 			"validation_error",
 			"Use multipart/form-data for imports.",
 		);
-	const bytes = await readBody(request, fileLimit + 65536);
+	const bytes = await readBody(
+		request,
+		fileLimit + 65536,
+		"File exceeds 25 MB.",
+	);
 	let form: FormData;
 	try {
 		form = await new Request(request.url, {
@@ -70,14 +74,11 @@ async function importBody(request: Request) {
 async function readBody(
 	request: Request,
 	limit: number,
+	message = "Request exceeds the upload limit.",
 ): Promise<Uint8Array<ArrayBuffer>> {
 	const length = request.headers.get("content-length");
 	if (length && Number(length) > limit)
-		throw new ApiError(
-			413,
-			"file_too_large",
-			"Request exceeds the upload limit.",
-		);
+		throw new ApiError(413, "file_too_large", message);
 	const reader = request.body?.getReader();
 	if (!reader) return new Uint8Array();
 	const chunks: Uint8Array[] = [];
@@ -87,12 +88,7 @@ async function readBody(
 			const item = await reader.read();
 			if (item.done) break;
 			size += item.value.length;
-			if (size > limit)
-				throw new ApiError(
-					413,
-					"file_too_large",
-					"Request exceeds the upload limit.",
-				);
+			if (size > limit) throw new ApiError(413, "file_too_large", message);
 			chunks.push(item.value);
 		}
 	} finally {
@@ -124,7 +120,9 @@ export async function handle(
 			throw new ApiError(405, "method_not_allowed", "Method not allowed.");
 		if (!["GET", "HEAD"].includes(request.method)) {
 			const origin = request.headers.get("origin");
-			if (origin && origin !== new URL(request.url).origin)
+			const url = new URL(request.url);
+			const host = request.headers.get("host") ?? url.host;
+			if (origin && origin !== `${url.protocol}//${host}`)
 				throw new ApiError(
 					403,
 					"forbidden",

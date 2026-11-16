@@ -74,7 +74,12 @@ export function convertRecipeRow(
 		? splitPair(get("pair"), recipe.pairSplit?.knownQuotes)
 		: [base, quote];
 	if (!pair[0]) throw new RowParseError("Base asset is missing.");
-	const tx = baseTransaction(`csv:${recipe.id}`, sourceRef, timestamp, raw);
+	const tx = baseTransaction(
+		`csv:${recipe.fingerprint}`,
+		sourceRef,
+		timestamp,
+		raw,
+	);
 	if (side === "deposit" || side === "income") {
 		tx.type = side;
 		tx.assetIn = pair[0];

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import {
 	type ActualBalance,
 	EngineSettingsSchema,
+	type ReportWarning,
 	type ReviewFlag,
 	taxYearBounds,
 	VdaReportSchema,
@@ -13,6 +14,30 @@ import { listTaxYears, loadRules } from "@tax/rules";
 import { runJob } from "./context";
 import { ApiError, required } from "./errors";
 import { getSettings } from "./settings";
+export function groupWarnings(warnings: ReportWarning[]): ReportWarning[] {
+	const groups = new Map<string, ReportWarning>();
+	for (const warning of warnings) {
+		const key = JSON.stringify([warning.code, warning.message]);
+		const group = groups.get(key) ?? {
+			code: warning.code,
+			message: warning.message,
+			count: 0,
+			txIds: [],
+		};
+		group.count = (group.count ?? 0) + (warning.count ?? 1);
+		group.txIds = [
+			...new Set([
+				...(group.txIds ?? []),
+				...(warning.txIds ?? []),
+				...(warning.txId ? [warning.txId] : []),
+			]),
+		];
+		if (group.txIds.length === 1) group.txId = group.txIds[0];
+		else delete group.txId;
+		groups.set(key, group);
+	}
+	return [...groups.values()];
+}
 export function checkYear(taxYear: string): void {
 	if (!listTaxYears().some((year) => year.id === taxYear))
 		throw new ApiError(
@@ -105,7 +130,7 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 				fx,
 			}),
 		);
-		report.warnings.push(...warnings);
+		report.warnings = groupWarnings([...report.warnings, ...warnings]);
 		return db.reports.save(report);
 	});
 }

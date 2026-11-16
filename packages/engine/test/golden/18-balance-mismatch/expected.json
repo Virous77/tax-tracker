@@ -19,7 +19,7 @@
 					"asset": "ETH",
 					"computed": "1.5",
 					"actual": "1.4",
-					"difference": "0.1"
+					"difference": "-0.1"
 				}
 			],
 			"warningCodes": ["balance_mismatch"]

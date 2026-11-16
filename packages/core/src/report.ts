@@ -89,7 +89,9 @@ export const BalanceSchema = z.object({
 	source: z.string().optional(),
 	computed: DecimalStringSchema,
 	actual: DecimalStringSchema.optional(),
-	difference: DecimalStringSchema.optional(),
+	difference: DecimalStringSchema.describe(
+		"Actual minus computed quantity",
+	).optional(),
 	txIds: z.array(z.string()),
 });
 export const UnresolvedSchema = z.object({
@@ -98,6 +100,11 @@ export const UnresolvedSchema = z.object({
 	quantity: DecimalStringSchema,
 	reason: ReviewCodeSchema,
 });
+export const ReportWarningSchema = ReviewFlagSchema.extend({
+	count: z.number().int().positive().optional(),
+	txIds: z.array(z.string()).optional(),
+});
+export type ReportWarning = z.infer<typeof ReportWarningSchema>;
 export const VdaReportSchema = z.object({
 	taxYear: TaxYearSchema,
 	act: z.string(),
@@ -122,7 +129,7 @@ export const VdaReportSchema = z.object({
 	}),
 	balances: z.array(BalanceSchema),
 	unresolved: z.array(UnresolvedSchema),
-	warnings: z.array(ReviewFlagSchema),
+	warnings: z.array(ReportWarningSchema),
 	valuations: z.array(ValuationSchema),
 	ledger: z.array(LedgerTxSchema),
 	disclaimer: z.string(),

@@ -1,13 +1,8 @@
-import { EngineSettingsSchema } from "@tax/core";
+import { EngineSettingsSchema, isLocalAiEndpoint } from "@tax/core";
 import { SettingsResponseSchema, type SettingsUpdate } from "@tax/core/api";
 import type { TaxDatabase } from "@tax/db";
+import { listTaxYears } from "@tax/rules";
 import { ApiError } from "./errors";
-export function isLocalEndpoint(baseUrl: string): boolean {
-	const url = new URL(baseUrl);
-	return ["localhost", "127.0.0.1", "[::1]", "ollama"].includes(
-		url.hostname.toLowerCase(),
-	);
-}
 export function aiConfiguration(db: TaxDatabase) {
 	const value = db.settings.get("ai") as
 		| {
@@ -55,7 +50,7 @@ export function checkAiEndpoint(
 			"validation_error",
 			"AI endpoint must be an HTTP(S) URL without credentials, query or fragment.",
 		);
-	if (!isLocalEndpoint(ai.baseUrl) && (!ai.cloudAcknowledged || !ai.apiKey))
+	if (!isLocalAiEndpoint(ai.baseUrl) && (!ai.cloudAcknowledged || !ai.apiKey))
 		throw new ApiError(
 			400,
 			"cloud_acknowledgement_required",
@@ -70,6 +65,15 @@ export function checkAiEndpoint(
 }
 export function putSettings(db: TaxDatabase, patch: SettingsUpdate) {
 	const { ai, defaultTaxYear, ...engine } = patch;
+	if (
+		defaultTaxYear !== undefined &&
+		!listTaxYears().some((year) => year.id === defaultTaxYear)
+	)
+		throw new ApiError(
+			400,
+			"validation_error",
+			"Default tax year must have an available rule file.",
+		);
 	const current = getSettings(db);
 	const nextAi = { ...aiConfiguration(db), ...ai };
 	if (ai) checkAiEndpoint(nextAi);

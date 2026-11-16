@@ -12,6 +12,8 @@ import {
 	wipe,
 } from "./lib";
 
+import { parseCsv, unzip, xmlText } from "./zip";
+
 beforeEach(wipe);
 afterAll(wipe);
 
@@ -360,7 +362,7 @@ describe("golden cases through the API", () => {
 		expect(r.warnings.map((w) => w.code)).toContain("tds_not_deducted");
 	});
 
-	it("18 balance mismatch via PUT /api/balances/actual: computed 1.5, actual 1.4, difference 0.1", async () => {
+	it("18 balance mismatch via PUT /api/balances/actual: computed 1.5, actual 1.4, difference -0.1", async () => {
 		await buy("2026-04-01T06:00:00.000Z", "ETH", "2", "200");
 		await sell("2026-04-02T06:00:00.000Z", "ETH", "0.5", "100");
 		const first = await compute("2026-27");
@@ -388,9 +390,25 @@ describe("golden cases through the API", () => {
 		expect(r.balances.find((b) => b.asset === "ETH")).toMatchObject({
 			computed: "1.5",
 			actual: "1.4",
-			difference: "0.1",
+			difference: "-0.1",
 		});
 		expect(r.warnings.map((w) => w.code)).toContain("balance_mismatch");
+		for (const format of ["csv", "xlsx"]) {
+			const exported = await call(
+				"GET",
+				`/api/reports/2026-27/export?format=${format}&kind=full`,
+			);
+			expect(exported.status).toBe(200);
+			if (format === "csv")
+				expect(parseCsv(exported.text).flat()).toContain("'-0.1");
+			else {
+				const files = unzip(exported.bytes);
+				const cells = [...files.entries()]
+					.filter(([name]) => name.startsWith("xl/worksheets/"))
+					.flatMap(([, data]) => xmlText(data.toString("utf8")));
+				expect(cells).toContain("-0.1");
+			}
+		}
 	});
 });
 

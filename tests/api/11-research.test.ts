@@ -138,3 +138,33 @@ describe("Binance overlap and identical rows (export-formats.md A8)", () => {
 		expect(disposals.size).toBe(2);
 	});
 });
+
+describe("report warning aggregation", () => {
+	it("groups identical warnings with counts and keeps every affected ledger id", async () => {
+		await importOk(fixture("coindcx-report.xlsx"), "c.xlsx", {
+			source: "coindcx",
+			timezone: "IST",
+		});
+		const r = await compute("2026-27");
+		expect(
+			new Set(
+				r.warnings.map((warning) =>
+					JSON.stringify([warning.code, warning.message]),
+				),
+			).size,
+		).toBe(r.warnings.length);
+		const repeated = r.warnings.find((warning) => (warning.count ?? 1) > 1);
+		expect(repeated).toBeDefined();
+		expect(repeated?.txIds?.length).toBeGreaterThan(1);
+		const transactions = await allTx();
+		for (const id of repeated?.txIds ?? [])
+			expect(transactions.find((tx) => tx.id === id)?.reviewFlags).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: repeated?.code,
+						message: repeated?.message,
+					}),
+				]),
+			);
+	});
+});

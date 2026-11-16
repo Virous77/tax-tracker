@@ -44,7 +44,7 @@ describe("preview-payload", () => {
 		expect(p).toMatchObject({
 			endpoint: `${MOCK_FROM_APP}/chat/completions`,
 			model: "mock-recipe",
-			isLocal: false,
+			isLocal: true,
 		});
 		expect(p.sentPayload.model).toBe("mock-recipe");
 		expect(p.sentPayload.response_format.type).toBe("json_schema");
@@ -179,6 +179,33 @@ describe("suggest with the mock LLM", () => {
 		fail(await suggest(s.id), 502, "ai_unavailable");
 		expect(Date.now() - started).toBeLessThan(60_000);
 	}, 90_000);
+
+	it("suggest and payload preview reject a completed import without calling AI", async () => {
+		const s = await pending();
+		const { recipe } = ok(
+			await suggest(s.id),
+			200,
+			api.SuggestRecipeResponseSchema,
+		);
+		ok(
+			await call("POST", `/api/imports/${s.id}/confirm`, {
+				json: { recipe, saveRecipe: false },
+			}),
+			200,
+			api.ConfirmImportResponseSchema,
+		);
+		const before = JSON.stringify(await mockLastRequest());
+		for (const path of [
+			"/api/recipes/suggest",
+			"/api/recipes/suggest/preview-payload",
+		])
+			fail(
+				await call("POST", path, { json: { importId: s.id } }),
+				409,
+				"conflict",
+			);
+		expect(JSON.stringify(await mockLastRequest())).toBe(before);
+	});
 
 	it("suggest for an unknown import → 404", async () => {
 		fail(await suggest("00000000-0000-4000-8000-000000000000"), 404);

@@ -9,10 +9,12 @@ import type {
 import type { TaxDatabase } from "@tax/db";
 import {
 	applyRecipe,
+	binanceKind,
 	canonical,
 	detectSource,
 	headerFingerprint,
 	type ImportResult,
+	isCoinDcx,
 	parseBinance,
 	parseCoinDcx,
 	readSheets,
@@ -104,6 +106,24 @@ export async function createImport(
 			"File contains no data rows.",
 		);
 	const source = input.source === "auto" ? detectSource(sheets) : input.source;
+	if (
+		source === "binance" &&
+		!sheets.some((sheet) => sheet.rows.length && binanceKind(sheet))
+	)
+		throw new ApiError(
+			422,
+			"unprocessable_file",
+			"File does not match Binance. Expected headers: Date(UTC), Pair, Side, Price, Executed, Amount, Fee; or Date(UTC), Market, Type, Price, Amount, Total, Fee, Fee Coin; or UTC_Time, Account, Operation, Coin, Change, Remark; or Coin, Amount, TXID, Status plus a date column.",
+		);
+	if (
+		source === "coindcx" &&
+		!sheets.some((sheet) => sheet.rows.length && isCoinDcx(sheet))
+	)
+		throw new ApiError(
+			422,
+			"unprocessable_file",
+			"File does not match CoinDCX. Expected headers: Trade Completion time (or Transaction time), Side (Buy/Sell), and Gross Amount Paid/Received by the user(in INR) (or in base currency).",
+		);
 	const imported: ImportDetail = {
 		id: randomUUID(),
 		source,

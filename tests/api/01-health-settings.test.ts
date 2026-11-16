@@ -148,6 +148,12 @@ describe("settings", () => {
 		"http://127.0.0.1:11434/v1",
 		"http://ollama:11434/v1",
 		"http://[::1]:11434/v1",
+		"http://host.docker.internal:11501/v1",
+		"http://0.0.0.0:11434/v1",
+		"http://ollama.local:11434/v1",
+		"http://10.1.2.3:11434/v1",
+		"http://172.16.1.2:11434/v1",
+		"http://192.168.1.2:11434/v1",
 	])(
 		"local endpoint %s is accepted without key or acknowledgement",
 		async (baseUrl) => {
@@ -223,7 +229,7 @@ describe("settings", () => {
 		});
 	});
 
-	it("host.docker.internal counts as cloud", async () => {
+	it("host.docker.internal is local without cloud acknowledgement", async () => {
 		await putSettings({
 			ai: {
 				baseUrl: "http://localhost:11434/v1",
@@ -231,11 +237,12 @@ describe("settings", () => {
 				cloudAcknowledged: false,
 			},
 		});
-		fail(
+		ok(
 			await putSettings({
 				ai: { baseUrl: "http://host.docker.internal:11501/v1" },
 			}),
-			400,
+			200,
+			api.PutSettingsResponseSchema,
 		);
 	});
 

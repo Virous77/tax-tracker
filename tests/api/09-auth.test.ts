@@ -68,7 +68,12 @@ describe("with APP_PASSWORD", () => {
 	it("pages redirect to /login without a session", async () => {
 		const res = await call("GET", "/");
 		expect([302, 303, 307, 308]).toContain(res.status);
-		expect(res.headers.get("location")).toMatch(/\/login$/);
+		expect(
+			new URL(
+				res.headers.get("location") ?? "",
+				"http://localhost",
+			).searchParams.get("next"),
+		).toBe("/");
 	});
 
 	it("empty password → 400", async () => {
@@ -132,6 +137,21 @@ describe("with APP_PASSWORD", () => {
 		const setCookie = res.headers.get("set-cookie") ?? "";
 		expect(setCookie).toMatch(/^tax_tracker_session=;/);
 		expect(setCookie).toMatch(/Max-Age=0/);
+		fail(
+			await call("GET", "/api/settings", { headers: { cookie } }),
+			401,
+			"unauthorized",
+		);
+		const fresh = await call("POST", "/api/auth/login", {
+			json: { password: PASSWORD },
+		});
+		ok(fresh, 200, api.LoginResponseSchema);
+		const freshCookie = fresh.headers.get("set-cookie")?.split(";")[0] ?? "";
+		ok(
+			await call("GET", "/api/settings", { headers: { cookie: freshCookie } }),
+			200,
+			api.SettingsResponseSchema,
+		);
 	});
 
 	it("brute force: after 10 failures the login is locked (429), even for the right password", async () => {

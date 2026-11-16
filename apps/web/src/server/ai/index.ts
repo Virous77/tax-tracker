@@ -1,14 +1,20 @@
-import { RecipeSchema } from "@tax/core";
+import { isLocalAiEndpoint, RecipeSchema } from "@tax/core";
 import { SentPayloadSchema } from "@tax/core/api";
 import type { TaxDatabase } from "@tax/db";
 import { z } from "zod";
 import { ApiError, required } from "../errors";
-import { aiConfiguration, checkAiEndpoint, isLocalEndpoint } from "../settings";
+import { aiConfiguration, checkAiEndpoint } from "../settings";
 export function previewPayload(
 	db: TaxDatabase,
 	input: { importId: string; sheet?: string },
 ) {
 	const imported = required(db.imports.get(input.importId));
+	if (imported.status !== "pending_recipe")
+		throw new ApiError(
+			409,
+			"conflict",
+			"Only an import awaiting a recipe can use the AI assistant.",
+		);
 	const sheet = required(
 		imported.sheets?.find((value) =>
 			input.sheet ? value.name === input.sheet : true,
@@ -49,7 +55,7 @@ export function previewPayload(
 		sentPayload,
 		endpoint,
 		model: ai.model,
-		isLocal: isLocalEndpoint(ai.baseUrl),
+		isLocal: isLocalAiEndpoint(ai.baseUrl),
 	};
 }
 
@@ -66,9 +72,9 @@ export async function suggestRecipe(
 	db: TaxDatabase,
 	input: { importId: string; sheet?: string },
 ) {
+	const preview = previewPayload(db, input);
 	const ai = aiConfiguration(db);
 	checkAiEndpoint(ai, true);
-	const preview = previewPayload(db, input);
 	let response: Response;
 	try {
 		response = await fetch(preview.endpoint, {

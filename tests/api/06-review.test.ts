@@ -47,7 +47,7 @@ describe("GET /api/review", () => {
 		const r = await review();
 		expect(r.groups.length).toBeGreaterThan(0);
 		for (const g of r.groups) {
-			expect(g.count, g.code).toBe(g.items.length);
+			expect(g.count, g.code).toBe(g.items.length + g.reportItems.length);
 			for (const tx of g.items)
 				expect(
 					tx.reviewFlags.map((f) => f.code),
@@ -60,7 +60,11 @@ describe("GET /api/review", () => {
 	it("missing_history: the ETH sell with no buy (2026-27)", async () => {
 		const g = group(await review("?taxYear=2026-27"), "missing_history");
 		expect(g?.count).toBe(1);
-		expect(g?.items[0]).toMatchObject({ assetOut: "ETH", amountOut: "0.01" });
+		expect(g?.reportItems[0]).toMatchObject({
+			kind: "unresolved",
+			taxYear: "2026-27",
+			unresolved: { asset: "ETH", quantity: "0.01", reason: "missing_history" },
+		});
 	});
 
 	it("tds_not_deducted: Binance sell after compute", async () => {
@@ -133,6 +137,71 @@ describe("GET /api/review", () => {
 			await call("GET", "/api/review?taxYear=nope"),
 			400,
 			"validation_error",
+		);
+	});
+});
+
+describe("report review status and balance items", () => {
+	it("tracks invalidation through ledger, settings and actual balance changes", async () => {
+		await wipe();
+		expect((await review("?taxYear=2026-27")).reportStatus).toBe("missing");
+		await compute("2026-27");
+		expect((await review("?taxYear=2026-27")).reportStatus).toBe("current");
+		const tx = await addManual({
+			timestamp: "2026-05-01T00:00:00.000Z",
+			type: "buy",
+			assetIn: "ETH",
+			amountIn: "1",
+			inrValue: "100",
+		});
+		expect((await review("?taxYear=2026-27")).reportStatus).toBe("missing");
+		await compute("2026-27");
+		ok(
+			await call("PUT", "/api/settings", { json: { feeTreatment: "include" } }),
+			200,
+			api.SettingsResponseSchema,
+		);
+		expect((await review("?taxYear=2026-27")).reportStatus).toBe("missing");
+		await compute("2026-27");
+		ok(
+			await call("PUT", "/api/balances/actual?taxYear=2026-27", {
+				json: [
+					{ asset: "ETH", amount: "0.5" },
+					{ asset: "BTC", amount: "2" },
+				],
+			}),
+			200,
+			api.PutActualBalancesResponseSchema,
+		);
+		expect((await review("?taxYear=2026-27")).reportStatus).toBe("missing");
+		await compute("2026-27");
+		const r = await review("?taxYear=2026-27");
+		expect(r.reportStatus).toBe("current");
+		const g = group(r, "balance_mismatch");
+		expect(g?.count).toBe(2);
+		expect(g?.reportItems).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					kind: "balance",
+					balance: {
+						asset: "ETH",
+						computed: "1",
+						actual: "0.5",
+						difference: "-0.5",
+						txIds: [tx.id],
+					},
+				}),
+				expect.objectContaining({
+					kind: "balance",
+					balance: {
+						asset: "BTC",
+						computed: "0",
+						actual: "2",
+						difference: "2",
+						txIds: [],
+					},
+				}),
+			]),
 		);
 	});
 });

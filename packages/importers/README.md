@@ -13,3 +13,5 @@ No-ID source references hash the canonical original row with an occurrence ordin
 Swap `priceQuote` is expressed per outgoing unit, as required by the existing engine: a crypto-quoted buy disposes the quote itself at quote price `1`; the original exchange price stays in `raw`. Quote/suffix splitting supports common quote assets and explicit delimiters. Ambiguous or unknown fee symbols/amounts produce row errors instead of guessed amounts.
 
 The library research document was not yet present when the ZIP/XML dependencies were selected. No npm `xlsx`, git or tarball dependency is used. CSV/date/decimal handling uses the standard library and existing core helpers.
+
+Generic transaction sources are `csv:<header fingerprint>`, independent of recipe id/name. Explicit mapped exchange ids are retained; rows without an id use the canonical raw-row hash plus an occurrence ordinal. Pre-release databases are not migrated from recipe-based sources: delete old generic imports and re-import their originals before relying on cross-version deduplication.

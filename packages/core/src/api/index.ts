@@ -10,7 +10,7 @@ import {
 	TxTypeSchema,
 } from "../ledger.js";
 import { RecipeSchema } from "../recipe.js";
-import { VdaReportSchema } from "../report.js";
+import { BalanceSchema, UnresolvedSchema, VdaReportSchema } from "../report.js";
 import {
 	ActualBalanceSchema,
 	EngineSettingsPatchSchema,
@@ -269,6 +269,21 @@ export const ReviewQuerySchema = z.object({
 	taxYear: TaxYearSchema.optional(),
 });
 export const ReviewRequestSchema = ReviewQuerySchema;
+export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
+	z.object({
+		kind: z.literal("balance"),
+		taxYear: TaxYearSchema,
+		message: z.string(),
+		balance: BalanceSchema,
+	}),
+	z.object({
+		kind: z.literal("unresolved"),
+		taxYear: TaxYearSchema,
+		message: z.string(),
+		unresolved: UnresolvedSchema,
+	}),
+]);
+export type ReportReviewItem = z.infer<typeof ReportReviewItemSchema>;
 export const ReviewResponseSchema = z.object({
 	reportStatus: z.enum(["current", "stale", "missing"]),
 	groups: z.array(
@@ -276,6 +291,7 @@ export const ReviewResponseSchema = z.object({
 			code: ReviewCodeSchema,
 			count: z.number().int().nonnegative(),
 			items: z.array(LedgerTxSchema),
+			reportItems: z.array(ReportReviewItemSchema),
 		}),
 	),
 });

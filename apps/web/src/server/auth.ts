@@ -4,18 +4,17 @@ import {
 	randomBytes,
 	timingSafeEqual,
 } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { ApiError } from "./errors";
 export const SESSION_COOKIE = "tax_tracker_session";
 const sessionSeconds = 12 * 60 * 60;
-function secret(): string {
-	if (process.env.APP_SECRET) return process.env.APP_SECRET;
+function privateValue(name: string): string {
 	const directory = resolve(
 		/* turbopackIgnore: true */ process.env.DATA_DIR ?? "./data",
 	);
 	mkdirSync(directory, { recursive: true, mode: 0o700 });
-	const path = resolve(directory, ".session-secret");
+	const path = resolve(directory, name);
 	try {
 		return readFileSync(path, "utf8");
 	} catch (error) {
@@ -39,6 +38,21 @@ function secret(): string {
 		return readFileSync(path, "utf8");
 	}
 }
+export function invalidateSessions(): void {
+	const directory = resolve(
+		/* turbopackIgnore: true */ process.env.DATA_DIR ?? "./data",
+	);
+	mkdirSync(directory, { recursive: true, mode: 0o700 });
+	const temporary = resolve(
+		directory,
+		`.session-epoch-${randomBytes(16).toString("hex")}`,
+	);
+	writeFileSync(temporary, randomBytes(32).toString("hex"), {
+		flag: "wx",
+		mode: 0o600,
+	});
+	renameSync(temporary, resolve(directory, ".session-epoch"));
+}
 function equal(left: string, right: string): boolean {
 	return timingSafeEqual(
 		createHash("sha256").update(left).digest(),
@@ -46,7 +60,12 @@ function equal(left: string, right: string): boolean {
 	);
 }
 function signature(value: string): string {
-	return createHmac("sha256", secret()).update(value).digest("base64url");
+	return createHmac(
+		"sha256",
+		process.env.APP_SECRET || privateValue(".session-secret"),
+	)
+		.update(`${privateValue(".session-epoch")}.${value}`)
+		.digest("base64url");
 }
 export function createSession(now = Date.now()): string {
 	const body = `${Math.floor(now / 1000) + sessionSeconds}.${randomBytes(16).toString("hex")}`;

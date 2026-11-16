@@ -15,7 +15,7 @@ import {
 	splitPair,
 	tradePriceQuote,
 } from "../values.js";
-import { COINDCX_SHEETS, COINDCX_HEADERS as columns } from "./headers.js";
+import { COINDCX_HEADERS as columns } from "./headers.js";
 
 function column(sheet: TableSheet, keys: string[]): string | undefined {
 	return sheet.headers.find((header) =>
@@ -23,13 +23,10 @@ function column(sheet: TableSheet, keys: string[]): string | undefined {
 	);
 }
 export function isCoinDcx(sheet: TableSheet): boolean {
-	return (
-		COINDCX_SHEETS.includes(sheet.name) ||
-		Boolean(
-			column(sheet, columns.timestamp) &&
-				column(sheet, columns.side) &&
-				(column(sheet, columns.grossInr) || column(sheet, columns.grossQuote)),
-		)
+	return Boolean(
+		column(sheet, columns.timestamp) &&
+			column(sheet, columns.side) &&
+			(column(sheet, columns.grossInr) || column(sheet, columns.grossQuote)),
 	);
 }
 function convert(

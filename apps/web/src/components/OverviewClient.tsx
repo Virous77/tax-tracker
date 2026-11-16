@@ -32,6 +32,7 @@ import {
 	isPositiveDecimal,
 	pluralise,
 } from "@/lib/client/format";
+import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
 
 export function OverviewClient() {
 	const router = useRouter();
@@ -95,7 +96,9 @@ export function OverviewClient() {
 				setReport(null);
 				setReportMissing(repState.missing);
 			}
-			const totalFlags = review.groups.reduce((acc, g) => acc + g.count, 0);
+			const totalFlags = review.groups
+				.filter((g) => REVIEW_CODE_INFO[g.code].severity !== "info")
+				.reduce((acc, g) => acc + g.count, 0);
 			setReviewCount(totalFlags);
 			setTxTotal(txPage ? txPage.total : null);
 		} catch (err) {
@@ -198,7 +201,7 @@ export function OverviewClient() {
 						/>
 						<span>
 							<strong className="font-semibold num">{reviewCount}</strong>{" "}
-							{pluralise(reviewCount, "flagged transaction item")}{" "}
+							{pluralise(reviewCount, "item")}{" "}
 							{pluralise(reviewCount, "needs", "need")} review before filing.
 						</span>
 					</div>

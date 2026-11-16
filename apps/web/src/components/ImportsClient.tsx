@@ -544,7 +544,8 @@ export function ImportsClient() {
 												className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-2.5 text-xs"
 											>
 												<p className="font-medium text-[var(--text-primary)]">
-													{sr.sheet ? `${sr.sheet} · ` : ""}Row {sr.rowIndex}
+													{sr.sheet ? `${sr.sheet} · ` : ""}Row{" "}
+													{sr.rowIndex + 1}
 												</p>
 												<p className="mt-0.5 text-[var(--text-secondary)]">
 													{sr.reason}
@@ -572,7 +573,7 @@ export function ImportsClient() {
 											className="rounded border border-[var(--loss)]/30 bg-[var(--loss-soft)] p-2.5 text-xs"
 										>
 											<p className="font-medium text-[var(--loss)]">
-												{re.sheet ? `${re.sheet} · ` : ""}Row {re.rowIndex}:{" "}
+												{re.sheet ? `${re.sheet} · ` : ""}Row {re.rowIndex + 1}:{" "}
 												{re.message}
 											</p>
 											{re.raw !== undefined ? (

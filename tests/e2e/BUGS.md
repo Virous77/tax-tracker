@@ -130,3 +130,15 @@ Checked and working:
   UI (the server tests cover the codes; `review-codes.ts` has labels for both).
 - A "Compute all N missing reports" label (more than two missing years): only two rule years exist.
 - Dark-mode contrast of the new chips and the skipped section (screenshots only).
+
+## Round 4 — fixed by lead (verified: API 320/320, E2E 124/124)
+
+| Bug                                                    | Fix                                                                                                     | Verified by                                                                               |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| R3-1 settings save clears reports without a tax change | `packages/db/src/index.ts`: only the `engine` key, and only when its value changes, invalidates reports | `tests/api/13-round3.test.ts` › what clears a stored report (3 tests)                     |
+| R3-2 balances for one year clear every year's report   | `invalidateReports` takes an optional tax year; balance saves pass theirs                               | `tests/api/13-round3.test.ts` › actual balances for one year keep the other year's report |
+| R3-3 duplicate flag-code chips on Transactions         | chips are unique per code (`TransactionsClient.tsx`)                                                    | manual                                                                                    |
+| R3-4 Overview counts report notices as review items    | info-severity codes are excluded; wording is "N item(s) need(s) review"                                 | `tests/e2e/round3.spec.ts` › report notices are not counted                               |
+| R3-5 row numbers start at 0                            | import screens show 1-based data row numbers                                                            | manual                                                                                    |
+
+Still noted, not changed: ledger edits invalidate every year (safe but broad); uncomputed reports return 404 by design.

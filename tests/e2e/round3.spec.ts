@@ -260,7 +260,7 @@ test.describe("singular and plural wording", () => {
 		for (const tx of flagged(1)) await api.addManual(tx);
 		await page.goto("/?taxYear=2026-27");
 		await expect(
-			page.getByText("1 flagged transaction item needs review before filing."),
+			page.getByText("1 item needs review before filing."),
 		).toBeVisible();
 		await page.goto("/review?taxYear=2026-27");
 		await expect(
@@ -274,7 +274,19 @@ test.describe("singular and plural wording", () => {
 		for (const tx of flagged(2)) await api.addManual(tx);
 		await page.goto("/?taxYear=2026-27");
 		await expect(
-			page.getByText("2 flagged transaction items need review before filing."),
+			page.getByText("2 items need review before filing."),
+		).toBeVisible();
+	});
+
+	test("Overview: report notices are not counted as review items", async ({
+		page,
+		api,
+	}) => {
+		for (const tx of flagged(1)) await api.addManual(tx);
+		await api.compute("2026-27");
+		await page.goto("/?taxYear=2026-27");
+		await expect(
+			page.getByText("1 item needs review before filing."),
 		).toBeVisible();
 	});
 

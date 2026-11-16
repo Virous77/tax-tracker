@@ -419,12 +419,11 @@ export function TransactionsClient() {
 										</td>
 										<td className="px-4 py-2.5">
 											<div className="flex flex-wrap gap-1">
-												{tx.reviewFlags.map((flag) => (
-													<Badge
-														key={`${flag.code}:${flag.message}`}
-														tone="warning"
-													>
-														{flag.code}
+												{[
+													...new Set(tx.reviewFlags.map((flag) => flag.code)),
+												].map((code) => (
+													<Badge key={code} tone="warning">
+														{code}
 													</Badge>
 												))}
 											</div>

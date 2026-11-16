@@ -42,11 +42,16 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 	});
 	const invalidateReports = (
 		cause: Exclude<ReportMissingDetails["cause"], "never_computed">,
+		onlyTaxYear?: string,
 	) => {
 		const invalidatedAt = new Date().toISOString();
+		const scope = onlyTaxYear
+			? eq(schema.reports.taxYear, onlyTaxYear)
+			: undefined;
 		const years = orm
 			.selectDistinct({ taxYear: schema.reports.taxYear })
 			.from(schema.reports)
+			.where(scope)
 			.all();
 		for (const { taxYear } of years)
 			orm
@@ -57,7 +62,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 					set: { invalidatedAt, cause },
 				})
 				.run();
-		orm.delete(schema.reports).run();
+		orm.delete(schema.reports).where(scope).run();
 	};
 	const txValues = (tx: LedgerTx) => ({
 		...tx,
@@ -247,12 +252,22 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 					.get()?.value,
 			set: (key: string, value: unknown) =>
 				orm.transaction(() => {
+					const previous = orm
+						.select()
+						.from(schema.settings)
+						.where(eq(schema.settings.key, key))
+						.get()?.value;
 					orm
 						.insert(schema.settings)
 						.values({ key, value })
 						.onConflictDoUpdate({ target: schema.settings.key, set: { value } })
 						.run();
-					invalidateReports("settings_changed");
+					// Only engine settings feed the tax computation; AI or UI preferences must not clear reports.
+					if (
+						key === "engine" &&
+						JSON.stringify(previous) !== JSON.stringify(value)
+					)
+						invalidateReports("settings_changed");
 				}),
 		},
 		actualBalances: {
@@ -281,7 +296,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 							.insert(schema.actualBalances)
 							.values({ ...row, taxYear, source: row.source ?? "" })
 							.run();
-					invalidateReports("balances_changed");
+					invalidateReports("balances_changed", taxYear);
 					return rows;
 				}),
 		},

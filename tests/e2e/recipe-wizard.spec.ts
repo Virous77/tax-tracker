@@ -59,13 +59,22 @@ test("AI-assisted wizard: payload preview, suggestion, hand edit, preview, save,
 	await expect(notice).toContainText(
 		`This is exactly what will be sent to mock-recipe at ${MOCK_LLM_IN_CONTAINER}`,
 	);
-	await expect(page.getByText("Cloud endpoint — leaves machine")).toBeVisible();
+	// host.docker.internal is a local endpoint (shared isLocalAiEndpoint in @tax/core).
+	await expect(page.getByText("Local endpoint", { exact: true })).toBeVisible();
+	await expect(page.getByText("Cloud endpoint — leaves machine")).toHaveCount(
+		0,
+	);
 	const payloadBox = notice.locator("xpath=ancestor::div[2]").locator("pre");
 	await expect(payloadBox).toContainText("Order Ref");
 	const previewed = JSON.parse((await payloadBox.textContent()) ?? "null");
 	await snap(page, "wizard-payload-preview");
 
+	// The wizard's own header guesses equal the mock's answer, so wait for the real reply.
+	const suggested = page.waitForResponse(
+		(r) => r.url().endsWith("/api/recipes/suggest") && r.status() === 200,
+	);
 	await page.getByRole("button", { name: "Send & suggest recipe" }).click();
+	await suggested;
 	await expect(column(page, /^Trading Pair/)).toHaveValue("Instrument");
 	await expect(column(page, /^Total \/ Consideration/)).toHaveValue(
 		"Net Amount",
@@ -221,4 +230,40 @@ test("the wizard's first guess does not use the Side column as the row ID", asyn
 	// "Side" contains the substring "id"; using it as the dedupe key collapses every Buy
 	// (and every Sell) into one row and silently drops real trades as duplicates.
 	await expect(column(page, /^Trade \/ Order ID/)).not.toHaveValue("Side");
+});
+
+test("generic-ddmmyyyy.csv with the wizard's ID guess inserts 4 rows; re-import is 4 duplicates", async ({
+	page,
+}) => {
+	for (const [inserted, duplicates] of [
+		["4", "0"],
+		["0", "4"],
+	]) {
+		await uploadGeneric(page, "generic-ddmmyyyy.csv");
+		const idGuess = await column(page, /^Trade \/ Order ID/).inputValue();
+		expect(idGuess).not.toBe("Side");
+		await column(page, /^Timestamp/).selectOption("Txn Date");
+		await column(page, /^Amount \/ Quantity/).selectOption("Quantity");
+		await column(page, /^Side column/).selectOption("Side");
+		await column(page, /^Trading Pair/).selectOption("Market");
+		await column(page, /^Unit Price/).selectOption("Rate");
+		await column(page, /^Total \/ Consideration/).selectOption("Value");
+		await column(page, /^Fee Amount/).selectOption("Charges");
+		await column(page, /^Fee Asset/).selectOption("Charges Coin");
+		await page.getByLabel("Date format").fill("dd/MM/yyyy HH:mm");
+		await page.getByRole("button", { name: "Auto-detect from sample" }).click();
+		await page.getByRole("button", { name: "Preview 10 rows" }).click();
+		await expect(page.getByText("4 in / 4 out")).toBeVisible();
+		await page.getByLabel("Save recipe for future imports").uncheck();
+		await page.getByRole("button", { name: "Confirm & import" }).click();
+		await expect(
+			page.getByRole("heading", {
+				name: "generic-ddmmyyyy.csv — Import complete",
+			}),
+		).toBeVisible();
+		await expect(stat(page, "Inserted")).toHaveText(inserted);
+		await expect(stat(page, "Duplicates skipped")).toHaveText(duplicates);
+	}
+	await page.goto("/transactions");
+	await expect(page.getByText("Showing 1–4 of 4")).toBeVisible();
 });

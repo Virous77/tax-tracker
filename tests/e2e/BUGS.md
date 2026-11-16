@@ -1,189 +1,130 @@
-# Browser E2E findings — 2026-11-16
+# Browser E2E findings — regression round 2026-11-17
 
-Run: `pnpm test:e2e` (Playwright 1.65, Chromium, image `tax-tracker-app:local` from `f12dd07`).
-Result: **99 tests: 83 pass, 16 fail.** Every failing test fails because of an app defect listed below.
+Run: `pnpm test:e2e` (Playwright 1.65, Chromium, image `tax-tracker-app:local` built from `main` at
+`1cc6111`, after fix commits `f1f5394` server and `1cc6111` UI).
+Result: **108 tests: 107 pass, 1 fail.** The failure is new bug N1 below and is left failing on purpose.
 
-Global setup starts three throwaway Compose stacks: `taxe2e` (port 3102), `taxe2epw` (3103,
-`APP_PASSWORD`) and `taxe2efresh` (3104, read-only empty-state checks). Each gets a fresh
-`/private/tmp` data dir, and global teardown stops them. Playwright's `webServer` runs the mock LLM on 11502.
-`E2E_REUSE_STACK=1` reuses running stacks and `E2E_KEEP_STACK=1` leaves them running after the run.
+Global setup starts three throwaway Compose stacks: `taxe2e` (3102), `taxe2epw` (3103, `APP_PASSWORD`)
+and `taxe2efresh` (3104, read-only empty-state checks), each on a fresh `/private/tmp` data dir; global
+teardown stops them. Playwright's `webServer` runs the mock LLM on 11502.
+`E2E_REUSE_STACK=1` reuses running stacks and `E2E_KEEP_STACK=1` leaves them running.
 
-**Test-only workaround for bug 1.** Without it nothing can be written from a browser in Docker, so
-every UI flow would stop at its first save. `support/origin-proxy.ts` runs proxies on 3112 and 3113
-that change only the `Origin` header. The browser specs use these proxies. The tests marked
-"without the test-only Origin workaround" talk to the app directly and fail because of bug 1. Set
-`E2E_NO_ORIGIN_WORKAROUND=1` to turn the proxies off for every spec.
+**The test-only Origin-rewriting proxy is gone.** Bug 1 is fixed, so every spec talks to the app ports
+directly. The two tests that proved bug 1 now pass as "saves succeed".
 
-Screenshots: `tests/e2e/screenshots/` (gitignored). `screen-<name>-{light,dark,mobile,mobile-dark}.png`
+Screenshots: `tests/e2e/screenshots/` (gitignored), refreshed in this run. `screen-<name>-{light,dark,mobile,mobile-dark}.png`
 cover every screen; the other files are per-scenario captures.
 
 ---
 
-## Functional defects (ranked)
+## Status of earlier findings
 
-### 1. Critical — every browser write is rejected with 403 inside Docker (import, compute, settings, login…)
+| #   | Finding                                                         | Status         | Verified by                                                                                                     |
+| --- | --------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------- |
+| 1   | Critical: every browser write rejected with 403 in Docker       | **FIXED**      | `import.spec.ts` › "a real browser upload is accepted…"; `password.spec.ts` › "a real browser can log in"; whole suite now runs without the proxy |
+| 2   | High: wizard used "Side" as the row ID, dropping trades         | **FIXED**      | `recipe-wizard.spec.ts` › "the wizard's first guess does not use the Side column…" and "generic-ddmmyyyy.csv with the wizard's ID guess inserts 4 rows; re-import is 4 duplicates" |
+| 3   | High: host.docker.internal "Local" in UI, cloud on server       | **FIXED**      | `settings.spec.ts` › "host.docker.internal is local in both UI and server" (saved with `cloudAcknowledged: false`) |
+| 4   | Medium: balance mismatch never reached Review                   | **FIXED**      | `review.spec.ts` › "reportStatus banner prompts a compute, then the balance mismatch appears as a report item"; `report.spec.ts` › "TDS section, 26AS checklist and actual-balance mismatch" |
+| 5   | Medium: Review said "clean" before any compute                  | **FIXED**      | `review.spec.ts` › "before any compute…" and the reportStatus test; `empty-states.spec.ts` › "review empty state asks for a compute instead of claiming clean" |
+| 6   | Medium: Add-transaction error was a raw Zod dump                | **FIXED**      | `transactions.spec.ts` › "validation errors are shown and nothing is saved" (now a hard check: "Quantity received must be a valid number.") |
+| 7   | Medium a11y: no visible focus on the file picker                | **FIXED**      | `import.spec.ts` › "the drop zone shows a visible focus ring…"; `responsive-a11y.spec.ts` › "keyboard focus is visible on import" |
+| 8   | Medium a11y: mobile menu ignored Escape, didn't take focus      | **FIXED**      | `responsive-a11y.spec.ts` › "mobile navigation" (3 existing + "Escape returns focus to the toggle and Tab stays inside the open menu") |
+| 9   | Medium a11y: dark primary buttons 2.94:1                        | **FIXED**      | `responsive-a11y.spec.ts` › "text meets WCAG AA contrast (dark)"                                                 |
+| 10  | Low a11y: light muted text 4.28:1                               | **FIXED**      | `responsive-a11y.spec.ts` › "text meets WCAG AA contrast (light)"                                                |
+| 11  | Low a11y: export links all named "CSV"/"XLSX"                   | **FIXED**      | `report.spec.ts` › "export links have distinguishable accessible names" (now also requires kind + format in each name) |
+| 12  | Low: login always landed on Overview                            | **FIXED**      | `password.spec.ts` › "after login the user lands on the page they asked for"; off-site `?next=` values are refused (3 new tests) |
+| 13  | Low a11y: drawer didn't return focus                            | **FIXED**      | `responsive-a11y.spec.ts` › "add-transaction drawer traps focus, closes on Escape and returns focus" (soft → hard) |
+| 14  | Low: Difference sign differed between UI and export             | **FIXED**      | `report.spec.ts` › "TDS section…" asserts the CSV row `"ETH","0","0.5","0.5"` and the "Difference = Actual − Computed" note |
 
-- **Screen:** all screens. Seen on Import, Report, Settings and Login.
-- **Steps:** `APP_PORT=3102 docker compose up` → open `http://localhost:3102/import` → upload any file → _Upload & import_.
-- **Expected:** import summary. **Actual:** `403 forbidden "Cross-origin mutations are not allowed."`.
-  In password mode a correct password also gets 403, so nobody can log in.
-- **Cause:** `apps/web/src/server/http.ts:126-127` compares `Origin` with `new URL(request.url).origin`.
-  In the standalone container that is always `http://0.0.0.0:3000` (`HOSTNAME=0.0.0.0`) whatever the
-  `Host` header says. Checked with curl: `Origin: http://localhost:3000` → 403, `Origin: http://0.0.0.0:3000` → 200.
-  So it fails on the default port 3000 too, not only when the port is remapped. Compare against the
-  `Host` / `X-Forwarded-Host` header instead.
-- **Tests:** `import.spec.ts` › "a real browser upload is accepted…", `password.spec.ts` › "a real browser can log in".
-- **Screenshot:** `test-results/import-without-the-test-on-*/test-failed-1.png` (kept only after a failing run).
+UX items from the last round:
 
-### 2. High — the generic CSV wizard drops real trades as "duplicates" (data loss)
-
-- **Screen:** Import → generic recipe wizard.
-- **Steps:** import `tests/data/out/generic-ddmmyyyy.csv` (auto, IST) → map the columns → leave
-  _Trade / Order ID_ as the wizard pre-filled it → _Confirm & import_.
-- **Expected:** 4 inserted. **Actual:** 2 inserted, **2 "Duplicates skipped"** on an empty ledger. Each row's `sourceRef` is `Buy` or `Sell`.
-- **Cause:** `apps/web/src/components/import/RecipeWizard.tsx:212`. `guessColumn(h, ["id", …])`
-  matches substrings, and "S**id**e" contains "id", so the _Side_ column becomes the dedupe key. This
-  breaks "never guess silently" and "never throw away rows". Match `id` only as a whole word, or
-  leave the field empty.
-- **Test:** `recipe-wizard.spec.ts` › "the wizard's first guess does not use the Side column as the row ID".
-- **Screenshot:** `screenshots/wizard-row-preview.png` for context.
-
-### 3. High — Settings shows `host.docker.internal` (and LAN / `.local` hosts) as "Local", but the server treats it as cloud and won't save it
-
-- **Screen:** Settings → AI Recipe Assistant.
-- **Steps:** set the base URL to `http://host.docker.internal:11502/v1`, a model and a key → _Save settings_.
-- **Expected:** the cloud warning and acknowledgement appear, then the save succeeds. **Actual:** the
-  badge says "Local endpoint" and no acknowledgement checkbox appears. The save fails with
-  `cloud_acknowledgement_required`, and the UI gives no way to acknowledge. Docker users who run
-  Ollama on the host are stuck.
-- **Cause:** two different `isLocalEndpoint` lists. The client (`apps/web/src/lib/client/format.ts:124-140`)
-  counts `host.docker.internal`, `0.0.0.0`, `*.local`, 10/8, 172.16/12 and 192.168/16 as local. The
-  server (`apps/web/src/server/settings.ts:5-9`) counts only `localhost`, `127.0.0.1`, `[::1]` and
-  `ollama`. Share one function.
-- **Test:** `settings.spec.ts` › "host.docker.internal is treated the same way by UI and server".
-- **Screenshot:** `screenshots/settings-host-docker-internal.png`.
-
-### 4. Medium — a balance mismatch never reaches the Review queue
-
-- **Screen:** Report → Year-End Balances, then Review.
-- **Steps:** golden example → enter `0.5` as actual ETH → _Save actual balances_ → open Review for 2026-27.
-- **Expected:** a "Computed vs actual balance mismatch" group. The UI already has text and a fix link for it in `lib/client/review-codes.ts`.
-  **Actual:** the warning only shows under Report → Report Warnings (`balance_mismatch: ETH: computed 0, actual 0.5`).
-- **Cause:** the engine raises `balance_mismatch` without a `txId` (`packages/engine/src/balances.ts:57`),
-  and Review only groups flags that are attached to transactions.
-- **Test:** `report.spec.ts` › "TDS section, 26AS checklist and actual-balance mismatch".
-- **Screenshot:** `screenshots/report-balances-mismatch.png`.
-
-### 5. Medium — Review says "All ledger transactions are clean" before anything has been checked
-
-- **Screen:** Review (the Import result links here through "Check review flags").
-- **Steps:** import `sell-without-buy.csv` and `binance-transaction-statement.csv` → open Review without computing a report.
-- **Expected:** a prompt to compute first, or the known flags. **Actual:** "No review flags found — All
-  ledger transactions are clean.", even though a sell has no buy history and an income row has no INR value.
-  Flags are only attached when a report is computed (as the server README describes), and every data
-  change deletes stored reports, so this message shows after every import.
-- **Cause:** `apps/web/src/components/ReviewClient.tsx:100-110` treats "no report yet" the same as "no flags".
-- **Test:** `review.spec.ts` › "before any compute the queue does not claim everything is clean".
-- **Screenshot:** `screenshots/empty-review.png` (same wording).
-
-### 6. Medium — the Add-transaction validation error is a raw Zod JSON dump
-
-- **Screen:** Transactions → Add manual entry.
-- **Steps:** _Missing Buy_, asset `BTC`, quantity `not-a-number`, cost `1000` → _Add transaction_.
-- **Expected:** a readable sentence such as "Quantity must be a number". **Actual:** a red banner with
-  `[ { "origin": "string", "code": "invalid_format", "pattern": "/^[+-]?(?:\\d+…` (see the screenshot).
-- **Cause:** `apps/web/src/lib/client/api.ts:303` parses the body with Zod in the browser, and
-  `getErrorMessage` (`api.ts:64-68`) returns `ZodError.message`, which is JSON.
-- **Test:** `transactions.spec.ts` › "validation errors are shown and nothing is saved".
-- **Screenshot:** `screenshots/transactions-validation-error.png`.
-
-### 7. Medium (a11y) — keyboard users can't see focus on the file picker
-
-- **Screen:** Import.
-- **Steps:** Tab from "Import history" to the file input.
-- **Expected:** a visible focus ring on the drop zone. **Actual:** nothing visible. The input has `sr-only`
-  (`components/import/ImportClient.tsx:379`), so its outline is clipped, and the `<label>` drop zone
-  has no `:focus-within` style. The keyboard upload itself works (Space opens the picker).
-- **Tests:** `import.spec.ts` › "the drop zone shows a visible focus ring…" and `responsive-a11y.spec.ts` › "keyboard focus is visible on import".
-- **Screenshot:** `screenshots/import-dropzone-focus.png`.
-
-### 8. Medium (a11y) — the mobile menu doesn't close on Escape and doesn't take focus
-
-- **Screen:** every screen at 375 px.
-- **Steps:** focus ☰ → Enter → Escape. Then reopen and press Tab.
-- **Expected:** Escape closes the menu; focus moves into it and returns to ☰ on close.
-  **Actual:** Escape does nothing. Tab goes to the header link behind the overlay. The panel isn't a
-  dialog and doesn't trap focus.
-- **Cause:** `apps/web/src/components/AppShell.tsx:189-205` has no key handler and no focus management (a `<dialog>` like `Drawer` would give both).
-- **Tests:** `responsive-a11y.spec.ts` › "mobile navigation" (2 tests).
-- **Screenshot:** `screenshots/mobile-nav-open-mobile.png`.
-
-### 9. Medium (a11y) — dark-mode primary buttons have 2.94:1 contrast
-
-- **Screen:** all screens in dark mode: Compute/Recompute report, Save settings, Add manual entry, the ₹ logo.
-- **Expected:** at least 4.5:1 (WCAG AA). **Actual:** white text on `--accent: #5b9ec4` is 2.94:1
-  (`app/globals.css:44` and `:68`). Use dark text on that colour or a darker accent.
-- **Test:** `responsive-a11y.spec.ts` › "text meets WCAG AA contrast (dark)".
-- **Screenshot:** `screenshots/screen-overview-dark.png`.
-
-### 10. Low (a11y) — light-mode muted text is 4.28:1
-
-- `--text-muted: #6e736c` on the subtle backgrounds (section-label keys on Report, review codes) is
-  just under 4.5:1 (`app/globals.css:13`).
-- **Test:** `responsive-a11y.spec.ts` › "text meets WCAG AA contrast (light)".
-
-### 11. Low (a11y) — all eight export links are named just "CSV" or "XLSX"
-
-- **Screen:** Report. Screen-reader users hear "CSV, XLSX, CSV, XLSX…" with no kind.
-- **Cause:** `components/report/ReportClient.tsx:280-295`. Add `aria-label="Download Schedule VDA as CSV"` and so on.
-- **Test:** `report.spec.ts` › "export links have distinguishable accessible names".
-
-### 12. Low — after login the user always lands on Overview
-
-- **Screen:** Login (password mode).
-- **Steps:** open `/report?taxYear=2026-27` while logged out → log in.
-- **Expected:** back on the report. **Actual:** `/`. `proxy.ts:21` redirects to `/login` without `?next=`, although `LoginClient` already supports `next`.
-- **Test:** `password.spec.ts` › "after login the user lands on the page they asked for".
-
-### 13. Low (a11y) — closing the Add-transaction drawer doesn't return focus
-
-- After Escape, focus goes to `<body>` instead of the _Add manual entry_ button
-  (`components/ui/Drawer.tsx`; no focus restore). A soft assertion in `responsive-a11y.spec.ts` ›
-  "add-transaction drawer traps focus…". Focus trapping and Escape work in every dialog and drawer.
-
-### 14. Low — the balance "Difference" sign differs between the UI and the API/exports
-
-- The UI shows `actual − computed` (`ReportClient.tsx:846`). The API's `balances[].difference` is
-  `computed − actual` (`BTC computed 0, actual 5 → difference "-5"`). A CA comparing the screen with
-  the export sees opposite signs. Found through the API; not asserted in a test.
+| Item                                                           | Status         | Notes                                                                                          |
+| -------------------------------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------- |
+| "TDS Possibly Due" warned on fully covered manual TDS          | **FIXED**      | Shows "Covered by recorded TDS"; a partial case shows "₹500.00 after recorded TDS" (`screen-report-light.png`) |
+| Report Warnings listed 30 repeated lines                       | **FIXED**      | "10 distinct · 30 total", `(×13) View 13 transactions` links to the filtered list               |
+| "Schedule VDA (1 rows)" plural                                 | **FIXED**      | "Schedule VDA (1 row)"                                                                         |
+| Raw setting keys on Report                                     | **FIXED**      | "Fee & GST treatment: Exclude fees", "Surcharge rate: 10%"…; asserted in `report.spec.ts` and `settings.spec.ts` |
+| Raw settings in CSV export (one JSON cell)                     | **STILL OPEN** | `"Settings","{""feeTreatment"":…}"` and `"Sections","{…}"` in every CSV export                 |
+| Imports list on mobile hid status/actions off-screen           | **FIXED**      | 375 px card layout (`screen-imports-mobile.png`)                                               |
+| Generic import labelled "generic" in lower case                | **FIXED**      | "Generic CSV"                                                                                  |
+| Statement import shows overlap skips as red "errors"           | **STILL OPEN** | Not changed by the fix commits                                                                 |
+| No banner explaining why reports disappear after a change      | **FIXED** (Review) / **STILL OPEN** (Report, Overview) | Review explains it; Report/Overview still fall back to the plain "No report computed" state |
 
 ---
 
-## UX / visual issues (lower severity, no failing test)
+## New findings (ranked)
 
-- **Report → "TDS Possibly Due"** shows ₹2,500.00 with a warning badge for the manual source even when
-  ₹2,500.00 TDS was deducted (`screenshots/screen-report-light.png`). It reads as if TDS is still owed.
-- **Report → Report Warnings** lists 30 lines, mostly the same two messages repeated per transaction
-  ("Export does not separate GST…", "Crypto-denominated fee reduces holdings…"). Group them with a count.
-- **"Schedule VDA (1 rows)"** has the wrong plural (`ReportClient.tsx`, heading).
-- **Raw keys shown to users:** the section labels (`vdaTax:`, `vdaTds:`, `currencyConversionRule:`) and
-  "Engine Settings Used" (`feeTreatment`, `usdtInrRate` with values like `ledger_usdt_inr`) are
-  internal identifiers, not plain words. The CSV export puts the settings in one JSON cell.
-- **Imports list on mobile:** Status, counts and the Inspect/Delete actions sit off-screen in a
-  horizontal-scroll table with no hint (`screenshots/screen-imports-mobile.png`). There is no page-level overflow.
-- **Import summary source label:** the generic import shows "Source: generic" in lower case while the
-  others say "Binance" and "CoinDCX" (`formatSourceLabel` has no `generic` case).
-- **Statement import:** `binance-transaction-statement.csv` gives 2 inserted and 30 row errors, 27 of them
-  "overlaps trade/deposit/withdrawal exports". That's by design, but it shows as 30 red "errors". A
-  separate "skipped (covered by other export)" count would worry users less.
-- **Report empty state after any change:** any import, edit or settings save deletes every stored report,
-  so Overview and Report fall back to the "No report computed" state. This is intended, but no banner
-  explains why the numbers disappeared.
+### N1. Medium — Review "All years": Compute never clears the "not computed" banner
+
+- **Screen:** Review with the default "All years" filter (the Import summary's CTA leads users here).
+- **Steps:** import `sell-without-buy.csv` → open `/review` → click _Compute 2026-27 report_.
+- **Expected:** the banner goes away, or names the year that is still missing (2025-26).
+- **Actual:** the report is computed and the groups appear, but the banner still says
+  "Report not computed for 2026-27 — some checks … appear only after computing." Clicking again
+  recomputes 2026-27 and changes nothing, so the user is stuck in a loop.
+- **Cause:** without `?taxYear` the server reports `current` only when **every** rule year has a stored
+  report (`apps/web/src/server/transactions.ts:206`), but the button computes only
+  `computeTargetYear = taxYear || defaultTaxYear` (`apps/web/src/components/ReviewClient.tsx:109`).
+  Either compute every missing year from the All-years view, or have the API return which years are missing.
+- **Test:** `review.spec.ts` › "All years: after Compute the banner no longer says that year is not computed" (fails).
+
+### N2. Medium — negative holdings ("missing_history: Negative USDT holding") never reach Review
+
+- **Screen:** Report → Report Warnings vs Review.
+- **Steps:** import the E2E Binance/CoinDCX set (as `screenshots.spec.ts` does) → compute 2026-27 →
+  Report lists `missing_history: Negative USDT holding: -413.737002` (`screen-report-light.png`).
+- **Expected:** a Review item under "Missing acquisition history" (the same class of problem as bug 4).
+- **Actual:** Review shows report items only for `report.unresolved` missing-history slices and
+  `balances[].difference` mismatches; the negative-holding warning (no `txId`) is dropped.
+- **Cause:** `apps/web/src/server/transactions.ts:131-163` builds `reportItems` from balances with a
+  difference and `unresolved`, not from `balances` with `computed < 0` (raised in `packages/engine/src/balances.ts:66-70`).
+- **Test:** none yet (found in exploration); seen in `screenshots/screen-report-light.png`.
+
+### N3. Low — Review shows only the first flag message per transaction in a group
+
+- A CoinDCX sell carrying three `parse_warning` flags (GST, gross INR derived, crypto fee) shows only
+  "Export does not separate GST…" in Review's Details column
+  (`ReviewClient.tsx:289`, `tx.reviewFlags.find(...)`). The other two are visible only in Report
+  warnings or the transaction drawer.
+
+### N4. Low — grouped `balance_mismatch` warning has no transaction ids; non-parse warnings coded `parse_warning`
+
+- See `tests/api/BUGS.md` N1/N2. In the UI this means the balance warning on Report has no
+  "View transaction" link, and "Section numbers pending CA verification" / "Import …: N excluded rows"
+  are shown as `parse_warning`.
+
+### N5. Low — Overview grammar
+
+- "1 flagged transaction item need review before filing." (`OverviewClient.tsx:185`): "needs" for one.
+
+---
+
+## Exploration notes (≈25 min, Playwright scripts against the `taxe2e` / `taxe2epw` stacks)
+
+Checked and working:
+
+- **Import → review → compute → report → export → edit → recompute:** editing the sell's INR value
+  to ₹3,00,000 in the transaction drawer deletes the stored report (Report shows "No report computed"),
+  _Compute_ gives Consideration ₹3,00,000 / Taxable ₹1,00,000 / Total tax ₹31,200 / Net ₹28,700, and
+  the Schedule VDA CSV carries `300000.00` / `100000.00`.
+- **Tax-year switching** on Overview, Report, Transactions and Review updates the URL and data
+  (2025-26 shows the 1961-Act sections, `india-vda/2025-26.json`, ₹62.40 tax on a ₹200 gain).
+- **Default tax year** setting (2025-26) drives Overview, Report and Review's compute target.
+- **Delete import** clears Imports, Review (back to "not computed") and Report.
+- **Report warning links** open `/transactions?taxYear=…&flagged=true&source=…`.
+- **Password mode end to end:** login with `?next=`, UI import, compute, export download, logout; the
+  export URL then answers 401 (new test `password.spec.ts` › "password mode end to end…").
+- **Mobile Imports** at 375 px: no page-level horizontal overflow.
+
+Test-side fix found while exploring: the AI-wizard test asserted the suggested columns before the
+`/api/recipes/suggest` reply had arrived (the wizard's own header guesses equal the mock's answer), so a
+late reply could overwrite the hand edit. The test now waits for the response. Not an app defect.
 
 ## Not tested
 
-- Real drag-and-drop onto the drop zone (Playwright can't send OS file drags); only the picker and keyboard paths were tested.
-- `mock-slow` (a 120 s upstream timeout), because of run time.
-- Firefox and WebKit; only Chromium was run.
-- The EVM and US-stock flows (Phase 3; no UI yet).
-- Dark-mode contrast inside dialogs and drawers; the screenshots cover them only visually.
+- Real OS drag-and-drop onto the drop zone (Playwright can't send it); picker and keyboard paths only.
+- `mock-slow` (120 s upstream timeout), for run time.
+- Firefox and WebKit; Chromium only.
+- EVM and US-stock flows (Phase 3; no UI yet).
+- Dark-mode contrast inside dialogs and drawers (screenshots only).
+- `reportStatus: "stale"`: the server never returns it (see `tests/api/BUGS.md`), so the stale wording can't be reached.

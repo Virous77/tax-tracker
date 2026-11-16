@@ -242,12 +242,11 @@ test.describe("manual entries", () => {
 		const banner = drawer.getByRole("alert");
 		await expect(banner).toBeVisible();
 		await snap(page, "transactions-validation-error");
-		await expect
-			.soft(
-				banner,
-				"error must be a readable sentence, not a raw Zod issue dump",
-			)
-			.not.toContainText("{");
+		await expect(
+			banner,
+			"error must be a readable sentence, not a raw Zod issue dump",
+		).not.toContainText(/[{[]|invalid_format|\^\[/);
+		await expect(banner).toContainText(/quantity|amount/i);
 		await drawer.getByRole("button", { name: "Cancel" }).click();
 		await expect(
 			page.getByRole("heading", { name: "No transactions match" }),

@@ -66,13 +66,19 @@ test("transactions empty state", async ({ page }) => {
 	await snap(page, "empty-transactions");
 });
 
-test("review empty state", async ({ page }) => {
+// reportStatus contract: with no stored report Review must not claim the ledger is clean.
+test("review empty state asks for a compute instead of claiming clean", async ({
+	page,
+}) => {
 	await page.goto("/review");
 	await expect(
-		page.getByRole("heading", { name: "No review flags found" }),
+		page.getByRole("heading", { name: "Report not computed for 2026-27" }),
 	).toBeVisible();
 	await expect(
 		page.getByText("All ledger transactions are clean."),
+	).toHaveCount(0);
+	await expect(
+		page.getByRole("button", { name: "Compute 2026-27 report" }),
 	).toBeVisible();
 	await snap(page, "empty-review");
 });

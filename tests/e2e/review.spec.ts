@@ -37,6 +37,61 @@ test("before any compute the queue does not claim everything is clean", async ({
 	).toHaveCount(0);
 });
 
+test("reportStatus banner prompts a compute, then the balance mismatch appears as a report item", async ({
+	page,
+	api,
+}) => {
+	await api.json("PUT", "/api/balances/actual?taxYear=2026-27", [
+		{ asset: "BTC", amount: "2" },
+	]);
+	await page.goto("/review?taxYear=2026-27");
+	await expect(page.locator(".animate-pulse")).toHaveCount(0);
+	await expect(
+		page.getByText(/Report not computed for 2026-27/).first(),
+	).toBeVisible();
+	await expect(
+		page.getByRole("heading", { name: "Computed vs actual balance mismatch" }),
+	).toHaveCount(0);
+	await snap(page, "review-report-not-computed");
+
+	await page
+		.getByRole("button", { name: "Compute 2026-27 report" })
+		.first()
+		.click();
+	const mismatch = page.locator("section").filter({
+		has: page.getByRole("heading", {
+			level: 2,
+			name: "Computed vs actual balance mismatch",
+		}),
+	});
+	await expect(mismatch).toBeVisible();
+	await expect(page.getByText(/Report not computed for 2026-27/)).toHaveCount(
+		0,
+	);
+	const row = mismatch.locator("tbody tr").filter({ hasText: "BTC" });
+	await expect(row).toContainText("Year-end balance");
+	await expect(row).toContainText("Tax year 2026-27");
+	await expect(row).toContainText("BTC: computed 0, actual 2");
+	await expect(
+		mismatch.getByText("balance_mismatch", { exact: true }),
+	).toBeVisible();
+	await snap(page, "review-balance-mismatch-report-item");
+
+	// Any ledger change deletes stored reports, so the banner must come back.
+	await api.addManual({
+		sourceRef: "e2e-review-invalidate",
+		timestamp: "2026-06-01T06:30:00.000Z",
+		type: "buy",
+		assetIn: "SOL",
+		amountIn: "1",
+		inrValue: "1000",
+	});
+	await page.reload();
+	await expect(
+		page.getByText(/Report not computed for 2026-27/).first(),
+	).toBeVisible();
+});
+
 test.describe("after computing", () => {
 	test.beforeEach(async ({ api }) => {
 		await api.compute("2026-27");
@@ -146,4 +201,24 @@ test.describe("after computing", () => {
 		await expect(page.getByText("Showing 1–1 of 1")).toBeVisible();
 		await expect(page.getByText("missing_inr_value")).toBeVisible();
 	});
+});
+
+test("All years: after Compute the banner no longer says that year is not computed", async ({
+	page,
+}) => {
+	// Review without ?taxYear needs every rule year computed for reportStatus "current",
+	// but the button only computes the default year, so the prompt never goes away.
+	await page.goto("/review");
+	await expect(page.locator(".animate-pulse")).toHaveCount(0);
+	await page
+		.getByRole("button", { name: "Compute 2026-27 report" })
+		.first()
+		.click();
+	await expect(
+		page.getByRole("heading", { name: "Missing acquisition history" }),
+	).toBeVisible();
+	await expect(
+		page.getByText(/Report not computed for 2026-27/),
+		"2026-27 was just computed; the banner should name the year still missing or go away",
+	).toHaveCount(0);
 });

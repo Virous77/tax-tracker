@@ -98,6 +98,38 @@ test.describe("mobile navigation", () => {
 		).toBe(true);
 	});
 
+	test("Escape returns focus to the toggle and Tab stays inside the open menu", async ({
+		page,
+	}) => {
+		await openScreen(page, byName("overview"));
+		const open = page.getByRole("button", { name: "Open navigation menu" });
+		await open.focus();
+		await page.keyboard.press("Enter");
+		await expect(
+			page.getByRole("navigation", { name: "Main navigation" }),
+		).toBeVisible();
+		const escaped: string[] = [];
+		for (let i = 0; i < 15; i++) {
+			await page.keyboard.press("Tab");
+			const where = await page.evaluate(() => {
+				const a = document.activeElement;
+				return {
+					inside: !!a?.closest('[role="dialog"]'),
+					what: `${a?.tagName.toLowerCase()} ${a?.textContent?.trim().slice(0, 20)}`,
+				};
+			});
+			if (!where.inside) escaped.push(where.what);
+		}
+		expect(escaped, "Tab left the open mobile menu").toEqual([]);
+		await page.keyboard.press("Shift+Tab");
+		await page.keyboard.press("Escape");
+		await expect(
+			page.getByRole("navigation", { name: "Main navigation" }),
+		).toBeHidden();
+		await expect(open).toBeFocused();
+		await expect(open).toHaveAttribute("aria-expanded", "false");
+	});
+
 	test("a menu link can be activated by keyboard and closes the menu", async ({
 		page,
 	}) => {
@@ -146,9 +178,10 @@ test("add-transaction drawer traps focus, closes on Escape and returns focus", a
 	await tabStaysInside(page, "Add manual transaction");
 	await page.keyboard.press("Escape");
 	await expect(drawer).toBeHidden();
-	await expect
-		.soft(trigger, "focus should return to the button that opened the drawer")
-		.toBeFocused();
+	await expect(
+		trigger,
+		"focus should return to the button that opened the drawer",
+	).toBeFocused();
 });
 
 test("transaction drawer traps focus and closes on Escape", async ({

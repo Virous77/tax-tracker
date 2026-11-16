@@ -73,10 +73,12 @@ test("fee treatment changes the report after recompute and is shown on it", asyn
 	await expect(card(page, "Cost")).toHaveText("₹1,01,000.00");
 	await expect(card(page, "Consideration")).toHaveText("₹1,09,000.00");
 	await expect(card(page, "Taxable Income")).toHaveText("₹8,000.00");
-	const used = page.locator("dl").filter({ hasText: "feeTreatment" });
+	const used = page.locator("dl").filter({ hasText: "Fee & GST treatment" });
 	await expect(
-		used.getByText("feeTreatment").locator("xpath=following-sibling::dd"),
-	).toHaveText("include");
+		used
+			.getByText("Fee & GST treatment", { exact: true })
+			.locator("xpath=following-sibling::dd"),
+	).toHaveText("Include fees");
 });
 
 test("surcharge rate changes total tax after recompute", async ({
@@ -93,10 +95,12 @@ test("surcharge rate changes total tax after recompute", async ({
 	await expect(card(page, "Taxable Income")).toHaveText("₹50,000.00");
 	await expect(card(page, "Total Tax")).toHaveText("₹17,160.00");
 	await expect(card(page, "Net Payable")).toHaveText("₹14,660.00");
-	const used = page.locator("dl").filter({ hasText: "surchargeRate" });
+	const used = page.locator("dl").filter({ hasText: "Surcharge rate" });
 	await expect(
-		used.getByText("surchargeRate").locator("xpath=following-sibling::dd"),
-	).toHaveText("0.10");
+		used
+			.getByText("Surcharge rate", { exact: true })
+			.locator("xpath=following-sibling::dd"),
+	).toHaveText("10%");
 	await page.goto("/?taxYear=2026-27");
 	await expect(
 		page.getByRole("region", { name: "Tax summary" }).getByText("₹1,500.00"),
@@ -177,11 +181,10 @@ test("cloud AI endpoint needs the warning to be acknowledged", async ({
 	).not.toContain("sk-test-123");
 });
 
-test("host.docker.internal is treated the same way by UI and server", async ({
+test("host.docker.internal is local in both UI and server", async ({
 	page,
-	allowConsole,
+	api,
 }) => {
-	allowConsole(/status of 400 .*\/api\/settings$/);
 	await page.goto("/settings");
 	await settled(page);
 	await page
@@ -189,16 +192,13 @@ test("host.docker.internal is treated the same way by UI and server", async ({
 		.fill(MOCK_LLM_IN_CONTAINER);
 	await page.getByLabel("Model name").fill("mock-recipe");
 	await page.getByLabel("API key (optional)").fill("mock-key");
-	const ack = page.getByRole("checkbox", {
-		name: /I understand that 20 sample CSV rows/,
-	});
-	await expect
-		.soft(
-			page.getByText("Cloud endpoint warning"),
-			"the server treats host.docker.internal as cloud, so the UI must show the warning and acknowledgement",
-		)
-		.toBeVisible();
-	if (await ack.isVisible()) await ack.check();
+	await expect(page.getByText("Local endpoint", { exact: true })).toBeVisible();
+	await expect(page.getByText("Cloud endpoint warning")).toHaveCount(0);
+	await expect(
+		page.getByRole("checkbox", {
+			name: /I understand that 20 sample CSV rows/,
+		}),
+	).toHaveCount(0);
 	await snap(page, "settings-host-docker-internal");
 	await page.getByRole("button", { name: "Save settings" }).click();
 	await expect(
@@ -206,4 +206,11 @@ test("host.docker.internal is treated the same way by UI and server", async ({
 			"Settings saved. Recompute any open tax report to apply changes.",
 		),
 	).toBeVisible();
+	const saved = await api.json<{
+		ai: { baseUrl: string; cloudAcknowledged: boolean };
+	}>("GET", "/api/settings");
+	expect(saved.ai).toMatchObject({
+		baseUrl: MOCK_LLM_IN_CONTAINER,
+		cloudAcknowledged: false,
+	});
 });

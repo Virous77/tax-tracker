@@ -106,7 +106,12 @@ test.describe("golden worked example built through the UI", () => {
 		await expect(
 			page.getByText("Engine Settings Used for This Report"),
 		).toBeVisible();
-		await expect(page.getByText("feeTreatment", { exact: true })).toBeVisible();
+		await expect(
+			page.getByText("Fee & GST treatment", { exact: true }),
+		).toBeVisible();
+		await expect(page.getByText("feeTreatment", { exact: true })).toHaveCount(
+			0,
+		);
 		await snap(page, "report-golden");
 
 		await page.goto("/?taxYear=2026-27");
@@ -210,13 +215,13 @@ test.describe("golden worked example built through the UI", () => {
 		const exported = await page.request.get(
 			"/api/reports/2026-27/export?format=csv&kind=full",
 		);
-		const sign = (await exported.text()).includes('"-0.5"') ? "-0.5" : "0.5";
-		expect
-			.soft(
-				sign,
-				"UI difference (actual − computed) must match the export's sign",
-			)
-			.toBe("0.5");
+		expect(
+			await exported.text(),
+			"export balance row: asset, computed, actual, difference (actual − computed)",
+		).toMatch(/^"ETH","0","0\.5","0\.5"/m);
+		await expect(
+			page.getByText("Difference = Actual − Computed", { exact: false }),
+		).toBeVisible();
 		await page.goto("/review?taxYear=2026-27");
 		await expect(
 			page.getByRole("heading", {
@@ -258,6 +263,10 @@ test.describe("golden worked example built through the UI", () => {
 				),
 			);
 		expect(names.length).toBe(8);
+		for (const name of names)
+			expect(name).toMatch(
+				/(Schedule VDA|TDS|Income|Full).*(CSV|XLSX)|(CSV|XLSX).*(Schedule VDA|TDS|Income|Full)/i,
+			);
 		expect(
 			new Set(names).size,
 			`screen-reader users hear only: ${[...new Set(names)].join(", ")}`,

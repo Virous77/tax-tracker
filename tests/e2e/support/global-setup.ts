@@ -1,15 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import path from "node:path";
-import {
-	GENERATED,
-	ORIGIN_WORKAROUND,
-	PROXY_PORTS,
-	REPO_ROOT,
-	SCREENSHOTS,
-	STACKS,
-} from "./env";
-import { startOriginProxy } from "./origin-proxy";
+import { GENERATED, REPO_ROOT, SCREENSHOTS, STACKS } from "./env";
 
 // E2E_REUSE_STACK=1 skips (re)creating the containers, for fast local iteration.
 export default async function globalSetup() {
@@ -22,23 +14,6 @@ export default async function globalSetup() {
 	}
 	if (process.env.E2E_REUSE_STACK !== "1") startStacks();
 	await Promise.all(STACKS.map((s) => waitForHealth(s.port)));
-	if (!ORIGIN_WORKAROUND) return;
-	const proxies = await Promise.all(
-		Object.entries(PROXY_PORTS).map(([target, listen]) =>
-			startOriginProxy(listen, Number(target)),
-		),
-	);
-	return async () => {
-		await Promise.all(
-			proxies.map(
-				(p) =>
-					new Promise((r) => {
-						p.closeAllConnections();
-						p.close(() => r(null));
-					}),
-			),
-		);
-	};
 }
 
 function startStacks() {

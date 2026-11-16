@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { Page } from "@playwright/test";
-import { FIXTURES, GENERATED, MAIN_APP_URL } from "./support/env";
+import { FIXTURES, GENERATED } from "./support/env";
 import { expect, snap, test } from "./support/fixtures";
 
 const fileInput = (page: Page) =>
@@ -244,9 +244,7 @@ test("the drop zone shows a visible focus ring when tabbed to", async ({
 	).toBe(true);
 });
 
-test.describe("without the test-only Origin workaround", () => {
-	test.use({ baseURL: MAIN_APP_URL });
-
+test.describe("same-origin check in Docker (BUGS.md #1, fixed)", () => {
 	test("a real browser upload is accepted by the API's same-origin check", async ({
 		page,
 	}) => {

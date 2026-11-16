@@ -1,0 +1,805 @@
+Open-source India crypto + US stocks tax 
+helper: end-to-end plan
+Nov 16, 2026  ·  @Reetesh Kumar
+1. The plan in one page
+Build a free, open-source app that turns messy crypto and US-stock history into the exact
+rows the Indian tax return asks for, running on the user's own computer.
+Who it is for: Indian residents who trade on Binance or CoinDCX, use EVM wallets, or
+hold US stocks.
+What comes out: Schedule VDA rows, a TDS total to match with Form 26AS, US stock
+gains split into long and short term, a Form 67 worksheet for dividends, and a
+Schedule FA worksheet.
+How data gets in: exchange export files (main path), any CSV through an AI-written
+recipe, read-only API sync for Binance and CoinDCX, and EVM wallet addresses.
+Stack: TypeScript, Next.js 16, SQLite, a separate tax-engine package, a local AI model
+by default, Docker to run.
+Build order: the tax engine and its tests first, then file imports, then API and chain
+sync, then US stocks, then public release.
+Deadline that matters: returns for tax year 2026-27, the first full year under the new
+Income-tax Act, are due 31 July 2027. A usable version by April 2027 catches that
+season.
+Four hard truths
+1. KoinX already sells this from Rs 115. Your only edge is free, private, open and
+auditable. Do not try to win on number of integrations.
+2. A wrong tax number hurts a real person. A Chartered Accountant must sign off the
+rule file and test cases before anyone outside you uses it.
+3. Free API tiers shrank through 2026. Etherscan and Blockscout both removed big
+chains from free plans. File import has to work perfectly; API sync is a bonus.
+4. People open this once a year. It will never be a daily app. Judge it by GitHub stars and
+by filings completed, not by daily users.
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 1 of 18
+
+=====PAGE=====
+2. Tax rules the app must encode
+The rates did not change in Budget 2026, but the law they sit in did: the Income-tax Act,
+2025 replaced the 1961 Act on 1 April 2026 and renumbered every section. The app must
+therefore keep rules as a versioned file per tax year, never as numbers buried in code.
+This section is a build spec, not tax advice. A Chartered Accountant must review the rule
+file before any public release.
+India crypto (the law calls it a Virtual Digital Asset, VDA)
+Rule What the law says What the app does
+Tax rate Flat 30% on income from each
+transfer, plus 4% cess (31.2%),
+plus surcharge at high incomes
+(TokenTax)
+Gain per sale x 30%, cess added,
+surcharge as a user setting
+Deductions Only the cost of acquisition. No
+other expense (TokenTax)
+Trading fees are excluded from cost by
+default, with a visible toggle because
+CAs differ on this
+Losses Cannot be set off or carried
+forward. Schedule VDA reports
+a loss row as nil (Upstox)
+Taxable income per row = max(gain, 0).
+Real losses are shown separately so the
+user sees the damage
+TDS 1% of the sale value once yearly
+transfers cross Rs 10,000 (Rs
+50,000 for specified persons).
+It is a credit against final tax
+(TokenTax)
+Store TDS on every trade, total it, and
+show a checklist to match it with Form
+26AS / AIS
+Who deducts
+TDS
+Indian exchanges such as
+CoinDCX deduct it. Binance
+does not on spot trades; on P2P
+the Indian buyer must (KoinX,
+Koinly)
+Per-source flag
+tds_deducted_by_platform. Binance
+rows get a warning, not a silent zero
+Swaps Crypto-to-crypto is treated as a
+transfer, so BTC to ETH is a
+taxable sale of BTC (TaxClue)
+A swap becomes two legs: sell A at
+rupee value, buy B at the same rupee
+value
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 2 of 18
+
+=====PAGE=====
+Old section numbers and new ones
+Sources: Dalimss, TokenTax, TaxFetch. Secondary sources disagree slightly on the new
+numbering, so check the bare Act before printing section numbers on a report.
+What the tax return wants (Schedule VDA)
+Schedule VDA in ITR-2 and ITR-3 wants one row per transfer, not one net figure
+(AllIndiaITR). Each row holds: date of acquisition, date of transfer, head of income (capital
+gains or business), cost of acquisition, consideration received, and income. This row
+format is the app's main export.
+Rule What the law says What the app does
+Own-wallet
+moves
+Moving coins to your own
+wallet has no consideration, so
+no tax (MyFinancial)
+Transfer matching: a withdrawal and a
+deposit of the same coin and amount
+are linked, not sold
+Staking,
+mining
+Receipt may be taxed as
+business or other income; later
+sale at 30%, possibly with nil
+cost (TokenTax)
+Income rows carry a type the user can
+re-classify; cost basis rule is a setting
+Gifts Over Rs 50,000 a year from
+non-relatives is taxed to the
+receiver at slab rates
+(TokenTax)
+Manual "gift received" transaction type
+GST on fees Exchanges charge 18% GST on
+service fees since 7 July 2025
+(Toolisky)
+Fee and GST stored as separate fields
+Topic FY 2025-26 (1961 Act) From 1 April 2026 (2025 Act)
+30% tax Section 115BBH Section 194, table serial 4
+1% TDS Section 194S Section 393(1), table serial 8(vi)
+VDA definition Section 2(47A) Section 2(111)
+Platform reporting Section 285BAA Section 509
+Currency conversion rule Rule 115 Rule 206
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 3 of 18
+
+=====PAGE=====
+The standard due date for ITR-2 filers is 31 July after the year ends (TokenTax).
+US stocks held by an Indian resident
+3. Competitors and the gap
+Paid tools already solve this for India, so the only real gap is an open-source, run-it-
+yourself tool with Indian rules. I found none.
+Rule What the law says What the app does
+Capital gains Taxed only in India. Held over 24
+months: 12.5% with no indexation.
+24 months or less: slab rate (Platizio,
+EZTax)
+Lot-level holding period, split into
+long-term and short-term totals
+Dividends US withholds 25% (30% without
+Form W-8BEN). India taxes the full
+gross dividend at slab rate and gives
+credit for the US tax (EZTax,
+iVentures)
+Store gross dividend and tax
+withheld separately; produce the
+Form 67 figures
+Foreign tax
+credit
+Claimed with Form 67, which can be
+filed up to the end of the
+assessment year (Winvesta)
+A Form 67 worksheet: country,
+income, tax paid, credit claimed
+Disclosure Schedule FA is mandatory at any
+holding size and runs on the
+calendar year, January to December
+(INDmoney, CA Blogs)
+A second reporting window: tax
+year for gains, calendar year for
+Schedule FA
+Rupee
+conversion
+SBI telegraphic transfer buying rate
+on the date the rule specifies, not a
+market rate (AllRatesToday)
+Built-in SBI rate table, with the
+rate and date printed beside every
+converted number
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 4 of 18
+
+=====PAGE=====
+The paid-tool rows come from KoinX's own comparison page, so read them as a seller
+describing rivals.
+The blunt read: you will not beat KoinX on number of integrations. You can beat it on four
+things: free, private, auditable maths, and self-hosted. That is a small audience, but it is a
+loyal one, and it is the audience that distrusts handing keys to a company.
+4. Data sources, verified
+File import must be the main door and API sync a bonus, because every API here has a gap
+and the free tiers shrank during 2026.
+Tool Type Price India fit Weak spot
+KoinX Paid, cloud From Rs 115,
+bundles up to
+Rs 4,250
+Schedule VDA
+reports, 1% TDS
+summary, CoinDCX
+and 800+
+integrations
+Closed code; your
+data sits on their
+servers
+Koinly Paid, cloud From USD 49 Supports CoinDCX
+and Binance
+No dedicated TDS
+report; ITR-2 entry
+by hand
+ClearTax Paid, cloud From Rs 3,499
+for crypto
+Files every ITR type No automatic
+Schedule VDA
+rotki Open source
+(AGPLv3), runs
+locally
+Free core,
+paid premium
+Defaults follow
+German rules;
+settings are
+generic (rotki
+docs)
+No Schedule VDA,
+no TDS, no Indian
+exchanges focus
+RP2 Open source
+(Apache 2.0),
+Python command
+line
+Free Country plug-ins
+exist, India is not
+one I could confirm
+No web app; input
+is a spreadsheet
+BittyTax Open source,
+command line
+Free Built for UK rules Not India
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 5 of 18
+
+=====PAGE=====
+Source What I verified The limit that bites Decision
+Binance API Trade history must be
+asked one trading pair at
+a time (Binance dev
+forum). Some history
+cannot be fetched
+before fixed dates, and
+margin trades are
+missing (Cryptact)
+Incomplete history for
+old or heavy accounts
+Binance's own export
+file is the primary
+path; API sync is
+optional and read-
+only
+CoinDCX API Key plus HMAC-SHA256
+signature, base URL
+api.coindcx.com
+(dltHub). Its export is
+one Excel file with
+several tabs (Cryptact)
+No official machine-
+readable API spec
+Hand-written client.
+The Excel export is
+the primary path
+CCXT library 112 exchanges. Binance
+is in. CoinDCX is not.
+Zebpay, Bitbns and
+Mudrex are (CCXT list)
+Does not cover
+CoinDCX
+Use CCXT for
+Binance and later
+exchanges; do not
+depend on it for India
+Etherscan
+API V2
+One key for many EVM
+chains. Free tier: 3 calls a
+second, 100,000 a day
+(Etherscan). Since 1 July
+2026 the free tier
+returns 1,000 records
+per request, down from
+10,000 (changelog)
+Free tier covers
+selected chains only.
+BNB Chain, Base, OP
+Mainnet and
+Avalanche are paid-
+only (Flexe). Arbitrum
+moved to a shared
+free pool on 1
+November 2026
+Default provider for
+Ethereum mainnet
+only
+Blockscout
+API
+Free plan: 100,000
+credits a day, about
+5,000 history pages
+(multichain indexer
+notes)
+Base, Polygon and
+zkSync left the free
+plan on 1 October
+2026 (rotki issue)
+Second provider for
+Ethereum, Arbitrum,
+OP
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 6 of 18
+
+=====PAGE=====
+EVM is the hardest part, and fetching is the easy half. Knowing that a transaction was a
+swap, a bridge, a liquidity deposit or an airdrop takes protocol-by-protocol decoding. rotki
+has spent years on it. Version 1 scope: plain transfers and simple swaps (one token out,
+one token in, same transaction). Everything else lands in a "needs your review" list instead
+of being guessed.
+Every EVM provider needs the user's own free API key. A shared key in an open-source
+repo would be burned in a day.
+I could not open the official Binance, CoinDCX and Etherscan supported-chains pages
+from this session. The rows above lean on the secondary sources linked; confirm
+endpoints against official docs on day one of each importer.
+5. Tech stack
+One language (TypeScript), one file database (SQLite), one command to run (Docker).
+Each choice is made so a stranger can start the app in five minutes.
+Source What I verified The limit that bites Decision
+Alchemy
+transfers API
+One call returns
+external, internal and
+token transfers
+(Alchemy docs). Free
+tier is 30 million compute
+units a month
+(CoinGecko review)
+Transfers only, so gas
+fees need a second
+lookup
+Provider for Base and
+Polygon
+CoinGecko
+prices
+Free Demo plan: 10,000
+calls a month, 100 a
+minute (CoinGecko)
+Only 365 days of
+history on the free
+plan (CoinGecko)
+Use the trade's own
+price first.
+CoinGecko only fills
+gaps, and every
+answer is cached
+forever
+SBI dollar
+rates
+A community repo
+stores SBI's daily rates
+as one CSV per currency,
+from January 2020, MIT
+licence (sbi-fx-
+ratekeeper)
+SBI skips some days.
+No official history
+exists
+Bundle the CSV. On a
+missing day use the
+last published rate
+before it, and print
+which day was used
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 7 of 18
+
+=====PAGE=====
+Layer Pick Why Rejected
+Language TypeScript everywhere The tax engine can run
+in the browser, the
+server and a command
+line with the same
+code
+Python. rotki and RP2
+use it, but it means
+two languages for a
+web app
+Web app Next.js 16, built as a
+standalone server
+Current long-term-
+support line is 16.4; you
+already deploy on
+Vercel
+A separate single-
+page app plus API
+server: more parts to
+self-host
+Database SQLite by default,
+Postgres as an option,
+through Drizzle ORM
+One file, zero setup,
+backup is a file copy
+Postgres only: too
+heavy for a laptop
+install
+Money maths A decimal library
+(decimal.js); amounts
+stored as text
+Normal JavaScript
+numbers lose paise
+and tiny coin fractions
+Floating point
+numbers
+Tax engine Its own package with
+no web or database
+code
+Easy to test, easy for a
+CA or auditor to read
+Engine mixed into API
+routes
+Tax rules One data file per tax
+year (rates, thresholds,
+section numbers)
+The 2026 law change
+proved rules move; a
+new year is a new file,
+not a code change
+Numbers written in
+code
+Exchanges CCXT for Binance;
+hand-written client for
+CoinDCX
+CCXT does not list
+CoinDCX
+Writing every
+exchange by hand
+EVM viem for decoding,
+small adapter per
+provider (Etherscan,
+Blockscout, Alchemy)
+Free tiers differ by
+chain, so providers
+must be swappable
+One hard-wired
+provider
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 8 of 18
+
+=====PAGE=====
+Only the Next.js version was checked online: 16.4.5 shipped on 3 November 2026 and
+fixed seven security issues, so start on 16.4.5 or later (DEV write-up). Pin the other library
+versions when you set up the repo.
+6. Architecture and data model
+Four kinds of source all get converted into one common transaction format, and only that
+format reaches the tax engine.
+Layer Pick Why Rejected
+AI Any OpenAI-
+compatible endpoint;
+default is a local model
+through Ollama
+Ollama can force
+replies to match a
+JSON schema, also
+through its OpenAI-
+compatible API
+(Ollama docs)
+A cloud-only AI key:
+breaks the privacy
+promise
+Validation Zod schemas, shared
+by importers, API and
+the AI output check
+One definition of a
+valid transaction
+Hand-written checks
+Background
+work
+In-process job queue
+with a jobs table in
+SQLite
+No Redis to install Redis-backed queues
+Reports CSV and Excel first,
+PDF summary later
+A CA wants a sheet,
+not a pretty page
+PDF only
+Packaging Docker Compose, one
+command; desktop
+wrapper later
+Self-hosters expect
+Docker
+Asking users to install
+Node and build
+Tests Vitest with fixed
+example files ("golden"
+cases)
+A tax number that
+changes by accident
+must fail a test
+Manual checking
+Repo pnpm workspaces
+monorepo
+Engine, importers and
+web app version
+together
+Many repos
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 9 of 18
+
+=====PAGE=====
+The ledger is the highlighted box because everything depends on it: importers only write
+to it, and the engine only reads from it. Adding a new exchange never touches tax code.
+The common transaction format
+architecture · 4 sources, 1 ledger, 1 engine
+Field Meaning
+id, source, source_ref Our id, where the row came from, and the
+exchange's own id for it
+timestamp Stored in UTC; tax-year maths is done in India time
+type buy, sell, swap, deposit, withdrawal, transfer,
+income, gift, dividend, fee
+asset_in, amount_in What arrived
+asset_out, amount_out What left
+fee_asset, fee_amount, gst_inr Fee and the GST on it, kept apart
+inr_value, inr_rate_source Rupee value and how it was found
+tds_inr TDS the platform deducted on this row
+tx_hash, chain For on-chain rows
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 10 of 18
+
+=====PAGE=====
+Three rules for every importer
+Import twice, get the same ledger. A row with a source_ref already in the ledger is
+skipped.
+Never throw away the original. The raw row is stored so any number can be traced
+and re-imported after a bug fix.
+Never guess silently. Anything unclear gets a review_flag, not a made-up value.
+7. Tax engine design
+The engine is a pure function: ledger rows and a rule file go in, report rows come out. It
+never touches the network, so the same input always gives the same tax number.
+1. Sort every row by time.
+2. Match transfers: a withdrawal from one place and a deposit of the same coin and
+amount in another become one "moved" pair, not a sale.
+3. Give every row a rupee value, in this order: the trade's own rupee price, then the
+trade's USDT price times a rupee rate, then the cached market price. Record which
+one was used.
+4. Build buy lots for each coin. First-in-first-out is the default. The sources I read name
+no required method, so it is a setting.
+5. For each sale or swap, use up lots and write one Schedule VDA row: acquisition date,
+transfer date, cost, consideration, income.
+6. Apply the year's rule file: rate, cess, loss rule, TDS credit.
+7. Add up totals and build the reports.
+8. Keep the trail: every number links back to the raw rows that produced it.
+\text{income}_{row} = \max(\text{consideration} - \text{cost},\ 0) \qquad 
+\text{tax} = \sum \text{income}_{row} \times 30\% \times 1.04
+Field Meaning
+raw The untouched original row
+review_flag Set when the app is unsure and a human must look
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 11 of 18
+
+=====PAGE=====
+Worked example. You buy 1 ETH for Rs 2,00,000 and sell it for Rs 2,50,000. Income is Rs
+50,000. Tax is Rs 15,000 plus Rs 600 cess, so Rs 15,600. The exchange already took 1% of Rs
+2,50,000 as TDS, which is Rs 2,500, so Rs 13,100 is left to pay. If you also lost Rs 30,000 on
+another coin, the tax stays Rs 15,600. The loss does not help.
+US stocks use the same engine with a different rule file
+Lots are matched the same way, and each sale is marked long-term if held over 24
+months.
+Long-term gains get 12.5%. Short-term gains and dividends are shown as income only,
+because the rate depends on the user's own slab.
+Dollars become rupees at the SBI rate for the last day of the month before the sale or
+dividend (AllRatesToday).
+How we know the numbers are right
+Golden cases: about 20 small made-up histories with the correct answer worked out
+by hand and signed off by a CA. Any code change that moves an answer fails the
+build.
+Balance check: coins bought minus coins sold must equal what the exchange or
+wallet shows today. A mismatch means missing data, and the app says so loudly.
+No negative coins: selling a coin you never bought is flagged as missing history, never
+silently given a zero cost.
+8. AI CSV import
+The AI only writes a small recipe that says which column means what. Normal code then
+converts the file. The AI never does maths and never sees the whole file.
+1. Read the file's header row and make a fingerprint of it.
+2. If a saved recipe matches the fingerprint, use it. No AI call.
+3. If not, send the header and the first 20 rows to the model. The screen shows exactly
+what is being sent.
+4. The model returns a recipe as JSON: date column and date format, buy-or-sell column,
+coin, amount, price, fee, and how to split a pair like BTCINR. The reply is forced to
+match a schema and rejected if it does not.
+5. Code applies the recipe to every row.
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 12 of 18
+
+=====PAGE=====
+6. Checks run: every date parses, every number parses, row count in equals row count
+out, no coin balance goes below zero.
+7. The user sees 10 converted rows next to the originals and confirms.
+8. The recipe is saved. The user can share it to the project's recipe library, so the next
+person with that exchange needs no AI at all.
+Privacy default: a local model through Ollama, so nothing leaves the computer. A cloud
+model is allowed only when the user adds their own key and accepts a warning.
+Known traps to handle in code, not by AI:
+CoinDCX exports several tabs in one Excel file, so each tab needs its own recipe.
+Time zones: the app asks once per file whether times are IST or UTC.
+Sign styles: some files show sells as negative amounts, others use a side column.
+Fees paid in a third coin, such as BNB.
+The recipe library is the long-term asset. Each shared recipe makes the app work for one
+more exchange without anyone writing an importer.
+9. Open source, self-hosting, privacy and security
+Recommended licence: AGPL-3.0, so nobody can take the code, close it and sell it as a
+hosted service without sharing changes.
+Running it
+docker compose up starts everything. All data lives in one folder.
+Local mode has no account and no login. An optional password protects the page on a
+shared network.
+Licence Who uses it What it means for you
+AGPL-3.0 rotki, which also sells a commercial
+licence to firms that cannot accept
+AGPL
+Hosted copies must publish their
+changes. Some companies will avoid
+the code
+Apache
+2.0
+RP2 Anyone can do anything, including a
+closed paid copy. More adoption, less
+protection
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 13 of 18
+
+=====PAGE=====
+No telemetry, no analytics, no calls home. The only outgoing calls are the ones the
+user turns on: exchange sync, chain lookups, price lookups.
+Backup is copying one SQLite file.
+Keys and secrets
+Ask for read-only exchange keys and say so on the screen where the key is pasted.
+Encrypt keys at rest with a passphrase the user sets. Never write a key to a log.
+File import needs no key at all, which is why it is the main path.
+Repo layout
+packages/engine: lot matching and tax maths
+packages/rules: one rule file per tax year
+packages/importers: Binance, CoinDCX, EVM, generic CSV
+packages/recipes: shared CSV recipes
+apps/web: the Next.js app
+apps/cli: run the engine on a file from the terminal
+Things to ship with the code
+A clear "not tax advice" notice in the app and on every report.
+A contributor guide focused on the easiest contribution: a new CSV recipe.
+Automated dependency updates. The November 2026 Next.js release shows why.
+Do not run a public hosted copy at launch. A hosted copy brings back the exact trust
+problem this project exists to avoid, and adds security and legal duty you do not need yet.
+10. Roadmap
+Five phases, each ending in a gate you must pass before starting the next. The engine
+comes first because a pretty app with wrong tax maths is worse than no app.
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 14 of 18
+
+=====PAGE=====
+Phase 0 is highlighted because it has no screen at all, and it is the phase people skip. I
+have not put durations on the phases because they depend on your weekly hours.
+roadmap · 5 phases, 4 gates
+Phase What ships Done when
+0. Tax engine Common format, lot matching, India
+crypto rule files for both Acts,
+golden test cases, a command-line
+runner
+A CA approves the test cases and
+their answers
+1. File
+imports
+CoinDCX Excel importer, Binance
+export importer, generic CSV with AI
+recipe, web screens for import,
+review and Schedule VDA export
+Your own real year imports and the
+coin balances match your
+exchanges
+2. API and
+chain
+Read-only Binance and CoinDCX
+sync, EVM address import on
+Ethereum first, own-wallet transfer
+matching, price cache
+Computed wallet balances match
+what the chain shows
+3. US stocks Broker CSV import through recipes,
+SBI rate table, long and short term
+split, dividends, Form 67 and
+Schedule FA worksheets
+A CA approves the stock reports
+4. Public
+release
+Docker image, install guide,
+contributor guide, shared recipe
+library, licence and disclaimers
+A stranger installs it and gets a
+report without asking you anything
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 15 of 18
+
+=====PAGE=====
+To catch the July 2027 filing season, Phases 0 and 1 are the minimum. They already cover
+the largest group: people who only trade on CoinDCX or Binance.
+11. Risks and open questions
+The biggest risk is not technical: it is shipping a tax number that is wrong and having
+someone file with it.
+Risk How bad What to do
+Wrong tax treatment in
+the rule file
+Severe CA sign-off on rules and golden
+cases; "not tax advice" on every
+report; every number traceable to
+raw rows
+Missing history gives a
+wrong cost
+High Balance check against the
+exchange; missing buys are
+flagged, never given zero cost
+silently
+Free API tiers shrink
+again
+High, already happened
+twice in 2026
+File import as main path;
+swappable providers; user brings
+own key
+EVM decoding swallows
+the project
+High Version 1 handles transfers and
+simple swaps only; the rest goes
+to a review list
+Prices older than one
+year
+Medium Use the trade's own price; cache
+everything; pick a second price
+source before Phase 2
+AI recipe maps a column
+wrongly
+Medium Schema-forced output, automatic
+checks, and a human confirms 10
+preview rows
+Low usage outside tax
+season
+Certain Accept it. Measure filings
+completed, not daily users
+KoinX and others are far
+ahead
+Certain Compete only on open, private,
+free
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 16 of 18
+
+=====PAGE=====
+Questions a Chartered Accountant must answer before Phase 0 closes
+Things I could not verify in this session
+12. Sources
+Pages opened and read:
+TokenTax: crypto tax in India, 2026 guide
+Etherscan: API rate limits
+Etherscan: API changelog
+KoinX: crypto tax software comparison
+CCXT: supported exchanges
+AllRatesToday: SBI rate and Rule 115
+sbi-fx-ratekeeper on GitHub
+Are trading fees part of cost of acquisition, or lost entirely?
+Which rupee rate applies to a USDT-priced trade: the SBI dollar rate, or a USDT/INR
+market price?
+Is first-in-first-out acceptable for matching lots, and must it be per exchange or
+across all holdings?
+How should staking rewards, airdrops and mining be valued when received, and what
+is their cost on later sale?
+Does crypto held on Binance, a foreign platform, have to be listed in Schedule FA?
+Who must deduct TDS on a Binance P2P sale, and how should the app show TDS that
+was due but not deducted?
+What are the exact section and rule numbers under the 2025 Act to print on reports?
+Secondary sources differ.
+Official Binance API docs: endpoint limits and date windows (page blocked here).
+Official CoinDCX API docs: which history endpoints exist and their limits (page
+blocked here).
+Etherscan's official supported-chains list: which chains are free today (page blocked
+here; the paid-only list comes from a third-party check dated 20 October 2026).
+A free price source with more than one year of history.
+Current versions of Drizzle, viem, Zod and CCXT.
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 17 of 18
+
+=====PAGE=====
+RP2 on GitHub
+Search results used for single facts (not opened in full):
+Dalimss: new section numbers
+Upstox: ITR-2 schedules for AY 2026-27
+AllIndiaITR: filling Schedule VDA
+KoinX: Binance and TDS
+Koinly: Indian exchanges
+TaxClue: crypto scenarios
+MyFinancial: Schedule VDA and loss rule
+Toolisky: GST on exchange fees
+TaxFetch: Rule 206 note
+Platizio, EZTax, Winvesta, INDmoney, iVentures, CA Blogs: US stock tax rules
+Binance developer forum and Cryptact: Binance support status
+dltHub: CoinDCX API notes and Cryptact: CoinDCX history file
+Flexe: explorer API limits, rotki issue on Blockscout, Alchemy docs
+CoinGecko pricing and CoinGecko history limit
+rotki, rotki accounting defaults, BittyTax
+Ollama structured outputs
+Next.js November 2026 security release
+Open-source India crypto + US stocks tax helper: end-to-end plan
+Page 18 of 18

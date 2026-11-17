@@ -8,7 +8,7 @@ import {
 	type TxType,
 	TxTypeSchema,
 } from "@tax/core";
-import { ExternalLink, Save, Trash2 } from "lucide-react";
+import { ExternalLink, Info, Save, Trash2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -140,6 +140,26 @@ export function TransactionDrawer({
 				{tx ? (
 					<div className="space-y-5">
 						{error ? <ErrorBanner message={error} /> : null}
+
+						{(tx as LedgerTx & { supersededBy?: string | null })
+							.supersededBy ? (
+							<div className="flex items-start gap-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--bg-subtle)] p-3 text-xs text-[var(--text-primary)]">
+								<Info
+									className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent-text)]"
+									aria-hidden="true"
+								/>
+								<div className="space-y-1">
+									<div className="flex items-center gap-2">
+										<Badge tone="neutral">Replaced</Badge>
+									</div>
+									<p className="text-[var(--text-secondary)]">
+										A more detailed export (e.g. Trade History) replaced this
+										row. It is kept for the record but not used in the tax
+										calculation. Deleting that import restores it.
+									</p>
+								</div>
+							</div>
+						) : null}
 
 						<dl className="grid grid-cols-2 gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs">
 							{tx.assetIn ? (

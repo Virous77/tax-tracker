@@ -1,7 +1,7 @@
 "use client";
 
 import type { Recipe } from "@tax/core";
-import { Eye, FileSpreadsheet, Plus, Trash2, Wrench } from "lucide-react";
+import { Eye, FileSpreadsheet, Info, Plus, Trash2, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
@@ -16,7 +16,10 @@ import {
 	type ImportSummary,
 } from "@/lib/client/api";
 import {
+	formatIstDate,
 	formatIstDateTime,
+	formatQty,
+	formatReportKindLabel,
 	formatSignStyle,
 	formatSourceLabel,
 } from "@/lib/client/format";
@@ -143,110 +146,121 @@ export function ImportsClient() {
 				<>
 					{/* Mobile card view */}
 					<div className="space-y-3 md:hidden">
-						{imports.map((imp) => (
-							<div
-								key={imp.id}
-								className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4"
-							>
-								<div className="flex items-start justify-between gap-2">
-									<div className="min-w-0">
-										<div className="flex flex-wrap items-center gap-1.5">
-											<p className="truncate text-sm font-medium">
-												{imp.fileName}
-											</p>
-											{imp.kind === "api_sync" ? (
-												<Badge tone="accent">Synced</Badge>
+						{imports.map((imp) => {
+							const kindLabel = formatReportKindLabel(
+								imp.reportKind,
+								imp.reportKindLabel,
+							);
+							return (
+								<div
+									key={imp.id}
+									className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4"
+								>
+									<div className="flex items-start justify-between gap-2">
+										<div className="min-w-0">
+											<div className="flex flex-wrap items-center gap-1.5">
+												<p className="truncate text-sm font-medium">
+													{imp.fileName}
+												</p>
+												{imp.kind === "api_sync" ? (
+													<Badge tone="accent">Synced</Badge>
+												) : null}
+											</div>
+											{kindLabel ? (
+												<p className="mt-0.5 text-xs font-medium text-[var(--text-primary)]">
+													{kindLabel}
+												</p>
 											) : null}
+											<p className="mt-0.5 text-xs text-[var(--text-secondary)]">
+												{formatSourceLabel(imp.source)}
+												{imp.connectionLabel ? ` · ${imp.connectionLabel}` : ""}{" "}
+												· {imp.timezone} · {formatIstDateTime(imp.createdAt)}
+											</p>
 										</div>
-										<p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-											{formatSourceLabel(imp.source)}
-											{imp.connectionLabel ? ` · ${imp.connectionLabel}` : ""} ·{" "}
-											{imp.timezone} · {formatIstDateTime(imp.createdAt)}
-										</p>
-									</div>
-									<Badge
-										tone={
-											imp.status === "imported"
-												? "positive"
-												: imp.status === "pending_recipe"
-													? "warning"
-													: "loss"
-										}
-									>
-										{imp.status === "pending_recipe"
-											? "Needs recipe"
-											: imp.status}
-									</Badge>
-								</div>
-
-								<dl className="grid grid-cols-5 gap-2 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-xs">
-									<div>
-										<dt className="text-[var(--text-muted)]">Read</dt>
-										<dd className="num font-medium">{imp.rowsRead}</dd>
-									</div>
-									<div>
-										<dt className="text-[var(--text-muted)]">Inserted</dt>
-										<dd className="num font-medium text-[var(--positive)]">
-											{imp.rowsInserted}
-										</dd>
-									</div>
-									<div>
-										<dt className="text-[var(--text-muted)]">Dupes</dt>
-										<dd className="num font-medium text-[var(--text-secondary)]">
-											{imp.rowsDuplicate}
-										</dd>
-									</div>
-									<div>
-										<dt className="text-[var(--text-muted)]">Skipped</dt>
-										<dd className="num font-medium text-[var(--text-secondary)]">
-											{imp.rowsSkipped}
-										</dd>
-									</div>
-									<div>
-										<dt className="text-[var(--text-muted)]">Errors</dt>
-										<dd
-											className={`num font-medium ${
-												imp.rowsError > 0
-													? "text-[var(--loss)]"
-													: "text-[var(--text-secondary)]"
-											}`}
+										<Badge
+											tone={
+												imp.status === "imported"
+													? "positive"
+													: imp.status === "pending_recipe"
+														? "warning"
+														: "loss"
+											}
 										>
-											{imp.rowsError}
-										</dd>
+											{imp.status === "pending_recipe"
+												? "Needs recipe"
+												: imp.status}
+										</Badge>
 									</div>
-								</dl>
 
-								<div className="flex flex-wrap items-center justify-end gap-2">
-									{imp.status === "pending_recipe" ? (
-										<Link
-											href={`/import?importId=${encodeURIComponent(imp.id)}`}
-											className="inline-flex items-center gap-1 rounded border border-[var(--accent)] px-2.5 py-1.5 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--accent-soft)]"
+									<dl className="grid grid-cols-5 gap-2 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-xs">
+										<div>
+											<dt className="text-[var(--text-muted)]">Read</dt>
+											<dd className="num font-medium">{imp.rowsRead}</dd>
+										</div>
+										<div>
+											<dt className="text-[var(--text-muted)]">Inserted</dt>
+											<dd className="num font-medium text-[var(--positive)]">
+												{imp.rowsInserted}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-[var(--text-muted)]">Dupes</dt>
+											<dd className="num font-medium text-[var(--text-secondary)]">
+												{imp.rowsDuplicate}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-[var(--text-muted)]">Skipped</dt>
+											<dd className="num font-medium text-[var(--text-secondary)]">
+												{imp.rowsSkipped}
+											</dd>
+										</div>
+										<div>
+											<dt className="text-[var(--text-muted)]">Errors</dt>
+											<dd
+												className={`num font-medium ${
+													imp.rowsError > 0
+														? "text-[var(--loss)]"
+														: "text-[var(--text-secondary)]"
+												}`}
+											>
+												{imp.rowsError}
+											</dd>
+										</div>
+									</dl>
+
+									<div className="flex flex-wrap items-center justify-end gap-2">
+										{imp.status === "pending_recipe" ? (
+											<Link
+												href={`/import?importId=${encodeURIComponent(imp.id)}`}
+												className="inline-flex items-center gap-1 rounded border border-[var(--accent)] px-2.5 py-1.5 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--accent-soft)]"
+											>
+												<Wrench className="h-3.5 w-3.5" aria-hidden="true" />
+												Map
+											</Link>
+										) : null}
+										<button
+											type="button"
+											onClick={() => openDetail(imp.id)}
+											aria-label={`Inspect ${imp.fileName}`}
+											className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 										>
-											<Wrench className="h-3.5 w-3.5" aria-hidden="true" />
-											Map
-										</Link>
-									) : null}
-									<button
-										type="button"
-										onClick={() => openDetail(imp.id)}
-										aria-label={`Inspect ${imp.fileName}`}
-										className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-									>
-										<Eye className="h-3.5 w-3.5" aria-hidden="true" />
-										Inspect
-									</button>
-									<button
-										type="button"
-										onClick={() => setDeleteTarget(imp)}
-										aria-label={`Delete ${imp.fileName}`}
-										className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--loss)] hover:bg-[var(--loss-soft)]"
-									>
-										<Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-										Delete
-									</button>
+											<Eye className="h-3.5 w-3.5" aria-hidden="true" />
+											Inspect
+										</button>
+										<button
+											type="button"
+											onClick={() => setDeleteTarget(imp)}
+											aria-label={`Delete ${imp.fileName}`}
+											className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--loss)] hover:bg-[var(--loss-soft)]"
+										>
+											<Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+											Delete
+										</button>
+									</div>
 								</div>
-							</div>
-						))}
+							);
+						})}
 					</div>
 
 					{/* Desktop table view */}
@@ -255,7 +269,9 @@ export function ImportsClient() {
 							<table className="w-full border-collapse text-left text-sm">
 								<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 									<tr>
-										<th className="px-4 py-2.5 font-medium">File</th>
+										<th className="px-4 py-2.5 font-medium">
+											File &amp; Report
+										</th>
 										<th className="px-4 py-2.5 font-medium">Source</th>
 										<th className="px-4 py-2.5 font-medium">TZ</th>
 										<th className="px-4 py-2.5 font-medium">Status</th>
@@ -274,103 +290,119 @@ export function ImportsClient() {
 									</tr>
 								</thead>
 								<tbody>
-									{imports.map((imp) => (
-										<tr
-											key={imp.id}
-											className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
-										>
-											<td className="max-w-60 px-4 py-2.5 font-medium">
-												<div className="flex flex-wrap items-center gap-1.5">
-													<span className="truncate">{imp.fileName}</span>
-													{imp.kind === "api_sync" ? (
-														<Badge tone="accent">Synced</Badge>
-													) : null}
-												</div>
-												{imp.connectionLabel ? (
-													<span className="block text-[11px] font-normal text-[var(--text-secondary)]">
-														{imp.connectionLabel}
-													</span>
-												) : null}
-												{imp.rowsSkipped > 0 ? (
-													<span className="num block text-[11px] font-normal text-[var(--text-muted)]">
-														{imp.rowsSkipped} skipped (overlap)
-													</span>
-												) : null}
-											</td>
-											<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
-												{formatSourceLabel(imp.source)}
-											</td>
-											<td className="px-4 py-2.5 whitespace-nowrap">
-												<Badge tone="neutral">{imp.timezone}</Badge>
-											</td>
-											<td className="px-4 py-2.5 whitespace-nowrap">
-												<Badge
-													tone={
-														imp.status === "imported"
-															? "positive"
-															: imp.status === "pending_recipe"
-																? "warning"
-																: "loss"
-													}
-												>
-													{imp.status === "pending_recipe"
-														? "Needs recipe"
-														: imp.status}
-												</Badge>
-											</td>
-											<td className="num-right px-4 py-2.5">{imp.rowsRead}</td>
-											<td className="num-right px-4 py-2.5 text-[var(--positive)]">
-												{imp.rowsInserted}
-											</td>
-											<td className="num-right px-4 py-2.5 text-[var(--text-secondary)]">
-												{imp.rowsDuplicate}
-											</td>
-											<td
-												className={`num-right px-4 py-2.5 ${
-													imp.rowsError > 0
-														? "font-medium text-[var(--loss)]"
-														: "text-[var(--text-secondary)]"
-												}`}
+									{imports.map((imp) => {
+										const kindLabel = formatReportKindLabel(
+											imp.reportKind,
+											imp.reportKindLabel,
+										);
+										return (
+											<tr
+												key={imp.id}
+												className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
 											>
-												{imp.rowsError}
-											</td>
-											<td className="px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
-												{formatIstDateTime(imp.createdAt)}
-											</td>
-											<td className="px-4 py-2.5 text-right whitespace-nowrap">
-												<div className="inline-flex items-center gap-1.5">
-													{imp.status === "pending_recipe" ? (
-														<Link
-															href={`/import?importId=${encodeURIComponent(imp.id)}`}
-															className="inline-flex items-center gap-1 rounded border border-[var(--accent)] px-2 py-1 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--accent-soft)]"
-														>
-															<Wrench className="h-3 w-3" aria-hidden="true" />
-															Map
-														</Link>
+												<td className="max-w-72 px-4 py-2.5 font-medium">
+													<div className="flex flex-wrap items-center gap-1.5">
+														<span className="truncate">{imp.fileName}</span>
+														{imp.kind === "api_sync" ? (
+															<Badge tone="accent">Synced</Badge>
+														) : null}
+													</div>
+													{kindLabel ? (
+														<span className="block text-xs font-normal text-[var(--text-secondary)]">
+															{kindLabel}
+														</span>
 													) : null}
-													<button
-														type="button"
-														onClick={() => openDetail(imp.id)}
-														aria-label={`Inspect ${imp.fileName}`}
-														className="rounded border border-[var(--border)] p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+													{imp.connectionLabel ? (
+														<span className="block text-[11px] font-normal text-[var(--text-secondary)]">
+															{imp.connectionLabel}
+														</span>
+													) : null}
+													{imp.rowsSkipped > 0 ? (
+														<span className="num block text-[11px] font-normal text-[var(--text-muted)]">
+															{imp.rowsSkipped} skipped (overlap)
+														</span>
+													) : null}
+												</td>
+												<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
+													{formatSourceLabel(imp.source)}
+												</td>
+												<td className="px-4 py-2.5 whitespace-nowrap">
+													<Badge tone="neutral">{imp.timezone}</Badge>
+												</td>
+												<td className="px-4 py-2.5 whitespace-nowrap">
+													<Badge
+														tone={
+															imp.status === "imported"
+																? "positive"
+																: imp.status === "pending_recipe"
+																	? "warning"
+																	: "loss"
+														}
 													>
-														<Eye className="h-3.5 w-3.5" aria-hidden="true" />
-													</button>
-													<button
-														type="button"
-														onClick={() => setDeleteTarget(imp)}
-														aria-label={`Delete ${imp.fileName}`}
-														className="rounded border border-[var(--border)] p-1.5 text-[var(--loss)] hover:bg-[var(--loss-soft)]"
-													>
-														<Trash2
-															className="h-3.5 w-3.5"
-															aria-hidden="true"
-														/>
-													</button>
-												</div>
-											</td>
-										</tr>
-									))}
+														{imp.status === "pending_recipe"
+															? "Needs recipe"
+															: imp.status}
+													</Badge>
+												</td>
+												<td className="num-right px-4 py-2.5">
+													{imp.rowsRead}
+												</td>
+												<td className="num-right px-4 py-2.5 text-[var(--positive)]">
+													{imp.rowsInserted}
+												</td>
+												<td className="num-right px-4 py-2.5 text-[var(--text-secondary)]">
+													{imp.rowsDuplicate}
+												</td>
+												<td
+													className={`num-right px-4 py-2.5 ${
+														imp.rowsError > 0
+															? "font-medium text-[var(--loss)]"
+															: "text-[var(--text-secondary)]"
+													}`}
+												>
+													{imp.rowsError}
+												</td>
+												<td className="px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
+													{formatIstDateTime(imp.createdAt)}
+												</td>
+												<td className="px-4 py-2.5 text-right whitespace-nowrap">
+													<div className="inline-flex items-center gap-1.5">
+														{imp.status === "pending_recipe" ? (
+															<Link
+																href={`/import?importId=${encodeURIComponent(imp.id)}`}
+																className="inline-flex items-center gap-1 rounded border border-[var(--accent)] px-2 py-1 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--accent-soft)]"
+															>
+																<Wrench
+																	className="h-3 w-3"
+																	aria-hidden="true"
+																/>
+																Map
+															</Link>
+														) : null}
+														<button
+															type="button"
+															onClick={() => openDetail(imp.id)}
+															aria-label={`Inspect ${imp.fileName}`}
+															className="rounded border border-[var(--border)] p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+														>
+															<Eye className="h-3.5 w-3.5" aria-hidden="true" />
+														</button>
+														<button
+															type="button"
+															onClick={() => setDeleteTarget(imp)}
+															aria-label={`Delete ${imp.fileName}`}
+															className="rounded border border-[var(--border)] p-1.5 text-[var(--loss)] hover:bg-[var(--loss-soft)]"
+														>
+															<Trash2
+																className="h-3.5 w-3.5"
+																aria-hidden="true"
+															/>
+														</button>
+													</div>
+												</td>
+											</tr>
+										);
+									})}
 								</tbody>
 							</table>
 						</div>
@@ -451,9 +483,32 @@ export function ImportsClient() {
 								</dd>
 							</div>
 							<div>
-								<dt className="text-[var(--text-muted)]">Timezone</dt>
-								<dd className="mt-0.5 font-medium">{detail.timezone}</dd>
+								<dt className="text-[var(--text-muted)]">Time zone</dt>
+								<dd className="mt-0.5 font-medium">
+									{detail.detectedTimezone ?? detail.timezone}{" "}
+									<span className="font-normal text-[var(--text-secondary)]">
+										(
+										{detail.timezoneSource === "file"
+											? "from the file name"
+											: "your answer"}
+										)
+									</span>
+								</dd>
 							</div>
+							{formatReportKindLabel(
+								detail.reportKind,
+								detail.reportKindLabel,
+							) ? (
+								<div className="col-span-2">
+									<dt className="text-[var(--text-muted)]">Detected report</dt>
+									<dd className="mt-0.5 font-medium">
+										{formatReportKindLabel(
+											detail.reportKind,
+											detail.reportKindLabel,
+										)}
+									</dd>
+								</div>
+							) : null}
 							{detail.connectionLabel ? (
 								<div className="col-span-2">
 									<dt className="text-[var(--text-muted)]">Connection</dt>
@@ -470,49 +525,105 @@ export function ImportsClient() {
 							</div>
 						</dl>
 
-						<div className="space-y-1.5">
-							<dl className="grid grid-cols-5 gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs">
-								<div>
-									<dt className="text-[var(--text-muted)]">Read</dt>
-									<dd className="num mt-0.5 font-semibold">
-										{detail.rowsRead}
-									</dd>
-								</div>
-								<div>
-									<dt className="text-[var(--text-muted)]">Inserted</dt>
-									<dd className="num mt-0.5 font-semibold text-[var(--positive)]">
-										{detail.rowsInserted}
-									</dd>
-								</div>
-								<div>
-									<dt className="text-[var(--text-muted)]">Dupes</dt>
-									<dd className="num mt-0.5 font-semibold text-[var(--text-secondary)]">
-										{detail.rowsDuplicate}
-									</dd>
-								</div>
-								<div>
-									<dt className="text-[var(--text-muted)]">Skipped</dt>
-									<dd className="num mt-0.5 font-semibold text-[var(--text-secondary)]">
-										{detail.rowsSkipped}
-									</dd>
-								</div>
-								<div>
-									<dt className="text-[var(--text-muted)]">Errors</dt>
-									<dd
-										className={`num mt-0.5 font-semibold ${
-											detail.rowsError > 0
-												? "text-[var(--loss)]"
-												: "text-[var(--text-secondary)]"
-										}`}
+						{detail.balanceSnapshot ? (
+							<div className="space-y-2 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs">
+								<div className="flex flex-wrap items-center justify-between gap-2">
+									<p className="font-semibold">
+										Balance Snapshot · As of{" "}
+										{formatIstDate(detail.balanceSnapshot.asOf)}
+									</p>
+									<Link
+										href="/report#statements"
+										className="font-medium text-[var(--accent-text)] hover:underline"
 									>
-										{detail.rowsError}
-									</dd>
+										Compare on Report
+									</Link>
 								</div>
-							</dl>
-							<p className="num text-[11px] text-[var(--text-muted)]">
-								{`${detail.rowsRead} read = ${detail.rowsInserted} inserted + ${detail.rowsDuplicate} duplicates + ${detail.rowsSkipped} skipped + ${detail.rowsError} errors`}
-							</p>
-						</div>
+								<ul className="space-y-1">
+									{detail.balanceSnapshot.rows.map((r) => (
+										<li
+											key={`${r.asset}:${r.wallet ?? ""}:${r.amount}`}
+											className="flex items-center justify-between border-b border-[var(--border)] py-1 last:border-b-0"
+										>
+											<span className="font-medium">
+												{r.asset}
+												{r.wallet ? ` (${r.wallet})` : ""}
+											</span>
+											<span className="num">{formatQty(r.amount)}</span>
+										</li>
+									))}
+								</ul>
+							</div>
+						) : (
+							<div className="space-y-1.5">
+								<dl className="grid grid-cols-5 gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs">
+									<div>
+										<dt className="text-[var(--text-muted)]">Read</dt>
+										<dd className="num mt-0.5 font-semibold">
+											{detail.rowsRead}
+										</dd>
+									</div>
+									<div>
+										<dt className="text-[var(--text-muted)]">Inserted</dt>
+										<dd className="num mt-0.5 font-semibold text-[var(--positive)]">
+											{detail.rowsInserted}
+										</dd>
+									</div>
+									<div>
+										<dt className="text-[var(--text-muted)]">Dupes</dt>
+										<dd className="num mt-0.5 font-semibold text-[var(--text-secondary)]">
+											{detail.rowsDuplicate}
+										</dd>
+									</div>
+									<div>
+										<dt className="text-[var(--text-muted)]">Skipped</dt>
+										<dd className="num mt-0.5 font-semibold text-[var(--text-secondary)]">
+											{detail.rowsSkipped}
+										</dd>
+									</div>
+									<div>
+										<dt className="text-[var(--text-muted)]">Errors</dt>
+										<dd
+											className={`num mt-0.5 font-semibold ${
+												detail.rowsError > 0
+													? "text-[var(--loss)]"
+													: "text-[var(--text-secondary)]"
+											}`}
+										>
+											{detail.rowsError}
+										</dd>
+									</div>
+								</dl>
+								<p className="num text-[11px] text-[var(--text-muted)]">
+									{`${detail.rowsRead} read = ${detail.rowsInserted} inserted + ${detail.rowsDuplicate} duplicates + ${detail.rowsSkipped} skipped + ${detail.rowsError} errors`}
+								</p>
+							</div>
+						)}
+
+						{detail.coverage && detail.coverage.length > 0 ? (
+							<div className="space-y-1.5">
+								<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
+									Coverage
+								</h3>
+								<ul className="space-y-1 text-xs">
+									{detail.coverage.map((cov) => (
+										<li
+											key={`${cov.reportKind}:${cov.firstTimestamp}:${cov.lastTimestamp}`}
+											className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2"
+										>
+											<span className="block font-medium">
+												{formatReportKindLabel(cov.reportKind) ??
+													cov.reportKind}
+											</span>
+											<span className="num text-[var(--text-secondary)]">
+												{formatIstDateTime(cov.firstTimestamp)} →{" "}
+												{formatIstDateTime(cov.lastTimestamp)}
+											</span>
+										</li>
+									))}
+								</ul>
+							</div>
+						) : null}
 
 						{detail.sheets && detail.sheets.length > 0 ? (
 							<div className="space-y-2">
@@ -538,19 +649,27 @@ export function ImportsClient() {
 
 						{detail.warnings.length > 0 ? (
 							<div className="space-y-1.5">
-								<h3 className="text-xs font-semibold tracking-wide text-[var(--warning)] uppercase">
-									Warnings ({detail.warnings.length})
+								<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
+									Notices ({detail.warnings.length})
 								</h3>
-								<ul className="space-y-1 text-xs">
+								<ul className="space-y-1.5 text-xs">
 									{detail.warnings.map((w) => (
 										<li
 											key={`${w.code}:${w.txId ?? ""}:${w.message}`}
-											className="rounded border border-[var(--warning)]/30 bg-[var(--warning-soft)] px-3 py-2"
+											className="flex items-start gap-2 rounded border border-[var(--border-strong)] bg-[var(--bg-subtle)] px-3 py-2"
 										>
-											<span className="font-mono-code font-medium">
-												{w.code}
-											</span>
-											: {w.message}
+											<Info
+												className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--accent-text)]"
+												aria-hidden="true"
+											/>
+											<div>
+												<p className="text-[var(--text-primary)]">
+													{w.message}
+												</p>
+												<p className="font-mono-code text-[11px] text-[var(--text-muted)]">
+													{w.code}
+												</p>
+											</div>
 										</li>
 									))}
 								</ul>

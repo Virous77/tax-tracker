@@ -326,6 +326,7 @@ export const TransactionsQuerySchema = PaginationQuerySchema.extend({
 	type: TxTypeSchema.optional(),
 	source: z.string().optional(),
 	flagged: QueryBooleanSchema.optional(),
+	superseded: QueryBooleanSchema.optional(),
 	q: z.string().optional(),
 	sort: TransactionSortSchema.default("timestamp:desc"),
 });
@@ -335,8 +336,12 @@ export const PaginationResponseSchema = z.object({
 	page: z.number().int().positive(),
 	pageSize: z.number().int().positive().max(200),
 });
+export const TransactionListItemSchema = z.intersection(
+	LedgerTxSchema,
+	z.object({ supersededBy: z.string().nullable() }),
+);
 export const ListTransactionsResponseSchema = PaginationResponseSchema.extend({
-	items: z.array(LedgerTxSchema),
+	items: z.array(TransactionListItemSchema),
 });
 export const CreateTransactionRequestSchema = LedgerTxFieldsSchema.omit({
 	id: true,

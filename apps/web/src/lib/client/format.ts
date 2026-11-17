@@ -289,3 +289,47 @@ const INCOME_KIND_LABELS: Record<string, string> = {
 export function formatIncomeKind(kind: string): string {
 	return INCOME_KIND_LABELS[kind] ?? kind;
 }
+
+const REPORT_KIND_LABELS: Record<string, string> = {
+	"binance:spot-order-history": "Binance Spot Order History",
+	"binance:spot-trade-history": "Binance Spot Trade History",
+	"binance:spot-trade-history-assets":
+		"Binance Spot Trade History (asset columns)",
+	"binance:legacy-spot-trade-history": "Binance Spot Trade History (legacy)",
+	"binance:transaction-history": "Binance Transaction History Statement",
+	"binance:deposits": "Binance Deposit History",
+	"binance:withdrawals": "Binance Withdrawal History",
+	"binance:wallet-history": "Binance Wallet History (legacy)",
+	"binance:convert": "Binance Convert History",
+	"binance:fiat": "Binance Fiat History",
+	"binance:futures-trades": "Binance Futures Trade History",
+	"binance:futures-transactions": "Binance Futures Transaction History",
+	"binance:account-statement-pdf": "Binance Account Statement",
+	"binance:mixed": "Binance Combined Reports",
+	"coindcx:order-history": "CoinDCX Order History",
+	"coindcx:instant-orders": "CoinDCX Trade Report — Instant Orders",
+	"coindcx:spot-orders": "CoinDCX Trade Report — Spot Orders",
+	"coindcx:futures-orders": "CoinDCX Futures Orders",
+	"coindcx:options": "CoinDCX Options",
+	"coindcx:form16a-pdf": "CoinDCX Form 16A",
+	"coindcx:mixed": "CoinDCX Trade Report",
+};
+
+export function formatReportKindLabel(
+	reportKind: string | null | undefined,
+	serverLabel?: string | null,
+): string | null {
+	if (serverLabel) return serverLabel;
+	if (!reportKind) return null;
+	return REPORT_KIND_LABELS[reportKind] ?? reportKind;
+}
+
+export function formatExcludedReason(reason: string): string {
+	if (reason === "superseded") {
+		return "Replaced by a more detailed export (kept for records, excluded from tax calculation)";
+	}
+	if (reason === "suspected_spam") {
+		return "Suspected spam token (excluded until cleared)";
+	}
+	return reason;
+}

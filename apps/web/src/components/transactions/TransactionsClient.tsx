@@ -380,81 +380,93 @@ export function TransactionsClient() {
 								</tr>
 							</thead>
 							<tbody>
-								{data.items.map((tx) => (
-									<tr
-										key={tx.id}
-										className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
-									>
-										<td className="px-4 py-2.5 text-xs whitespace-nowrap">
-											<button
-												type="button"
-												onClick={() => setSelectedTx(tx)}
-												className="text-left font-medium text-[var(--accent-text)] hover:underline"
-											>
-												{formatIstDateTime(tx.timestamp)}
-											</button>
-										</td>
-										<td className="px-4 py-2.5 whitespace-nowrap">
-											<Badge tone="neutral">
-												{formatTxType(tx.type)}
-												{tx.incomeKind ? ` · ${tx.incomeKind}` : ""}
-											</Badge>
-										</td>
-										<td className="px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
-											{formatSourceLabel(tx.source)}
-										</td>
-										<td className="num-right px-4 py-2.5 whitespace-nowrap">
-											{tx.assetIn ? (
-												<span>
-													{formatQty(tx.amountIn)}{" "}
-													<span className="text-xs text-[var(--text-secondary)]">
-														{tx.assetIn}
-													</span>
-												</span>
-											) : (
-												<span className="text-[var(--text-muted)]">—</span>
-											)}
-										</td>
-										<td className="num-right px-4 py-2.5 whitespace-nowrap">
-											{tx.assetOut ? (
-												<span>
-													{formatQty(tx.amountOut)}{" "}
-													<span className="text-xs text-[var(--text-secondary)]">
-														{tx.assetOut}
-													</span>
-												</span>
-											) : (
-												<span className="text-[var(--text-muted)]">—</span>
-											)}
-										</td>
-										<td className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
-											{formatInrNullable(tx.inrValue)}
-										</td>
-										<td className="num-right px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
-											{formatInrNullable(tx.tdsInr)}
-										</td>
-										<td className="px-4 py-2.5">
-											<div className="flex flex-wrap gap-1">
-												{[
-													...new Set(tx.reviewFlags.map((flag) => flag.code)),
-												].map((code) => {
-													const info = REVIEW_CODE_INFO[code];
-													const tone =
-														info?.severity === "error"
-															? "loss"
-															: info?.severity === "info"
-																? "accent"
-																: "warning";
-													return (
-														<span key={code} title={info?.title ?? code}>
-															<Badge tone={tone}>{code}</Badge>
+								{data.items.map((tx) => {
+									const supersededBy =
+										(tx as LedgerTx & { supersededBy?: string | null })
+											.supersededBy ?? null;
+									return (
+										<tr
+											key={tx.id}
+											className={`border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60 ${
+												supersededBy ? "opacity-75" : ""
+											}`}
+										>
+											<td className="px-4 py-2.5 text-xs whitespace-nowrap">
+												<button
+													type="button"
+													onClick={() => setSelectedTx(tx)}
+													className="text-left font-medium text-[var(--accent-text)] hover:underline"
+												>
+													{formatIstDateTime(tx.timestamp)}
+												</button>
+											</td>
+											<td className="px-4 py-2.5 whitespace-nowrap">
+												<div className="flex flex-wrap items-center gap-1.5">
+													<Badge tone="neutral">
+														{formatTxType(tx.type)}
+														{tx.incomeKind ? ` · ${tx.incomeKind}` : ""}
+													</Badge>
+													{supersededBy ? (
+														<Badge tone="neutral">Replaced</Badge>
+													) : null}
+												</div>
+											</td>
+											<td className="px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
+												{formatSourceLabel(tx.source)}
+											</td>
+											<td className="num-right px-4 py-2.5 whitespace-nowrap">
+												{tx.assetIn ? (
+													<span>
+														{formatQty(tx.amountIn)}{" "}
+														<span className="text-xs text-[var(--text-secondary)]">
+															{tx.assetIn}
 														</span>
-													);
-												})}
-											</div>
-										</td>
-									</tr>
-								))}
+													</span>
+												) : (
+													<span className="text-[var(--text-muted)]">—</span>
+												)}
+											</td>
+											<td className="num-right px-4 py-2.5 whitespace-nowrap">
+												{tx.assetOut ? (
+													<span>
+														{formatQty(tx.amountOut)}{" "}
+														<span className="text-xs text-[var(--text-secondary)]">
+															{tx.assetOut}
+														</span>
+													</span>
+												) : (
+													<span className="text-[var(--text-muted)]">—</span>
+												)}
+											</td>
+											<td className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
+												{formatInrNullable(tx.inrValue)}
+											</td>
+											<td className="num-right px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
+												{formatInrNullable(tx.tdsInr)}
+											</td>
+											<td className="px-4 py-2.5">
+												<div className="flex flex-wrap gap-1">
+													{[
+														...new Set(tx.reviewFlags.map((flag) => flag.code)),
+													].map((code) => {
+														const info = REVIEW_CODE_INFO[code];
+														const tone =
+															info?.severity === "error"
+																? "loss"
+																: info?.severity === "info"
+																	? "accent"
+																	: "warning";
+														return (
+															<span key={code} title={info?.title ?? code}>
+																<Badge tone={tone}>{code}</Badge>
+															</span>
+														);
+													})}
+												</div>
+											</td>
+										</tr>
+									);
+								})}
 							</tbody>
 						</table>
 					</div>

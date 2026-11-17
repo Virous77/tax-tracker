@@ -1,6 +1,7 @@
 "use client";
 
 import {
+	AlertCircle,
 	Check,
 	ChevronDown,
 	ChevronUp,
@@ -17,7 +18,10 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddConnectionDialog } from "@/components/connections/AddConnectionDialog";
 import { KeyCheckBanner } from "@/components/connections/KeyCheckBanner";
-import { ProviderKeysCard } from "@/components/connections/ProviderKeysCard";
+import {
+	ProviderKeysCard,
+	providerDisplayName,
+} from "@/components/connections/ProviderKeysCard";
 import { SymbolTagInput } from "@/components/connections/SymbolTagInput";
 import { SyncSummaryPanel } from "@/components/connections/SyncSummaryPanel";
 import { VaultCard } from "@/components/connections/VaultCard";
@@ -26,6 +30,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import {
+	ApiError,
 	api,
 	type Connection,
 	type ConnectionBalances,
@@ -42,6 +47,11 @@ import { formatIstDateTime } from "@/lib/client/format";
 interface ActiveSyncState {
 	jobId: string;
 	job: JobStatus | null;
+}
+
+interface SyncErrorState {
+	message: string;
+	missingProviders?: string[];
 }
 
 function connectionKindLabel(conn: Connection): string {
@@ -71,6 +81,13 @@ function syncStatusBadge(status: string | null, running: boolean) {
 	return <Badge tone="neutral">Not synced</Badge>;
 }
 
+function extractMissingProviders(details: unknown): string[] {
+	if (!details || typeof details !== "object") return [];
+	const needs = (details as { needs?: unknown }).needs;
+	if (!Array.isArray(needs)) return [];
+	return needs.filter((item): item is string => typeof item === "string");
+}
+
 export function ConnectionsClient() {
 	const [vault, setVault] = useState<VaultStatus | null>(null);
 	const [connections, setConnections] = useState<Connection[]>([]);
@@ -92,10 +109,16 @@ export function ConnectionsClient() {
 	const [activeSyncs, setActiveSyncs] = useState<
 		Record<string, ActiveSyncState>
 	>({});
-	const [syncErrors, setSyncErrors] = useState<Record<string, string>>({});
+	const [syncErrors, setSyncErrors] = useState<Record<string, SyncErrorState>>(
+		{},
+	);
 	const [syncSummaries, setSyncSummaries] = useState<
 		Record<string, SyncSummary>
 	>({});
+	const [focusProvider, setFocusProvider] = useState<{
+		name: string;
+		seq: number;
+	} | null>(null);
 
 	const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>(
 		{},
@@ -128,6 +151,8 @@ export function ConnectionsClient() {
 	const pollTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
 		new Map(),
 	);
+	const resumedRunningJobsRef = useRef<Set<string>>(new Set());
+	const fetchedLastJobIdsRef = useRef<Set<string>>(new Set());
 
 	useEffect(() => {
 		mountedRef.current = true;
@@ -178,9 +203,9 @@ export function ConnectionsClient() {
 		}
 	}, []);
 
-	// If a connection was already running on load (no jobId in memory), poll listConnections until it finishes
+	// If a connection was already running on load without a jobId, poll listConnections until it finishes
 	const hasExternalRunning = connections.some(
-		(c) => c.running && !activeSyncs[c.id],
+		(c) => c.running && !c.runningJobId && !activeSyncs[c.id],
 	);
 	useEffect(() => {
 		if (!hasExternalRunning) return;
@@ -215,7 +240,11 @@ export function ConnectionsClient() {
 	}, []);
 
 	const pollSyncJob = useCallback(
-		(connectionId: string, jobId: string) => {
+		(
+			connectionId: string,
+			jobId: string,
+			opts: { immediate?: boolean } = {},
+		) => {
 			const existing = pollTimersRef.current.get(connectionId);
 			if (existing) clearTimeout(existing);
 
@@ -236,6 +265,7 @@ export function ConnectionsClient() {
 					}
 
 					pollTimersRef.current.delete(connectionId);
+					fetchedLastJobIdsRef.current.add(jobId);
 					setActiveSyncs((prev) => {
 						const next = { ...prev };
 						delete next[connectionId];
@@ -257,7 +287,7 @@ export function ConnectionsClient() {
 					} else if (job.status === "failed") {
 						setSyncErrors((prev) => ({
 							...prev,
-							[connectionId]: job.error ?? "Sync failed.",
+							[connectionId]: { message: job.error ?? "Sync failed." },
 						}));
 						await refreshConnectionsAndProviders();
 					}
@@ -271,17 +301,67 @@ export function ConnectionsClient() {
 					});
 					setSyncErrors((prev) => ({
 						...prev,
-						[connectionId]: getErrorMessage(err),
+						[connectionId]: { message: getErrorMessage(err) },
 					}));
 					await refreshConnectionsAndProviders();
 				}
 			};
 
-			const timer = setTimeout(tick, 1000);
-			pollTimersRef.current.set(connectionId, timer);
+			if (opts.immediate) {
+				void tick();
+			} else {
+				const timer = setTimeout(tick, 1000);
+				pollTimersRef.current.set(connectionId, timer);
+			}
 		},
 		[fetchBalances, refreshConnectionsAndProviders],
 	);
+
+	// Resume active runningJobId and hydrate lastSyncJobId summaries after reload
+	useEffect(() => {
+		for (const conn of connections) {
+			if (
+				conn.runningJobId &&
+				!resumedRunningJobsRef.current.has(conn.runningJobId)
+			) {
+				const jobId = conn.runningJobId;
+				resumedRunningJobsRef.current.add(jobId);
+				setActiveSyncs((prev) => ({
+					...prev,
+					[conn.id]: { jobId, job: prev[conn.id]?.job ?? null },
+				}));
+				pollSyncJob(conn.id, jobId, { immediate: true });
+			} else if (
+				!conn.runningJobId &&
+				conn.lastSyncJobId &&
+				!fetchedLastJobIdsRef.current.has(conn.lastSyncJobId)
+			) {
+				const jobId = conn.lastSyncJobId;
+				const connId = conn.id;
+				fetchedLastJobIdsRef.current.add(jobId);
+				void api
+					.getJob(jobId)
+					.then((job) => {
+						if (!mountedRef.current) return;
+						if (
+							job.status === "completed" &&
+							job.result &&
+							"streams" in job.result
+						) {
+							setSyncSummaries((prev) => ({
+								...prev,
+								[connId]: job.result as SyncSummary,
+							}));
+							setExpandedPanels((prev) => ({ ...prev, [connId]: true }));
+							void fetchBalances(connId);
+						}
+					})
+					.catch(() => {
+						// ignore stale or expired job lookup on initial hydration
+					});
+			}
+		}
+	}, [connections, fetchBalances, pollSyncJob]);
 
 	async function handleSyncNow(conn: Connection) {
 		setSyncErrors((prev) => {
@@ -292,19 +372,36 @@ export function ConnectionsClient() {
 		try {
 			const { jobId } = await api.syncConnection(conn.id);
 			if (!mountedRef.current) return;
+			resumedRunningJobsRef.current.add(jobId);
 			setActiveSyncs((prev) => ({
 				...prev,
 				[conn.id]: { jobId, job: null },
 			}));
 			setConnections((prev) =>
-				prev.map((c) => (c.id === conn.id ? { ...c, running: true } : c)),
+				prev.map((c) =>
+					c.id === conn.id ? { ...c, running: true, runningJobId: jobId } : c,
+				),
 			);
 			pollSyncJob(conn.id, jobId);
 		} catch (err) {
 			if (!mountedRef.current) return;
+			if (err instanceof ApiError && err.code === "provider_key_required") {
+				const needs = extractMissingProviders(err.details);
+				const needsText = needs.map(providerDisplayName).join(" or ");
+				setSyncErrors((prev) => ({
+					...prev,
+					[conn.id]: {
+						message: needsText
+							? `This chain needs ${/^[AEIOU]/i.test(needsText) ? "an" : "a"} ${needsText} key.`
+							: "This chain needs a provider API key.",
+						missingProviders: needs,
+					},
+				}));
+				return;
+			}
 			setSyncErrors((prev) => ({
 				...prev,
-				[conn.id]: getErrorMessage(err),
+				[conn.id]: { message: getErrorMessage(err) },
 			}));
 		}
 	}
@@ -750,7 +847,52 @@ export function ConnectionsClient() {
 												</div>
 											) : null}
 
-											{syncErr ? <ErrorBanner message={syncErr} /> : null}
+											{syncErr ? (
+												syncErr.missingProviders &&
+												syncErr.missingProviders.length > 0 ? (
+													<div
+														role="alert"
+														className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-[var(--loss)]/40 bg-[var(--loss-soft)] px-4 py-3 text-sm text-[var(--loss)]"
+													>
+														<div className="flex items-start gap-2.5">
+															<AlertCircle
+																className="mt-0.5 h-4 w-4 shrink-0"
+																aria-hidden="true"
+															/>
+															<div>
+																<p className="font-semibold">
+																	Provider key required
+																</p>
+																<p className="mt-0.5 text-[var(--text-primary)]">
+																	{syncErr.message}
+																	{!vault?.unlocked
+																		? " Unlock your vault first to add a key."
+																		: ""}
+																</p>
+															</div>
+														</div>
+														<div className="flex flex-wrap items-center gap-2">
+															{syncErr.missingProviders.map((providerName) => (
+																<button
+																	key={providerName}
+																	type="button"
+																	onClick={() =>
+																		setFocusProvider({
+																			name: providerName,
+																			seq: Date.now(),
+																		})
+																	}
+																	className="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+																>
+																	Add {providerDisplayName(providerName)} key
+																</button>
+															))}
+														</div>
+													</div>
+												) : (
+													<ErrorBanner message={syncErr.message} />
+												)
+											) : null}
 
 											{checkState ? (
 												<KeyCheckBanner
@@ -908,8 +1050,21 @@ export function ConnectionsClient() {
 					<ProviderKeysCard
 						providers={providers}
 						vaultUnlocked={Boolean(vault?.unlocked)}
+						focusRequest={focusProvider}
 						onUpdated={(next) => {
 							setProviders(next);
+							setSyncErrors((prev) => {
+								const updated: Record<string, SyncErrorState> = {};
+								for (const [id, errState] of Object.entries(prev)) {
+									const nowSatisfied = errState.missingProviders?.some(
+										(name) => next[name]?.keySet,
+									);
+									if (!nowSatisfied) {
+										updated[id] = errState;
+									}
+								}
+								return updated;
+							});
 							void refreshConnectionsAndProviders();
 						}}
 					/>

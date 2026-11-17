@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink, Key, Trash2 } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -18,7 +18,7 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
 	etherscan: {
 		label: "Etherscan",
 		purpose:
-			"Ethereum mainnet, Arbitrum, and Polygon history (and BNB Chain on paid tiers).",
+			"Ethereum mainnet, Arbitrum, and Polygon history (a paid plan covers Base and BNB Chain too).",
 		keyUrl: "https://etherscan.io/myapikey",
 		keyLinkLabel: "Get free key",
 	},
@@ -39,17 +39,23 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
 	alchemy: {
 		label: "Alchemy",
 		purpose:
-			"EVM transaction and token balance lookups (needed for Base and fast mainnet/L2 sync).",
+			"Used for Base, and as a fallback for Ethereum, Polygon, and Arbitrum.",
 		keyUrl: "https://dashboard.alchemy.com/",
 		keyLinkLabel: "Get free key",
 	},
 	nodereal: {
 		label: "NodeReal",
-		purpose: "BNB Smart Chain (BSC) transaction and token transfer history.",
+		purpose: "Used for BNB Chain transaction and token transfer history.",
 		keyUrl: "https://nodereal.io/",
 		keyLinkLabel: "Get free key",
 	},
 };
+
+export function providerDisplayName(name: string): string {
+	return (
+		PROVIDER_META[name]?.label ?? name.charAt(0).toUpperCase() + name.slice(1)
+	);
+}
 
 function metaForProvider(name: string): ProviderMeta {
 	if (PROVIDER_META[name]) return PROVIDER_META[name];
@@ -62,20 +68,54 @@ function metaForProvider(name: string): ProviderMeta {
 export function ProviderKeysCard({
 	providers,
 	vaultUnlocked,
+	focusRequest,
 	onUpdated,
 }: {
 	providers: ProvidersMap;
 	vaultUnlocked: boolean;
+	focusRequest?: { name: string; seq: number } | null;
 	onUpdated: (next: ProvidersMap) => void;
 }) {
 	const [editingProvider, setEditingProvider] = useState<string | null>(null);
 	const [keyDraft, setKeyDraft] = useState("");
+	const [tierDraft, setTierDraft] = useState<"free" | "paid">(
+		providers.etherscan?.tier ?? "free",
+	);
 	const [removeTarget, setRemoveTarget] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const inputId = useId();
+	const tierId = useId();
+
+	const cardRef = useRef<HTMLElement>(null);
+	const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+	const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+	const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
 	const entries = Object.entries(providers);
+
+	useEffect(() => {
+		if (!focusRequest) return;
+		const { name } = focusRequest;
+		setError(null);
+		setKeyDraft("");
+		if (name === "etherscan") {
+			setTierDraft(providers.etherscan?.tier ?? "free");
+		}
+		if (vaultUnlocked) {
+			setEditingProvider(name);
+		}
+		const timer = setTimeout(() => {
+			const rowEl = rowRefs.current[name] ?? cardRef.current;
+			rowEl?.scrollIntoView({ behavior: "smooth", block: "center" });
+			if (vaultUnlocked) {
+				inputRefs.current[name]?.focus({ preventScroll: true });
+			} else {
+				buttonRefs.current[name]?.focus({ preventScroll: true });
+			}
+		}, 50);
+		return () => clearTimeout(timer);
+	}, [focusRequest, providers.etherscan?.tier, vaultUnlocked]);
 
 	async function handleSave(e: React.FormEvent) {
 		e.preventDefault();
@@ -86,11 +126,12 @@ export function ProviderKeysCard({
 			return;
 		}
 		const target = editingProvider;
+		const selectedTier = target === "etherscan" ? tierDraft : undefined;
 		setKeyDraft("");
 		setError(null);
 		setBusy(true);
 		try {
-			const next = await api.putProvider(target, trimmed);
+			const next = await api.putProvider(target, trimmed, selectedTier);
 			setEditingProvider(null);
 			onUpdated(next);
 		} catch (err) {
@@ -116,7 +157,11 @@ export function ProviderKeysCard({
 	}
 
 	return (
-		<section className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+		<section
+			ref={cardRef}
+			id="provider-keys"
+			className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-5"
+		>
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				<div>
 					<h2 className="text-base font-semibold tracking-tight">
@@ -139,7 +184,14 @@ export function ProviderKeysCard({
 					const meta = metaForProvider(name);
 					const isEditing = editingProvider === name;
 					return (
-						<div key={name} className="space-y-3 p-4">
+						<div
+							key={name}
+							ref={(el) => {
+								rowRefs.current[name] = el;
+							}}
+							id={`provider-${name}`}
+							className="space-y-3 p-4"
+						>
 							<div className="flex flex-wrap items-start justify-between gap-3">
 								<div className="min-w-0 flex-1 space-y-1">
 									<div className="flex flex-wrap items-center gap-2">
@@ -147,6 +199,11 @@ export function ProviderKeysCard({
 										<Badge tone={info.keySet ? "positive" : "neutral"}>
 											{info.keySet ? "Key set" : "Not set"}
 										</Badge>
+										{name === "etherscan" && info.keySet && info.tier ? (
+											<Badge tone={info.tier === "paid" ? "accent" : "neutral"}>
+												{info.tier === "paid" ? "Paid plan" : "Free plan"}
+											</Badge>
+										) : null}
 										{meta.keyUrl ? (
 											<a
 												href={meta.keyUrl}
@@ -166,11 +223,17 @@ export function ProviderKeysCard({
 
 								<div className="flex shrink-0 items-center gap-2">
 									<button
+										ref={(el) => {
+											buttonRefs.current[name] = el;
+										}}
 										type="button"
 										disabled={!vaultUnlocked || busy}
 										onClick={() => {
 											setError(null);
 											setKeyDraft("");
+											if (name === "etherscan") {
+												setTierDraft(info.tier ?? "free");
+											}
 											setEditingProvider(isEditing ? null : name);
 										}}
 										className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
@@ -199,33 +262,67 @@ export function ProviderKeysCard({
 							{isEditing ? (
 								<form
 									onSubmit={handleSave}
-									className="flex flex-col gap-2 rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3 sm:flex-row sm:items-end"
+									className="space-y-3 rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3"
 								>
-									<div className="flex-1">
-										<label
-											htmlFor={`${inputId}-${name}`}
-											className="block text-xs font-medium"
+									<div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+										<div className="flex-1">
+											<label
+												htmlFor={`${inputId}-${name}`}
+												className="block text-xs font-medium"
+											>
+												{meta.label} API key
+											</label>
+											<input
+												ref={(el) => {
+													inputRefs.current[name] = el;
+												}}
+												id={`${inputId}-${name}`}
+												type="password"
+												autoComplete="new-password"
+												required
+												value={keyDraft}
+												onChange={(e) => setKeyDraft(e.target.value)}
+												placeholder={`Paste ${meta.label} key`}
+												className="font-mono-code mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-sm"
+											/>
+										</div>
+										{name === "etherscan" ? (
+											<div className="sm:w-44">
+												<label
+													htmlFor={tierId}
+													className="block text-xs font-medium"
+												>
+													Plan tier
+												</label>
+												<select
+													id={tierId}
+													value={tierDraft}
+													onChange={(e) =>
+														setTierDraft(e.target.value as "free" | "paid")
+													}
+													className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-sm"
+												>
+													<option value="free">Free plan</option>
+													<option value="paid">Paid plan</option>
+												</select>
+											</div>
+										) : null}
+										<button
+											type="submit"
+											disabled={busy || !vaultUnlocked}
+											className="rounded bg-[var(--accent)] px-3.5 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
 										>
-											{meta.label} API key
-										</label>
-										<input
-											id={`${inputId}-${name}`}
-											type="password"
-											autoComplete="new-password"
-											required
-											value={keyDraft}
-											onChange={(e) => setKeyDraft(e.target.value)}
-											placeholder={`Paste ${meta.label} key`}
-											className="font-mono-code mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-sm"
-										/>
+											{busy ? "Saving…" : "Save key"}
+										</button>
 									</div>
-									<button
-										type="submit"
-										disabled={busy || !vaultUnlocked}
-										className="rounded bg-[var(--accent)] px-3.5 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-									>
-										{busy ? "Saving…" : "Save key"}
-									</button>
+									{name === "etherscan" ? (
+										<p className="text-xs text-[var(--text-secondary)]">
+											A paid Etherscan key covers Base and BNB Chain too.
+											{info.keySet
+												? " Enter your API key above to save a plan change."
+												: ""}
+										</p>
+									) : null}
 								</form>
 							) : null}
 						</div>

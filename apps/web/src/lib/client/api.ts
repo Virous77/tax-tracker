@@ -8,8 +8,10 @@ import type {
 } from "@tax/core";
 import {
 	ActualBalancesResponseSchema,
+	ApplyBalanceSnapshotRequestSchema,
 	type AppSettings,
 	type BalanceCheckRow,
+	BalanceSnapshotsResponseSchema,
 	ChangePassphraseRequestSchema,
 	ComputeReportResponseSchema,
 	ConfirmImportRequestSchema,
@@ -419,12 +421,16 @@ export const api = {
 	createImport(input: {
 		file: File;
 		source: "auto" | "binance" | "coindcx" | "generic";
-		timezone: "IST" | "UTC";
+		timezone: ImportSummary["timezone"];
+		pdfPassword?: string;
 	}): Promise<ImportSummary> {
 		const formData = new FormData();
 		formData.append("file", input.file);
 		formData.append("source", input.source);
 		formData.append("timezone", input.timezone);
+		if (input.pdfPassword) {
+			formData.append("pdfPassword", input.pdfPassword);
+		}
 		return requestJson("/api/imports", {
 			method: "POST",
 			body: formData,
@@ -585,6 +591,24 @@ export const api = {
 		);
 	},
 
+	listBalanceSnapshots(): Promise<BalanceSnapshotWithComparison[]> {
+		return requestJson("/api/balances/snapshots", {
+			schema: BalanceSnapshotsResponseSchema,
+		});
+	},
+
+	applyBalanceSnapshot(id: string, taxYear: string): Promise<ActualBalance[]> {
+		const body = parseRequest(ApplyBalanceSnapshotRequestSchema, { taxYear });
+		return requestJson(
+			`/api/balances/snapshots/${encodeURIComponent(id)}/apply`,
+			{
+				method: "POST",
+				body: JSON.stringify(body),
+				schema: ActualBalancesResponseSchema,
+			},
+		);
+	},
+
 	computeReport(taxYear: string): Promise<VdaReport> {
 		return requestJson(`/api/reports/${encodeURIComponent(taxYear)}/compute`, {
 			method: "POST",
@@ -700,8 +724,15 @@ export const api = {
 		return requestJson("/api/providers", { schema: ProvidersMapSchema });
 	},
 
-	putProvider(name: string, apiKey: string): Promise<ProvidersMap> {
-		const body = parseRequest(PutProviderRequestSchema, { apiKey });
+	putProvider(
+		name: string,
+		apiKey: string,
+		tier?: "free" | "paid",
+	): Promise<ProvidersMap> {
+		const body = parseRequest(PutProviderRequestSchema, {
+			apiKey,
+			...(tier ? { tier } : {}),
+		});
 		return requestJson(`/api/providers/${encodeURIComponent(name)}`, {
 			method: "PUT",
 			body: JSON.stringify(body),
@@ -732,17 +763,10 @@ export const api = {
 		chainId?: number;
 		options?: ConnectionOptions;
 	}): Promise<Connection> {
-		const payload =
-			input.kind === "evm" && input.chainId !== undefined && input.chainId !== 1
-				? {
-						...input,
-						label: input.label.trim(),
-						address: input.address?.trim().toLowerCase(),
-					}
-				: parseRequest(
-						CreateConnectionRequestSchema,
-						input as z.input<typeof CreateConnectionRequestSchema>,
-					);
+		const payload = parseRequest(
+			CreateConnectionRequestSchema,
+			input as z.input<typeof CreateConnectionRequestSchema>,
+		);
 		return requestJson("/api/connections", {
 			method: "POST",
 			body: JSON.stringify(payload),
@@ -816,11 +840,20 @@ export const api = {
 };
 
 const ProvidersMapSchema = ProvidersResponseSchema.catchall(
-	ProvidersResponseSchema.shape.etherscan,
+	z.object({
+		keySet: z.boolean(),
+		tier: z.enum(["free", "paid"]).optional(),
+	}),
 );
 
 export type VaultStatus = z.infer<typeof VaultStatusSchema>;
-export type ProvidersMap = Record<string, { keySet: boolean }>;
+export type ProvidersMap = Record<
+	string,
+	{ keySet: boolean; tier?: "free" | "paid" }
+>;
+export type BalanceSnapshotWithComparison = z.infer<
+	typeof BalanceSnapshotsResponseSchema
+>[number];
 export type KeyCheck = z.infer<typeof KeyCheckSchema>;
 export type ConnectionBalances = z.infer<typeof ConnectionBalancesSchema>;
 export type JobStatus = z.infer<typeof JobSchema>;

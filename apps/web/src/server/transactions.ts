@@ -37,27 +37,34 @@ function reviewedLedger(
 }
 export function listTransactions(db: TaxDatabase, query: TransactionsQuery) {
 	const needle = query.q?.toLowerCase();
-	const items = reviewedLedger(db).filter(
-		(tx) =>
-			(!query.taxYear || taxYearOf(tx.timestamp) === query.taxYear) &&
-			(!query.asset ||
-				[tx.assetIn, tx.assetOut, tx.feeAsset].includes(
-					query.asset.toUpperCase(),
-				)) &&
-			(!query.type || tx.type === query.type) &&
-			(!query.source || tx.source === query.source) &&
-			(query.flagged === undefined ||
-				Boolean(tx.reviewFlags.length) === query.flagged) &&
-			(!needle ||
-				[
-					tx.source,
-					tx.sourceRef,
-					tx.assetIn,
-					tx.assetOut,
-					tx.userNote,
-					tx.txHash,
-				].some((value) => value?.toLowerCase().includes(needle))),
+	const supersededBy = new Map(
+		db.transactions.superseded().map((row) => [row.txId, row.importId]),
 	);
+	const items = reviewedLedger(db)
+		.map((tx) => ({ ...tx, supersededBy: supersededBy.get(tx.id) ?? null }))
+		.filter(
+			(tx) =>
+				(!query.taxYear || taxYearOf(tx.timestamp) === query.taxYear) &&
+				(!query.asset ||
+					[tx.assetIn, tx.assetOut, tx.feeAsset].includes(
+						query.asset.toUpperCase(),
+					)) &&
+				(!query.type || tx.type === query.type) &&
+				(!query.source || tx.source === query.source) &&
+				(query.flagged === undefined ||
+					Boolean(tx.reviewFlags.length) === query.flagged) &&
+				(query.superseded === undefined ||
+					(tx.supersededBy !== null) === query.superseded) &&
+				(!needle ||
+					[
+						tx.source,
+						tx.sourceRef,
+						tx.assetIn,
+						tx.assetOut,
+						tx.userNote,
+						tx.txHash,
+					].some((value) => value?.toLowerCase().includes(needle))),
+		);
 	const [field, direction] = query.sort.split(":");
 	items.sort((a, b) => {
 		const left =

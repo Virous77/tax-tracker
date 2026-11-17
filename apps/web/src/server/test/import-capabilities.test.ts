@@ -263,6 +263,15 @@ it("supersedes an order, excludes it from the report and restores it on deletion
 	expect(database().transactions.superseded()).toEqual([
 		{ txId: original?.id, importId: better.id },
 	]);
+	const replaced = await (
+		await handle(
+			"listTransactions",
+			new Request("http://localhost/api/transactions?superseded=true"),
+		)
+	).json();
+	expect(replaced.items).toEqual([
+		expect.objectContaining({ id: original?.id, supersededBy: better.id }),
+	]);
 	const computed = await call(
 		"computeReport",
 		"POST",

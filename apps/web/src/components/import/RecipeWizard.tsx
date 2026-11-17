@@ -5,6 +5,7 @@ import {
 	isLocalAiEndpoint,
 	type Recipe,
 } from "@tax/core";
+import { TimezoneSchema } from "@tax/core/api";
 import {
 	AlertTriangle,
 	CheckCircle2,
@@ -360,6 +361,14 @@ export function RecipeWizard({
 	const [recipe, setRecipe] = useState<Recipe>(() =>
 		buildInitialRecipe(currentSheet, importItem.timezone),
 	);
+	const initialTz = importItem.timezone;
+	const [tzMode, setTzMode] = useState<"IST" | "UTC" | "custom">(
+		initialTz === "IST" || initialTz === "UTC" ? initialTz : "custom",
+	);
+	const [customOffset, setCustomOffset] = useState<string>(
+		initialTz !== "IST" && initialTz !== "UTC" ? initialTz : "+05:30",
+	);
+	const [tzError, setTzError] = useState<string | null>(null);
 	const [knownQuotesText, setKnownQuotesText] = useState(
 		"INR, USDT, USDC, BTC, ETH",
 	);
@@ -385,6 +394,8 @@ export function RecipeWizard({
 	const dateFormatId = useId();
 	const signStyleId = useId();
 	const quotesInputId = useId();
+	const tzSelectId = useId();
+	const customOffsetId = useId();
 	const saveCheckId = useId();
 	const saveNameId = useId();
 
@@ -392,12 +403,39 @@ export function RecipeWizard({
 		const next = buildInitialRecipe(currentSheet, importItem.timezone);
 		setRecipe(next);
 		setRecipeName(next.name);
+		setTzMode(
+			importItem.timezone === "IST" || importItem.timezone === "UTC"
+				? importItem.timezone
+				: "custom",
+		);
+		if (importItem.timezone !== "IST" && importItem.timezone !== "UTC") {
+			setCustomOffset(importItem.timezone);
+		}
+		setTzError(null);
 		setPayloadPreview(null);
 		setPreviewData(null);
 		setSideMapEntries([]);
 	}, [currentSheet, importItem.timezone]);
 
-	function buildCurrentRecipe(): Recipe {
+	function resolveRecipeTimezone(): Recipe["timezone"] | null {
+		if (tzMode === "IST" || tzMode === "UTC") {
+			setTzError(null);
+			return tzMode;
+		}
+		const parsed = TimezoneSchema.safeParse(customOffset.trim());
+		if (!parsed.success || parsed.data === "IST" || parsed.data === "UTC") {
+			setTzError(
+				"Enter a fixed offset as ±HH:MM within ±14:00 (for example +05:30 or -04:00).",
+			);
+			return null;
+		}
+		setTzError(null);
+		return parsed.data;
+	}
+
+	function buildCurrentRecipe(): Recipe | null {
+		const tz = resolveRecipeTimezone();
+		if (!tz) return null;
 		const quotes = knownQuotesText
 			.split(",")
 			.map((s) => s.trim().toUpperCase())
@@ -409,6 +447,7 @@ export function RecipeWizard({
 		}
 		return {
 			...recipe,
+			timezone: tz,
 			name: recipeName.trim() || recipe.name || "Custom CSV",
 			...(Object.keys(sideMapRecord).length > 0
 				? { sideMap: sideMapRecord }
@@ -420,6 +459,15 @@ export function RecipeWizard({
 	function applySuggestedRecipe(suggested: Recipe) {
 		setRecipe(suggested);
 		setRecipeName(suggested.name);
+		if (suggested.timezone) {
+			if (suggested.timezone === "IST" || suggested.timezone === "UTC") {
+				setTzMode(suggested.timezone);
+			} else {
+				setTzMode("custom");
+				setCustomOffset(suggested.timezone);
+			}
+			setTzError(null);
+		}
 		if (suggested.pairSplit?.knownQuotes) {
 			setKnownQuotesText(suggested.pairSplit.knownQuotes.join(", "));
 		}
@@ -477,10 +525,14 @@ export function RecipeWizard({
 	}
 
 	async function handlePreviewRows() {
+		const built = buildCurrentRecipe();
+		if (!built) {
+			setError("Fix the time zone offset before previewing rows.");
+			return;
+		}
 		setPreviewing(true);
 		setError(null);
 		try {
-			const built = buildCurrentRecipe();
 			const res = await api.previewRecipe({
 				importId: importItem.id,
 				...(currentSheet.name ? { sheet: currentSheet.name } : {}),
@@ -495,10 +547,14 @@ export function RecipeWizard({
 	}
 
 	async function handleConfirm() {
+		const built = buildCurrentRecipe();
+		if (!built) {
+			setError("Fix the time zone offset before importing.");
+			return;
+		}
 		setConfirming(true);
 		setError(null);
 		try {
-			const built = buildCurrentRecipe();
 			const summary = await api.confirmImport(importItem.id, {
 				recipe: built,
 				saveRecipe,
@@ -846,6 +902,58 @@ export function RecipeWizard({
 							className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
 						/>
 					</div>
+				</div>
+
+				<div className="grid grid-cols-1 gap-4 border-t border-[var(--border)] pt-3 sm:grid-cols-2 lg:grid-cols-4">
+					<div>
+						<label
+							htmlFor={tzSelectId}
+							className="block text-xs font-medium text-[var(--text-secondary)]"
+						>
+							What time zone are the times in this file?
+						</label>
+						<select
+							id={tzSelectId}
+							value={tzMode}
+							onChange={(e) => {
+								setTzMode(e.target.value as "IST" | "UTC" | "custom");
+								setTzError(null);
+							}}
+							className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+						>
+							<option value="IST">IST (+05:30)</option>
+							<option value="UTC">UTC (+00:00)</option>
+							<option value="custom">Other offset (±HH:MM)</option>
+						</select>
+					</div>
+
+					{tzMode === "custom" ? (
+						<div>
+							<label
+								htmlFor={customOffsetId}
+								className="block text-xs font-medium text-[var(--text-secondary)]"
+							>
+								Fixed UTC offset (±HH:MM)
+							</label>
+							<input
+								id={customOffsetId}
+								type="text"
+								value={customOffset}
+								onChange={(e) => {
+									setCustomOffset(e.target.value);
+									setTzError(null);
+								}}
+								placeholder="+05:30"
+								aria-invalid={Boolean(tzError)}
+								className={`font-mono-code mt-1 w-full rounded border ${
+									tzError ? "border-[var(--loss)]" : "border-[var(--border)]"
+								} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
+							/>
+							{tzError ? (
+								<p className="mt-1 text-xs text-[var(--loss)]">{tzError}</p>
+							) : null}
+						</div>
+					) : null}
 				</div>
 
 				<div>

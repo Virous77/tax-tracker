@@ -1,31 +1,102 @@
 "use client";
 
+import { TimezoneSchema } from "@tax/core/api";
 import {
-	AlertTriangle,
 	ArrowRight,
 	CheckCircle2,
 	FileSpreadsheet,
+	Info,
+	Lock,
 	Upload,
 	XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { type DragEvent, useEffect, useId, useState } from "react";
+import { type DragEvent, useEffect, useId, useRef, useState } from "react";
 import { RecipeWizard } from "@/components/import/RecipeWizard";
 import { Badge } from "@/components/ui/Badge";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import {
+	ApiError,
 	api,
 	getErrorMessage,
 	type ImportDetail,
 	type ImportSummary,
 } from "@/lib/client/api";
-import { formatSourceLabel } from "@/lib/client/format";
+import {
+	formatIstDate,
+	formatIstDateTime,
+	formatQty,
+	formatReportKindLabel,
+	formatSourceLabel,
+} from "@/lib/client/format";
 
 type SourceChoice = "auto" | "binance" | "coindcx" | "generic";
-type TzChoice = "IST" | "UTC";
+type TzMode = "IST" | "UTC" | "custom";
 
 const MAX_BYTES = 25 * 1024 * 1024;
+
+function friendlyImportError(err: unknown): {
+	message: string;
+	askPassword: boolean;
+} {
+	if (err instanceof ApiError) {
+		switch (err.code) {
+			case "pdf_password_required":
+				return {
+					message:
+						"This PDF is password-protected. Enter the PDF password below and upload again.",
+					askPassword: true,
+				};
+			case "pdf_wrong_password":
+				return {
+					message:
+						"That PDF password didn't open the file. Check the 8-digit password and try again.",
+					askPassword: true,
+				};
+			case "pdf_no_text":
+				return {
+					message:
+						"This PDF has no selectable text layer (it may be a scanned image). Download and upload the exchange's CSV or XLSX export instead.",
+					askPassword: false,
+				};
+			case "pdf_unknown_layout":
+				return {
+					message:
+						"This PDF statement layout isn't recognized yet. Use the venue's CSV or XLSX export instead.",
+					askPassword: false,
+				};
+			case "pdf_unsupported":
+				if (err.message.toLowerCase().includes("form 16a")) {
+					return {
+						message:
+							"TDS certificates can't be imported yet. Keep this CoinDCX Form 16A for your tax records.",
+						askPassword: false,
+					};
+				}
+				return {
+					message:
+						"This PDF couldn't be imported. Download a fresh statement or use the CSV or XLSX export.",
+					askPassword: false,
+				};
+			case "pdf_too_large":
+				return {
+					message:
+						"This PDF exceeds the size or extraction limit (maximum 25 MB). Upload a smaller statement or use CSV or XLSX.",
+					askPassword: false,
+				};
+		}
+	}
+	return { message: getErrorMessage(err), askPassword: false };
+}
+
+function getOptionalCount(
+	result: ImportSummary | ImportDetail,
+	key: "rowsSuperseded" | "rowsAmbiguous",
+): number | null {
+	const rec = result as Record<string, unknown>;
+	return typeof rec[key] === "number" ? (rec[key] as number) : null;
+}
 
 export function ImportClient() {
 	const searchParams = useSearchParams();
@@ -34,7 +105,14 @@ export function ImportClient() {
 	const [file, setFile] = useState<File | null>(null);
 	const [dragging, setDragging] = useState(false);
 	const [source, setSource] = useState<SourceChoice>("auto");
-	const [timezone, setTimezone] = useState<TzChoice>("IST");
+	const [tzMode, setTzMode] = useState<TzMode>("IST");
+	const [customOffset, setCustomOffset] = useState("+05:30");
+	const [tzError, setTzError] = useState<string | null>(null);
+
+	const [pdfNeedsPassword, setPdfNeedsPassword] = useState(false);
+	const [pdfPassword, setPdfPassword] = useState("");
+	const pdfPasswordInputRef = useRef<HTMLInputElement>(null);
+
 	const [uploading, setUploading] = useState(false);
 	const [loadingResume, setLoadingResume] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -43,6 +121,14 @@ export function ImportClient() {
 	);
 
 	const fileInputId = useId();
+	const customOffsetId = useId();
+	const pdfPasswordId = useId();
+
+	useEffect(() => {
+		if (pdfNeedsPassword) {
+			pdfPasswordInputRef.current?.focus();
+		}
+	}, [pdfNeedsPassword]);
 
 	useEffect(() => {
 		if (!resumeImportId) return;
@@ -65,8 +151,24 @@ export function ImportClient() {
 		};
 	}, [resumeImportId]);
 
+	function resolveTimezone(): ImportSummary["timezone"] | null {
+		if (tzMode === "IST" || tzMode === "UTC") return tzMode;
+		const trimmed = customOffset.trim();
+		const parsed = TimezoneSchema.safeParse(trimmed);
+		if (!parsed.success || parsed.data === "IST" || parsed.data === "UTC") {
+			setTzError(
+				"Enter a fixed offset as ±HH:MM within ±14:00 (for example +05:30 or -04:00).",
+			);
+			return null;
+		}
+		setTzError(null);
+		return parsed.data;
+	}
+
 	function handleFilePick(picked: File | null) {
 		setError(null);
+		setPdfNeedsPassword(false);
+		setPdfPassword("");
 		if (!picked) {
 			setFile(null);
 			return;
@@ -78,9 +180,9 @@ export function ImportClient() {
 		}
 		setFile(picked);
 		const name = picked.name.toLowerCase();
-		if (source === "auto") {
-			if (name.includes("binance")) setTimezone("UTC");
-			else if (name.includes("coindcx")) setTimezone("IST");
+		if (source === "auto" && tzMode !== "custom") {
+			if (name.includes("binance")) setTzMode("UTC");
+			else if (name.includes("coindcx")) setTzMode("IST");
 		}
 	}
 
@@ -94,13 +196,31 @@ export function ImportClient() {
 	async function handleUpload(e: React.FormEvent) {
 		e.preventDefault();
 		if (!file) {
-			setError("Choose a CSV or XLSX export file first.");
+			setError("Choose a CSV, XLSX, or PDF export file first.");
 			return;
 		}
+		const timezone = resolveTimezone();
+		if (!timezone) return;
+
+		if (pdfNeedsPassword && !pdfPassword.trim()) {
+			setError("Enter the PDF password to continue.");
+			pdfPasswordInputRef.current?.focus();
+			return;
+		}
+
+		const passwordToSend = pdfPassword || undefined;
+		// Clear password from state immediately when submitting
+		setPdfPassword("");
 		setUploading(true);
 		setError(null);
 		try {
-			const summary = await api.createImport({ file, source, timezone });
+			const summary = await api.createImport({
+				file,
+				source,
+				timezone,
+				...(passwordToSend ? { pdfPassword: passwordToSend } : {}),
+			});
+			setPdfNeedsPassword(false);
 			if (summary.status !== "pending_recipe") {
 				const detail = await api.getImport(summary.id).catch(() => summary);
 				setResult(detail);
@@ -108,8 +228,14 @@ export function ImportClient() {
 				setResult(summary);
 			}
 		} catch (err) {
-			setError(getErrorMessage(err));
+			const friendly = friendlyImportError(err);
+			setError(friendly.message);
+			if (friendly.askPassword) {
+				setPdfNeedsPassword(true);
+				setTimeout(() => pdfPasswordInputRef.current?.focus(), 0);
+			}
 		} finally {
+			setPdfPassword("");
 			setUploading(false);
 		}
 	}
@@ -123,6 +249,9 @@ export function ImportClient() {
 		setFile(null);
 		setResult(null);
 		setError(null);
+		setTzError(null);
+		setPdfNeedsPassword(false);
+		setPdfPassword("");
 	}
 
 	if (loadingResume) {
@@ -150,6 +279,20 @@ export function ImportClient() {
 	}
 
 	const rowErrors = result && "rowErrors" in result ? result.rowErrors : [];
+	const balanceSnapshot =
+		result && "balanceSnapshot" in result ? result.balanceSnapshot : undefined;
+	const detectedLabel = result
+		? formatReportKindLabel(result.reportKind, result.reportKindLabel)
+		: null;
+	const rowsSuperseded = result
+		? getOptionalCount(result, "rowsSuperseded")
+		: null;
+	const rowsAmbiguous = result
+		? getOptionalCount(result, "rowsAmbiguous")
+		: null;
+	const hasSnapshotWallet = Boolean(
+		balanceSnapshot?.rows.some((r) => Boolean(r.wallet)),
+	);
 
 	return (
 		<div className="space-y-6">
@@ -157,8 +300,8 @@ export function ImportClient() {
 				<div>
 					<h1 className="text-xl font-semibold tracking-tight">Import</h1>
 					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						Upload Binance, CoinDCX, or other CSV/XLSX exchange exports.
-						Duplicate rows are safely skipped.
+						Upload Binance, CoinDCX, or other CSV/XLSX exports, or Binance PDF
+						account statements. Duplicate rows are safely skipped.
 					</p>
 				</div>
 				<Link
@@ -190,16 +333,28 @@ export function ImportClient() {
 									aria-hidden="true"
 								/>
 							)}
-							<div>
+							<div className="space-y-0.5">
 								<h2 className="text-base font-semibold">
 									{result.fileName} —{" "}
 									{result.status === "imported"
 										? "Import complete"
 										: "Import failed"}
 								</h2>
+								{detectedLabel ? (
+									<p className="text-xs font-medium text-[var(--text-primary)]">
+										Detected: {detectedLabel}
+									</p>
+								) : null}
 								<p className="text-xs text-[var(--text-secondary)]">
-									Source: {formatSourceLabel(result.source)} · File timezone:{" "}
-									{result.timezone}
+									Source: {formatSourceLabel(result.source)} · Time zone:{" "}
+									<span className="font-medium text-[var(--text-primary)]">
+										{result.detectedTimezone ?? result.timezone}
+									</span>{" "}
+									(
+									{result.timezoneSource === "file"
+										? "from the file name"
+										: "your answer"}
+									)
 								</p>
 							</div>
 						</div>
@@ -214,53 +369,187 @@ export function ImportClient() {
 						</p>
 					) : null}
 
-					<div className="space-y-1.5">
-						<div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-							<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-								<p className="text-xs text-[var(--text-secondary)]">
-									Rows read
-								</p>
-								<p className="num mt-1 text-lg font-semibold">
-									{result.rowsRead}
-								</p>
-							</div>
-							<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-								<p className="text-xs text-[var(--text-secondary)]">Inserted</p>
-								<p className="num mt-1 text-lg font-semibold text-[var(--positive)]">
-									{result.rowsInserted}
-								</p>
-							</div>
-							<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-								<p className="text-xs text-[var(--text-secondary)]">
-									Duplicates skipped
-								</p>
-								<p className="num mt-1 text-lg font-semibold">
-									{result.rowsDuplicate}
-								</p>
-							</div>
-							<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-								<p className="text-xs text-[var(--text-secondary)]">Skipped</p>
-								<p className="num mt-1 text-lg font-semibold text-[var(--text-secondary)]">
-									{result.rowsSkipped}
-								</p>
-							</div>
-							<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
-								<p className="text-xs text-[var(--text-secondary)]">
-									Row errors
-								</p>
-								<p
-									className={`num mt-1 text-lg font-semibold ${
-										result.rowsError > 0 ? "text-[var(--loss)]" : ""
-									}`}
+					{/* Calm notice banners for import-level warnings */}
+					{result.warnings.length > 0 ? (
+						<div className="space-y-2">
+							{result.warnings.map((w) => (
+								<div
+									key={`${w.code}:${w.txId ?? ""}:${w.message}`}
+									className="flex items-start gap-2.5 rounded-md border border-[var(--border-strong)] bg-[var(--bg-subtle)] px-3.5 py-2.5 text-xs text-[var(--text-primary)]"
 								>
-									{result.rowsError}
+									<Info
+										className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent-text)]"
+										aria-hidden="true"
+									/>
+									<div className="space-y-0.5">
+										<p className="font-medium">{w.message}</p>
+										<p className="font-mono-code text-[11px] text-[var(--text-muted)]">
+											{w.code}
+										</p>
+									</div>
+								</div>
+							))}
+						</div>
+					) : null}
+
+					{/* PDF Statement Balance Snapshot vs Transaction Summary */}
+					{balanceSnapshot ? (
+						<div className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-4">
+							<div className="flex flex-wrap items-center justify-between gap-2">
+								<div>
+									<h3 className="text-sm font-semibold">
+										Balance Snapshot — {formatIstDate(balanceSnapshot.asOf)}
+									</h3>
+									<p className="text-xs text-[var(--text-secondary)]">
+										{formatSourceLabel(balanceSnapshot.venue)} · As of{" "}
+										{balanceSnapshot.asOf} ({balanceSnapshot.timezone}) ·{" "}
+										{balanceSnapshot.rows.length} asset{" "}
+										{balanceSnapshot.rows.length === 1 ? "row" : "rows"} (stored
+										as a balance statement, not ledger transactions)
+									</p>
+								</div>
+								<Link
+									href="/report#statements"
+									className="inline-flex items-center gap-1 rounded border border-[var(--accent)]/40 bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--accent-soft)]"
+								>
+									Compare with computed balances
+									<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+								</Link>
+							</div>
+
+							{balanceSnapshot.rows.length > 0 ? (
+								<div className="overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-surface)]">
+									<table className="w-full border-collapse text-left text-xs">
+										<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
+											<tr>
+												<th className="px-3 py-2 font-medium">Asset</th>
+												{hasSnapshotWallet ? (
+													<th className="px-3 py-2 font-medium">Wallet</th>
+												) : null}
+												<th className="num-right px-3 py-2 font-medium">
+													Statement balance
+												</th>
+											</tr>
+										</thead>
+										<tbody>
+											{balanceSnapshot.rows.map((row) => (
+												<tr
+													key={`${row.asset}:${row.wallet ?? ""}:${row.amount}`}
+													className="border-b border-[var(--border)] last:border-b-0"
+												>
+													<td className="px-3 py-2 font-semibold">
+														{row.asset}
+													</td>
+													{hasSnapshotWallet ? (
+														<td className="px-3 py-2 text-[var(--text-secondary)]">
+															{row.wallet ?? "—"}
+														</td>
+													) : null}
+													<td className="num-right px-3 py-2 font-medium">
+														{formatQty(row.amount)}
+													</td>
+												</tr>
+											))}
+										</tbody>
+									</table>
+								</div>
+							) : (
+								<p className="text-xs text-[var(--text-secondary)]">
+									No non-zero asset rows found in this statement.
 								</p>
+							)}
+						</div>
+					) : (
+						<div className="space-y-1.5">
+							<div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+								<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+									<p className="text-xs text-[var(--text-secondary)]">
+										Rows read
+									</p>
+									<p className="num mt-1 text-lg font-semibold">
+										{result.rowsRead}
+									</p>
+								</div>
+								<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+									<p className="text-xs text-[var(--text-secondary)]">
+										Inserted
+									</p>
+									<p className="num mt-1 text-lg font-semibold text-[var(--positive)]">
+										{result.rowsInserted}
+									</p>
+								</div>
+								<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+									<p className="text-xs text-[var(--text-secondary)]">
+										Duplicates skipped
+									</p>
+									<p className="num mt-1 text-lg font-semibold">
+										{result.rowsDuplicate}
+									</p>
+								</div>
+								<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+									<p className="text-xs text-[var(--text-secondary)]">
+										Skipped
+									</p>
+									<p className="num mt-1 text-lg font-semibold text-[var(--text-secondary)]">
+										{result.rowsSkipped}
+									</p>
+								</div>
+								<div className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+									<p className="text-xs text-[var(--text-secondary)]">
+										Row errors
+									</p>
+									<p
+										className={`num mt-1 text-lg font-semibold ${
+											result.rowsError > 0 ? "text-[var(--loss)]" : ""
+										}`}
+									>
+										{result.rowsError}
+									</p>
+								</div>
+							</div>
+							{rowsSuperseded !== null || rowsAmbiguous !== null ? (
+								<div className="flex flex-wrap gap-3 text-xs text-[var(--text-secondary)]">
+									{rowsSuperseded !== null ? (
+										<span className="num">
+											Superseded: <strong>{rowsSuperseded}</strong>
+										</span>
+									) : null}
+									{rowsAmbiguous !== null ? (
+										<span className="num">
+											Ambiguous: <strong>{rowsAmbiguous}</strong>
+										</span>
+									) : null}
+								</div>
+							) : null}
+							<p className="num text-[11px] text-[var(--text-muted)]">
+								{`${result.rowsRead} read = ${result.rowsInserted} inserted + ${result.rowsDuplicate} duplicates + ${result.rowsSkipped} skipped + ${result.rowsError} errors`}
+							</p>
+						</div>
+					)}
+
+					{result.coverage && result.coverage.length > 0 ? (
+						<div className="space-y-2">
+							<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
+								Date coverage
+							</h3>
+							<div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+								{result.coverage.map((cov) => (
+									<div
+										key={`${cov.reportKind}:${cov.firstTimestamp}:${cov.lastTimestamp}`}
+										className="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-xs"
+									>
+										<span className="font-medium">
+											{formatReportKindLabel(cov.reportKind) ?? cov.reportKind}
+										</span>
+										<span className="num text-[var(--text-secondary)]">
+											{formatIstDateTime(cov.firstTimestamp)} →{" "}
+											{formatIstDateTime(cov.lastTimestamp)}
+										</span>
+									</div>
+								))}
 							</div>
 						</div>
-						<p className="num text-[11px] text-[var(--text-muted)]">
-							{`${result.rowsRead} read = ${result.rowsInserted} inserted + ${result.rowsDuplicate} duplicates + ${result.rowsSkipped} skipped + ${result.rowsError} errors`}
-						</p>
-					</div>
+					) : null}
 
 					{result.sheets && result.sheets.length > 0 ? (
 						<div className="space-y-2">
@@ -280,23 +569,6 @@ export function ImportClient() {
 									</div>
 								))}
 							</div>
-						</div>
-					) : null}
-
-					{result.warnings.length > 0 ? (
-						<div className="space-y-1.5 rounded border border-[var(--warning)]/40 bg-[var(--warning-soft)] p-3 text-xs">
-							<p className="flex items-center gap-1.5 font-semibold text-[var(--warning)]">
-								<AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-								Warnings ({result.warnings.length})
-							</p>
-							<ul className="list-disc space-y-0.5 pl-5 text-[var(--text-primary)]">
-								{result.warnings.map((w) => (
-									<li key={`${w.code}:${w.txId ?? ""}:${w.message}`}>
-										<span className="font-mono-code font-medium">{w.code}</span>
-										: {w.message}
-									</li>
-								))}
-							</ul>
 						</div>
 					) : null}
 
@@ -382,13 +654,23 @@ export function ImportClient() {
 					) : null}
 
 					<div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-3">
-						<Link
-							href="/transactions"
-							className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-						>
-							View transactions
-							<ArrowRight className="h-4 w-4" aria-hidden="true" />
-						</Link>
+						{balanceSnapshot ? (
+							<Link
+								href="/report#statements"
+								className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+							>
+								View balance comparison
+								<ArrowRight className="h-4 w-4" aria-hidden="true" />
+							</Link>
+						) : (
+							<Link
+								href="/transactions"
+								className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+							>
+								View transactions
+								<ArrowRight className="h-4 w-4" aria-hidden="true" />
+							</Link>
+						)}
 						<Link
 							href="/"
 							className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--bg-hover)]"
@@ -412,7 +694,7 @@ export function ImportClient() {
 					{/* Drop zone */}
 					<div>
 						<span className="block text-sm font-medium">
-							1. Export file (CSV or XLSX, max 25 MB)
+							1. Export file (CSV, XLSX, or PDF, max 25 MB)
 						</span>
 						<label
 							htmlFor={fileInputId}
@@ -431,7 +713,7 @@ export function ImportClient() {
 							<input
 								id={fileInputId}
 								type="file"
-								accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+								accept=".csv,.xlsx,.pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf"
 								onChange={(e) => handleFilePick(e.target.files?.[0] ?? null)}
 								className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
 							/>
@@ -460,8 +742,8 @@ export function ImportClient() {
 										</span>
 									</p>
 									<p className="text-xs text-[var(--text-muted)]">
-										Supports Binance CSV/XLSX, CoinDCX multi-tab XLSX, and any
-										other CSV
+										Supports Binance CSV/XLSX &amp; PDF account statements,
+										CoinDCX multi-tab XLSX, and any other CSV
 									</p>
 								</div>
 							)}
@@ -482,7 +764,7 @@ export function ImportClient() {
 									{
 										id: "binance",
 										title: "Binance",
-										desc: "Spot trades, deposits, withdrawals, statements",
+										desc: "Spot trades, deposits, withdrawals, PDF statements",
 									},
 									{
 										id: "coindcx",
@@ -525,17 +807,17 @@ export function ImportClient() {
 					{/* Timezone question */}
 					<fieldset className="space-y-2">
 						<legend className="text-sm font-medium">
-							3. Are times in this file IST or UTC?
+							3. What time zone are the times in this file?
 						</legend>
 						<p className="text-xs text-[var(--text-secondary)]">
-							Indian tax years run 1 April – 31 March in IST. Files without
-							explicit offsets need this to place 31 March / 1 April trades in
-							the right year.
+							Indian tax years run 1 April – 31 March in IST. Binance file names
+							carry the offset, e.g. &ldquo;(UTC+5)&rdquo;, and that offset will
+							be used automatically.
 						</p>
-						<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+						<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
 							<label
 								className={`cursor-pointer rounded-md border p-3 ${
-									timezone === "IST"
+									tzMode === "IST"
 										? "border-[var(--accent)] bg-[var(--accent-soft)]"
 										: "border-[var(--border)] bg-[var(--bg-canvas)]"
 								}`}
@@ -545,21 +827,22 @@ export function ImportClient() {
 										type="radio"
 										name="timezone"
 										value="IST"
-										checked={timezone === "IST"}
-										onChange={() => setTimezone("IST")}
+										checked={tzMode === "IST"}
+										onChange={() => {
+											setTzMode("IST");
+											setTzError(null);
+										}}
 									/>
-									<span className="text-sm font-medium">
-										IST (Asia/Kolkata, UTC+05:30)
-									</span>
+									<span className="text-sm font-medium">IST (+05:30)</span>
 								</div>
 								<p className="mt-1 pl-5 text-xs text-[var(--text-secondary)]">
-									Typical for CoinDCX and Indian exchanges
+									Asia/Kolkata · typical for CoinDCX
 								</p>
 							</label>
 
 							<label
 								className={`cursor-pointer rounded-md border p-3 ${
-									timezone === "UTC"
+									tzMode === "UTC"
 										? "border-[var(--accent)] bg-[var(--accent-soft)]"
 										: "border-[var(--border)] bg-[var(--bg-canvas)]"
 								}`}
@@ -569,19 +852,120 @@ export function ImportClient() {
 										type="radio"
 										name="timezone"
 										value="UTC"
-										checked={timezone === "UTC"}
-										onChange={() => setTimezone("UTC")}
+										checked={tzMode === "UTC"}
+										onChange={() => {
+											setTzMode("UTC");
+											setTzError(null);
+										}}
 									/>
-									<span className="text-sm font-medium">
-										UTC (Coordinated Universal Time)
-									</span>
+									<span className="text-sm font-medium">UTC</span>
 								</div>
 								<p className="mt-1 pl-5 text-xs text-[var(--text-secondary)]">
-									Typical for Binance and global exchanges
+									Coordinated Universal Time · +00:00
+								</p>
+							</label>
+
+							<label
+								className={`cursor-pointer rounded-md border p-3 ${
+									tzMode === "custom"
+										? "border-[var(--accent)] bg-[var(--accent-soft)]"
+										: "border-[var(--border)] bg-[var(--bg-canvas)]"
+								}`}
+							>
+								<div className="flex items-center gap-2">
+									<input
+										type="radio"
+										name="timezone"
+										value="custom"
+										checked={tzMode === "custom"}
+										onChange={() => setTzMode("custom")}
+									/>
+									<span className="text-sm font-medium">Other offset</span>
+								</div>
+								<p className="mt-1 pl-5 text-xs text-[var(--text-secondary)]">
+									Fixed offset ±HH:MM within ±14:00
 								</p>
 							</label>
 						</div>
+
+						{tzMode === "custom" ? (
+							<div className="mt-2 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<label
+									htmlFor={customOffsetId}
+									className="block text-xs font-medium"
+								>
+									Fixed UTC offset (±HH:MM)
+								</label>
+								<input
+									id={customOffsetId}
+									type="text"
+									value={customOffset}
+									onChange={(e) => {
+										setCustomOffset(e.target.value);
+										setTzError(null);
+									}}
+									placeholder="+05:30"
+									aria-invalid={Boolean(tzError)}
+									aria-describedby={
+										tzError ? `${customOffsetId}-error` : undefined
+									}
+									className={`font-mono-code mt-1 w-40 rounded border ${
+										tzError ? "border-[var(--loss)]" : "border-[var(--border)]"
+									} bg-[var(--bg-surface)] px-3 py-1.5 text-sm`}
+								/>
+								{tzError ? (
+									<p
+										id={`${customOffsetId}-error`}
+										className="mt-1 text-xs text-[var(--loss)]"
+									>
+										{tzError}
+									</p>
+								) : (
+									<p className="mt-1 text-xs text-[var(--text-muted)]">
+										Examples: +05:30, +08:00, -04:00 (must be within ±14:00)
+									</p>
+								)}
+							</div>
+						) : null}
 					</fieldset>
+
+					{/* Conditional PDF Password prompt */}
+					{pdfNeedsPassword ? (
+						<div
+							aria-live="polite"
+							className="space-y-2 rounded-md border border-[var(--accent)]/40 bg-[var(--accent-soft)] p-4"
+						>
+							<div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
+								<Lock
+									className="h-4 w-4 text-[var(--accent)]"
+									aria-hidden="true"
+								/>
+								PDF Password Required
+							</div>
+							<p className="text-xs text-[var(--text-secondary)]">
+								Binance PDFs are protected with the 8-digit password shown when
+								you downloaded the statement.
+							</p>
+							<div>
+								<label
+									htmlFor={pdfPasswordId}
+									className="block text-xs font-medium"
+								>
+									PDF password
+								</label>
+								<input
+									ref={pdfPasswordInputRef}
+									id={pdfPasswordId}
+									type="password"
+									autoComplete="off"
+									value={pdfPassword}
+									onChange={(e) => setPdfPassword(e.target.value)}
+									placeholder="Enter 8-digit password"
+									className="font-mono-code mt-1 w-full max-w-xs rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-sm"
+								/>
+							</div>
+						</div>
+					) : null}
 
 					<div className="flex items-center justify-end border-t border-[var(--border)] pt-4">
 						<button
@@ -590,7 +974,11 @@ export function ImportClient() {
 							className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-5 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
 						>
 							<Upload className="h-4 w-4" aria-hidden="true" />
-							{uploading ? "Parsing file…" : "Upload & import"}
+							{uploading
+								? "Parsing file…"
+								: pdfNeedsPassword
+									? "Unlock & import PDF"
+									: "Upload & import"}
 						</button>
 					</div>
 				</form>

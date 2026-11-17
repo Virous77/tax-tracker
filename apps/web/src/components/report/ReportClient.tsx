@@ -31,7 +31,9 @@ import {
 	TaxYearSelect,
 } from "@/components/ui/TaxYearSelect";
 import {
+	ApiError,
 	api,
+	type BalanceSnapshotWithComparison,
 	getErrorMessage,
 	type JobStatus,
 	type PriceFillSummary,
@@ -42,6 +44,7 @@ import {
 import {
 	formatEngineSettingLabel,
 	formatEngineSettingValue,
+	formatExcludedReason,
 	formatIncomeKind,
 	formatInr,
 	formatInrNullable,
@@ -159,6 +162,15 @@ export function ReportClient() {
 	} | null>(null);
 
 	const [pricesStatus, setPricesStatus] = useState<PricesStatus | null>(null);
+	const [snapshots, setSnapshots] = useState<BalanceSnapshotWithComparison[]>(
+		[],
+	);
+	const [applyingSnapshotId, setApplyingSnapshotId] = useState<string | null>(
+		null,
+	);
+	const [snapshotNotices, setSnapshotNotices] = useState<
+		Record<string, { tone: "info" | "positive" | "error"; message: string }>
+	>({});
 	const [priceFillRunning, setPriceFillRunning] = useState(false);
 	const [priceFillJob, setPriceFillJob] = useState<JobStatus | null>(null);
 	const [priceFillResult, setPriceFillResult] =
@@ -215,22 +227,25 @@ export function ReportClient() {
 		setLoading(true);
 		setError(null);
 		setBalanceSavedMsg(null);
+		setSnapshotNotices({});
 		setPriceFillRunning(false);
 		setPriceFillJob(null);
 		setPriceFillResult(null);
 		setPriceFillError(null);
 		setMissingExpanded(false);
 		try {
-			const [repState, savedActuals, pStatus] = await Promise.all([
+			const [repState, savedActuals, pStatus, snapList] = await Promise.all([
 				api.getReportState(year),
 				api.getActualBalances(year).catch(() => []),
 				api.getPricesStatus(year).catch(() => null),
+				api.listBalanceSnapshots().catch(() => []),
 			]);
 			if (!mountedRef.current) return;
 			const rep = repState.status === "ready" ? repState.report : null;
 			setReport(rep);
 			setReportMissing(repState.status === "missing" ? repState.missing : null);
 			setPricesStatus(pStatus);
+			setSnapshots(snapList);
 
 			const drafts: Record<string, string> = {};
 			if (rep) {
@@ -369,6 +384,222 @@ export function ReportClient() {
 		} finally {
 			setSavingBalances(false);
 		}
+	}
+
+	async function handleApplySnapshot(snap: BalanceSnapshotWithComparison) {
+		setApplyingSnapshotId(snap.id);
+		setSnapshotNotices((prev) => {
+			const next = { ...prev };
+			delete next[snap.id];
+			return next;
+		});
+		try {
+			const savedActuals = await api.applyBalanceSnapshot(snap.id, taxYear);
+			if (!mountedRef.current) return;
+
+			const drafts: Record<string, string> = {};
+			for (const a of savedActuals) {
+				drafts[balanceKey(a.asset, a.source)] = a.amount;
+			}
+			setActualDrafts((prev) => ({ ...prev, ...drafts }));
+
+			if (report) {
+				const rep = await api.computeReport(taxYear);
+				if (!mountedRef.current) return;
+				setReport(rep);
+				setReportMissing(null);
+			}
+			setSnapshotNotices((prev) => ({
+				...prev,
+				[snap.id]: {
+					tone: "positive",
+					message: report
+						? `Applied ${formatSourceLabel(snap.venue)} statement balances (${formatIstDate(snap.asOf)}) as actual balances for ${taxYear} and updated reconciliation.`
+						: `Saved ${formatSourceLabel(snap.venue)} statement balances (${formatIstDate(snap.asOf)}) as actual balances for ${taxYear}. Compute the report to review year-end reconciliation.`,
+				},
+			}));
+		} catch (err) {
+			if (!mountedRef.current) return;
+			if (err instanceof ApiError && err.code === "snapshot_not_year_end") {
+				setSnapshotNotices((prev) => ({
+					...prev,
+					[snap.id]: {
+						tone: "info",
+						message: `This statement is dated ${formatIstDate(snap.asOf)} (${snap.asOf}). To use it as actual balances for ${taxYear}, the statement must be dated at the tax year end (31 March).`,
+					},
+				}));
+			} else {
+				setSnapshotNotices((prev) => ({
+					...prev,
+					[snap.id]: {
+						tone: "error",
+						message: getErrorMessage(err),
+					},
+				}));
+			}
+		} finally {
+			if (mountedRef.current) setApplyingSnapshotId(null);
+		}
+	}
+
+	function renderStatementsSection() {
+		return (
+			<div id="statements" className="space-y-3 pt-2">
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					<div>
+						<h3 className="text-sm font-semibold tracking-tight">
+							Statements ({snapshots.length})
+						</h3>
+						<p className="text-xs text-[var(--text-secondary)]">
+							Imported PDF balance statements compared against computed ledger
+							holdings at the statement&apos;s as-of date.
+						</p>
+					</div>
+					<Link
+						href="/import"
+						className="text-xs font-medium text-[var(--accent-text)] hover:underline"
+					>
+						Import PDF statement
+					</Link>
+				</div>
+
+				{snapshots.length === 0 ? (
+					<div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-surface)] px-4 py-4 text-xs text-[var(--text-muted)]">
+						No balance statements imported yet. Upload a Binance PDF account
+						statement on the Import page to compare statement vs computed
+						balances.
+					</div>
+				) : (
+					<div className="space-y-4">
+						{snapshots.map((snap) => {
+							const notice = snapshotNotices[snap.id];
+							const isApplying = applyingSnapshotId === snap.id;
+							return (
+								<div
+									key={snap.id}
+									className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4"
+								>
+									<div className="flex flex-wrap items-center justify-between gap-3">
+										<div>
+											<div className="flex flex-wrap items-center gap-2">
+												<h4 className="text-sm font-semibold">
+													{formatSourceLabel(snap.venue)}
+												</h4>
+												<Badge tone="neutral">
+													As of {formatIstDate(snap.asOf)}
+												</Badge>
+												<span className="num text-xs text-[var(--text-muted)]">
+													{snap.asOf} ({snap.timezone})
+												</span>
+											</div>
+										</div>
+										<button
+											type="button"
+											disabled={isApplying}
+											onClick={() => handleApplySnapshot(snap)}
+											className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-strong)] bg-[var(--bg-canvas)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+										>
+											<Save className="h-3.5 w-3.5" aria-hidden="true" />
+											{isApplying
+												? "Applying…"
+												: `Use as actual balances for ${taxYear}`}
+										</button>
+									</div>
+
+									{notice ? (
+										<div
+											aria-live="polite"
+											className={`flex items-start gap-2 rounded border px-3 py-2 text-xs ${
+												notice.tone === "positive"
+													? "border-[var(--positive)]/40 bg-[var(--positive-soft)] text-[var(--positive)]"
+													: notice.tone === "error"
+														? "border-[var(--loss)]/40 bg-[var(--loss-soft)] text-[var(--loss)]"
+														: "border-[var(--border-strong)] bg-[var(--bg-subtle)] text-[var(--text-primary)]"
+											}`}
+										>
+											{notice.tone === "positive" ? (
+												<CheckCircle2
+													className="mt-0.5 h-3.5 w-3.5 shrink-0"
+													aria-hidden="true"
+												/>
+											) : (
+												<Info
+													className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--accent-text)]"
+													aria-hidden="true"
+												/>
+											)}
+											<span>{notice.message}</span>
+										</div>
+									) : null}
+
+									<div className="overflow-x-auto rounded border border-[var(--border)]">
+										<table className="w-full border-collapse text-left text-xs">
+											<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
+												<tr>
+													<th className="px-3 py-2 font-medium">Asset</th>
+													<th className="num-right px-3 py-2 font-medium">
+														Statement
+													</th>
+													<th className="num-right px-3 py-2 font-medium">
+														Computed
+													</th>
+													<th className="num-right px-3 py-2 font-medium">
+														Difference
+													</th>
+												</tr>
+											</thead>
+											<tbody>
+												{snap.comparison.length === 0 ? (
+													<tr>
+														<td
+															colSpan={4}
+															className="px-3 py-4 text-center text-[var(--text-muted)]"
+														>
+															No assets to compare.
+														</td>
+													</tr>
+												) : (
+													snap.comparison.map((row) => {
+														const hasDiff = !isZeroDecimal(row.difference);
+														return (
+															<tr
+																key={row.asset}
+																className={`border-b border-[var(--border)] last:border-b-0 ${
+																	hasDiff ? "bg-[var(--warning-soft)]/50" : ""
+																}`}
+															>
+																<td className="px-3 py-2 font-semibold">
+																	{row.asset}
+																</td>
+																<td className="num-right px-3 py-2">
+																	{formatQty(row.statement)}
+																</td>
+																<td className="num-right px-3 py-2">
+																	{formatQty(row.computed)}
+																</td>
+																<td
+																	className={`num-right px-3 py-2 ${
+																		hasDiff
+																			? "font-semibold text-[var(--warning)]"
+																			: "text-[var(--text-muted)]"
+																	}`}
+																>
+																	{formatQty(row.difference)}
+																</td>
+															</tr>
+														);
+													})
+												)}
+											</tbody>
+										</table>
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				)}
+			</div>
+		);
 	}
 
 	return (
@@ -558,22 +789,25 @@ export function ReportClient() {
 						"report",
 					);
 					return (
-						<EmptyState
-							icon={<FileSpreadsheet className="h-8 w-8" />}
-							title={missingCopy.title}
-							description={missingCopy.description}
-							action={
-								<button
-									type="button"
-									disabled={computing}
-									onClick={handleCompute}
-									className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-								>
-									<Calculator className="h-4 w-4" aria-hidden="true" />
-									{computing ? "Computing…" : `Compute ${taxYear} report`}
-								</button>
-							}
-						/>
+						<div className="space-y-6">
+							<EmptyState
+								icon={<FileSpreadsheet className="h-8 w-8" />}
+								title={missingCopy.title}
+								description={missingCopy.description}
+								action={
+									<button
+										type="button"
+										disabled={computing}
+										onClick={handleCompute}
+										className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+									>
+										<Calculator className="h-4 w-4" aria-hidden="true" />
+										{computing ? "Computing…" : `Compute ${taxYear} report`}
+									</button>
+								}
+							/>
+							{snapshots.length > 0 ? renderStatementsSection() : null}
+						</div>
 					);
 				})()
 			) : (
@@ -836,7 +1070,7 @@ export function ReportClient() {
 														)}
 													</td>
 													<td className="px-3 py-2 text-[var(--text-secondary)]">
-														{ex.reason}
+														{formatExcludedReason(ex.reason)}
 													</td>
 													<td className="px-3 py-2 text-right whitespace-nowrap">
 														<Link
@@ -1370,6 +1604,8 @@ export function ReportClient() {
 								</table>
 							</div>
 						</div>
+
+						{renderStatementsSection()}
 					</section>
 
 					{/* Settings used & warnings */}

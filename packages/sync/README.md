@@ -45,20 +45,17 @@ exchange statuses are not ledger events; pending timestamps keep those windows e
 Public default hosts and custom mock hosts are contacted only when a caller invokes a connector.
 No logger is enabled by default. No keys, signed URLs or raw response messages appear in logs/errors.
 
-The shared mock's Earn position endpoints were unavailable during implementation. The integration
-suite also uses an independent in-process HTTP stub to exercise the complete Binance contract.
+Binance withdrawal `amount` is the destination quantity and `transactionFee` is charged on top:
+`amountOut = amount`, with the fee stored separately. Hash matching uses the destination amount;
+the wallet debit is amount plus fee. Dust `transferedAmount` is already net of
+`serviceChargeAmount`: the ledger records their sum as `amountIn` and the separate fee so its net
+receipt equals the upstream amount. Raw amounts are unchanged and neither case adds an ambiguity
+flag. Earn rewards remain audit-only; dividends are the income feed pending overlap verification.
 
-Additional shared-mock differences to resolve before using it as a balance gate:
+Shared-mock integration tests start the server in-process. An independent HTTP stub exercises
+Binance's full route contract as well. Historical P2P outside the six-month API window still
+requires a file import, and dust remains limited to the latest 100 records.
 
-- Its withdrawal `amount` is gross (the wallet receives amount minus fee), and its dust received
-  amount is already net of service charge. Research §1.3 calls both meanings unverified but §1.5
-  requires the explicit fee fields. These mappings retain the supplied amounts/fees and flag
-  `fee_review_required`; they do not silently change quantities to force reconciliation.
-- Its Earn reward is credited to balances without a matching dividend, whereas the research
-  requires dividend-only income pending overlap verification. Audit rows deliberately do not add
-  another receipt. That fixture therefore cannot prove dividend-only income reconciles.
-- Its April 2025 P2P acquisition is outside the real six-month API window at the current clock.
-  An older file import is needed for complete Binance history, just as for a real account.
-
-Integration assertions cover stream completion/notices, mapping, signatures, resume behaviour and
-paging. They do not claim that these unresolved Binance fixture assumptions pass a balance gate.
+EVM provider keys are owned by the app/vault: `provider:etherscan`, `provider:blockscout`,
+`provider:alchemy`, `provider:nodereal`; `provider:coingecko` is for prices. See `@tax/evm`'s README
+for chain coverage, fallback ordering, base URL overrides and the core union integration handoff.

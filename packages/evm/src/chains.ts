@@ -8,7 +8,11 @@ export interface ChainConfig {
 	explorerTxUrl: string;
 	defaultProviders: string[];
 	tokenListFile: string;
-	l1DataFees: boolean;
+	feeModel: string;
+	alchemyNetwork?: string | null;
+	bridgeContracts: string[];
+	nativeRename?: { from: string; to: string; at: string };
+	nativeTokenAliases?: string[];
 }
 export const chains: readonly ChainConfig[] = data;
 export function chainConfig(chainId: number): ChainConfig {
@@ -16,3 +20,10 @@ export function chainConfig(chainId: number): ChainConfig {
 	if (!config) throw new UpstreamError("Chain configuration is not bundled");
 	return config;
 }
+
+export const providerSecretSlots = {
+	etherscan: "provider:etherscan",
+	blockscout: "provider:blockscout",
+	alchemy: "provider:alchemy",
+	nodereal: "provider:nodereal",
+} as const;

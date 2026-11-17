@@ -9,8 +9,12 @@ export function rawRowKeys(
 	return rows.map((row) => {
 		const hash = field(row, "hash").toLowerCase();
 		if (action === "txlist") return `tx:${hash}`;
-		if (action === "txlistinternal")
-			return `int:${hash}:${field(row, "traceId")}`;
+		if (action === "txlistinternal") {
+			const tuple = `int:${hash}:${field(row, "traceId")}`;
+			const ordinal = counts.get(tuple) ?? 0;
+			counts.set(tuple, ordinal + 1);
+			return ordinal ? `${tuple}#${ordinal}` : tuple;
+		}
 		const tuple = `erc20:${hash}:${field(row, "contractAddress").toLowerCase()}:${field(row, "from").toLowerCase()}:${field(row, "to").toLowerCase()}:${field(row, "value")}`;
 		const ordinal = counts.get(tuple) ?? 0;
 		counts.set(tuple, ordinal + 1);
@@ -22,6 +26,7 @@ export interface WalkResult {
 	lastBlock: number;
 	incomplete?: string;
 	blockedAt?: number;
+	provider?: string;
 }
 export async function walkBlocks(
 	provider: ExplorerProvider,
@@ -31,6 +36,7 @@ export async function walkBlocks(
 	safeBlock: number,
 ): Promise<WalkResult> {
 	const collected = new Map<string, ExplorerRow>();
+	let providerKind = provider.providerFor?.(action) ?? provider.kind;
 	let cursor = start,
 		end = safeBlock;
 	while (cursor <= safeBlock) {
@@ -49,7 +55,15 @@ export async function walkBlocks(
 			end = Math.floor((cursor + end) / 2);
 			continue;
 		}
-		if (page.length > 1000)
+		const currentProvider = provider.providerFor?.(action) ?? provider.kind;
+		if (currentProvider !== providerKind) {
+			collected.clear();
+			cursor = start;
+			end = safeBlock;
+			providerKind = currentProvider;
+			continue;
+		}
+		if (page.length > 1000 && !provider.historyIsComplete?.(action))
 			throw new UpstreamError("Explorer exceeded the requested page size");
 		let previous = cursor;
 		for (const row of page) {
@@ -65,9 +79,16 @@ export async function walkBlocks(
 			const key = keys[index];
 			if (key) collected.set(key, row);
 		});
-		if (page.length < 1000) {
+		if (page.length < 1000 || provider.historyIsComplete?.(action)) {
 			if (end === safeBlock)
-				return { rows: [...collected.values()], lastBlock: safeBlock };
+				return {
+					rows: [...collected.values()],
+					lastBlock: safeBlock,
+					provider: providerKind,
+					...(provider.historyNotice?.(action)
+						? { incomplete: provider.historyNotice(action) }
+						: {}),
+				};
 			cursor = end + 1;
 			end = safeBlock;
 			continue;
@@ -92,5 +113,12 @@ export async function walkBlocks(
 		cursor = next;
 		end = safeBlock;
 	}
-	return { rows: [...collected.values()], lastBlock: safeBlock };
+	return {
+		rows: [...collected.values()],
+		lastBlock: safeBlock,
+		provider: providerKind,
+		...(provider.historyNotice?.(action)
+			? { incomplete: provider.historyNotice(action) }
+			: {}),
+	};
 }

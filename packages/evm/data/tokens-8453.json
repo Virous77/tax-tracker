@@ -1,1 +1,74 @@
-{}
+{
+	"0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": {
+		"symbol": "USDC",
+		"decimals": 6
+	},
+	"0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca": {
+		"symbol": "USDBC",
+		"decimals": 6
+	},
+	"0xfde4c96c8593536e31f229ea8f37b2ada2699bb2": {
+		"symbol": "USDT",
+		"decimals": 6
+	},
+	"0x50c5725949a6f0c72e6c4a641f24049a917db0cb": {
+		"symbol": "DAI",
+		"decimals": 18
+	},
+	"0x4200000000000000000000000000000000000006": {
+		"symbol": "WETH",
+		"decimals": 18
+	},
+	"0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf": {
+		"symbol": "CBBTC",
+		"decimals": 8
+	},
+	"0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22": {
+		"symbol": "CBETH",
+		"decimals": 18
+	},
+	"0x940181a94a35a4569e4529a3cdfb74e38fd98631": {
+		"symbol": "AERO",
+		"decimals": 18
+	},
+	"0xc3de830ea07524a0761646a6a4e4be0e114a3c83": {
+		"symbol": "UNI",
+		"decimals": 18
+	},
+	"0x63706e401c06ac8513145b7687a14804d17f814b": {
+		"symbol": "AAVE",
+		"decimals": 18
+	},
+	"0xb4fde59a779991bfb6a52253b51947828b982be3": {
+		"symbol": "PEPE",
+		"decimals": 18
+	},
+	"0x8ee73c484a26e0a5df2ee2a4960b789967dd0415": {
+		"symbol": "CRV",
+		"decimals": 18
+	},
+	"0x0f4d237b09cb37d207ba60353dc254d4530d4df1": {
+		"symbol": "GRT",
+		"decimals": 18
+	},
+	"0x74f804b4140ee70830b3eef4e690325841575f89": {
+		"symbol": "FET",
+		"decimals": 18
+	},
+	"0x9e1028f5f1d5ede59748ffcee5532509976840e0": {
+		"symbol": "COMP",
+		"decimals": 18
+	},
+	"0x22e6966b799c4d5b13be962e1d117b56327fda66": {
+		"symbol": "SNX",
+		"decimals": 18
+	},
+	"0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42": {
+		"symbol": "EURC",
+		"decimals": 6
+	},
+	"0x236aa50979d5f3de3bd1eeb40e81137f22ab794b": {
+		"symbol": "TBTC",
+		"decimals": 18
+	}
+}

@@ -10,6 +10,7 @@ import { chainConfig } from "./chains.js";
 export interface Token {
 	symbol: string;
 	decimals: number;
+	reviewNote?: string;
 }
 const tokenLists: Record<string, Readonly<Record<string, Token>>> = {
 	"tokens-1.json": mainnet,

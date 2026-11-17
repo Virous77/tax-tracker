@@ -1,7 +1,6 @@
 import {
 	type Connector,
 	D,
-	type EvmSyncOptions,
 	type FetchedBalance,
 	type StreamBatch,
 } from "@tax/core";
@@ -15,12 +14,16 @@ import {
 } from "./api.js";
 import { chainConfig } from "./chains.js";
 import { classifyTransactions } from "./classify.js";
-import { createExplorer, type ExplorerProvider } from "./provider.js";
+import {
+	createExplorer,
+	type EvmOptions,
+	type ExplorerProvider,
+} from "./provider.js";
 import { fromUnits, spamReasons, tokenAsset, tokenDecimals } from "./tokens.js";
 import { type WalkResult, walkBlocks } from "./walk.js";
 
 const actions: ExplorerAction[] = ["txlist", "txlistinternal", "tokentx"];
-function streamName(opts: EvmSyncOptions, action: ExplorerAction): string {
+function streamName(opts: EvmOptions, action: ExplorerAction): string {
 	return `evm:${opts.chainId}:${address(opts.address)}:${action}`;
 }
 function lastBlock(value: unknown): number {
@@ -29,7 +32,7 @@ function lastBlock(value: unknown): number {
 	return 0;
 }
 async function readHistory(
-	opts: EvmSyncOptions,
+	opts: EvmOptions,
 	provider: ExplorerProvider,
 	safe: number,
 ): Promise<Record<ExplorerAction, WalkResult>> {
@@ -40,7 +43,7 @@ async function readHistory(
 		),
 	);
 	const result = {} as Record<ExplorerAction, WalkResult>;
-	for (const action of actions)
+	for (const action of actions) {
 		result[action] = await walkBlocks(
 			provider,
 			action,
@@ -48,9 +51,45 @@ async function readHistory(
 			start,
 			safe,
 		);
+		result[action].provider = provider.providerFor?.(action) ?? provider.kind;
+	}
+	if (provider.transactionCount && !result.txlist.incomplete) {
+		const checkedProvider = provider.providerFor?.("txlist") ?? provider.kind;
+		try {
+			const sent = await provider.transactionCount(
+				address(opts.address),
+				`0x${safe.toString(16)}`,
+			);
+			const before =
+				start > 0
+					? await provider.transactionCount(
+							address(opts.address),
+							`0x${(start - 1).toString(16)}`,
+						)
+					: 0;
+			if (
+				checkedProvider !== (provider.providerFor?.("txlist") ?? provider.kind)
+			)
+				return readHistory(opts, provider, safe);
+			const found = new Set(
+				result.txlist.rows
+					.filter(
+						(row) =>
+							row.from?.toLowerCase() === address(opts.address) &&
+							row.type !== "0x7e",
+					)
+					.map((row) => row.hash?.toLowerCase()),
+			).size;
+			if (found < sent - before)
+				result.txlist.incomplete = `${sent - before - found} sent transactions not found (their gas is missing); add another explorer key`;
+		} catch (error) {
+			if (!(error instanceof UpstreamError)) throw error;
+			result.txlist.incomplete = `Sent-transaction completeness check unavailable: ${error.message}`;
+		}
+	}
 	return result;
 }
-export const evmConnector: Connector<EvmSyncOptions> = {
+export const evmConnector: Connector<EvmOptions> = {
 	async *sync(opts): AsyncGenerator<StreamBatch> {
 		address(opts.address);
 		opts.ownAddresses.forEach(address);
@@ -84,6 +123,11 @@ export const evmConnector: Connector<EvmSyncOptions> = {
 			txlistinternal: filtered("txlistinternal"),
 			tokentx: filtered("tokentx"),
 		});
+		if (provider.notices?.length && mapped[0])
+			mapped[0].tx.reviewFlags.push({
+				code: "parse_warning",
+				message: [...new Set(provider.notices)].join("; "),
+			});
 		const incomplete = actions
 			.map((action) => history[action].incomplete)
 			.filter(Boolean)
@@ -101,7 +145,17 @@ export const evmConnector: Connector<EvmSyncOptions> = {
 			yield {
 				stream: streamName(opts, action),
 				rows: index === 0 ? mapped : [],
-				cursor: { lastBlock: last },
+				cursor: {
+					lastBlock:
+						history[action].incomplete &&
+						history[action].blockedAt === undefined
+							? lastBlock(opts.cursors[streamName(opts, action)])
+							: last,
+					provider: history[action].provider,
+					...(provider.notices.length
+						? { notices: [...new Set(provider.notices)] }
+						: {}),
+				},
 				...(incomplete ? { incomplete } : {}),
 			};
 		}
@@ -144,7 +198,12 @@ export const evmConnector: Connector<EvmSyncOptions> = {
 						tx.from !== undefined &&
 						owned.has(tx.from.toLowerCase()),
 				);
-			if (!spamReasons(opts.chainId, row, initiated).length)
+			if (
+				!chainConfig(opts.chainId).nativeTokenAliases?.includes(
+					field(row, "contractAddress").toLowerCase(),
+				) &&
+				!spamReasons(opts.chainId, row, initiated).length
+			)
 				tokens.set(field(row, "contractAddress").toLowerCase(), row);
 		}
 
@@ -168,15 +227,29 @@ export const evmConnector: Connector<EvmSyncOptions> = {
 				),
 				wallet: "wallet",
 			});
-		return result.filter((row) => D(row.amount).gte("0"));
+		const combined = new Map<string, FetchedBalance>();
+		for (const row of result) {
+			const previous = combined.get(row.asset);
+			combined.set(row.asset, {
+				...row,
+				amount: D(previous?.amount ?? "0")
+					.plus(row.amount)
+					.toFixed(),
+			});
+		}
+		return [...combined.values()].filter((row) => D(row.amount).gte("0"));
 	},
 	async checkKey(opts) {
-		await createExplorer(opts).blockNumber();
+		const provider = createExplorer(opts);
+		await provider.blockNumber();
 		return {
 			ok: true,
 			readOnly: true,
 			permissions: ["public-chain-data"],
-			message: "Explorer key verified; public blockchain reads only",
+			message: [
+				"Explorer key verified; public blockchain reads only",
+				...provider.notices,
+			].join("; "),
 		};
 	},
 };

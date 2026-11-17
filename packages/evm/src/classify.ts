@@ -9,8 +9,10 @@ import {
 	type ExplorerAction,
 	type ExplorerRow,
 	field,
+	record,
 } from "./api.js";
 import { chainConfig } from "./chains.js";
+import { transactionFee } from "./fees.js";
 import {
 	fromUnits,
 	knownToken,
@@ -76,13 +78,11 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 		if (!exemplar) continue;
 		const initiated = main?.from?.toLowerCase() === wallet;
 		const failed = main?.isError === "1" || main?.txreceipt_status === "0";
-		const gas =
+		const fee =
 			initiated && main
-				? D(field(main, "gasUsed"))
-						.mul(main.effectiveGasPrice ?? field(main, "gasPrice"))
-						.div(D("10").pow(chain.nativeDecimals))
-						.toFixed()
-				: "0";
+				? transactionFee(chain, main)
+				: { amount: "0", flags: [] };
+		const gas = fee.amount;
 		const legs: Leg[] = [];
 		const markers: ReviewFlag[] = [];
 		const append = (
@@ -142,6 +142,22 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 							).map((message) => ({ code: "suspected_spam", message }))
 						: [];
 				const known = knownToken(input.chainId, field(row, "contractAddress"));
+				if (
+					chain.nativeTokenAliases?.includes(
+						field(row, "contractAddress").toLowerCase(),
+					)
+				)
+					continue;
+				if (!known && row.tokenDecimal === undefined) {
+					markers.push(...flags, {
+						code: "parse_warning",
+						message:
+							"Provider omitted token decimals; original transfer retained without a guessed amount",
+					});
+					continue;
+				}
+				if (known?.reviewNote)
+					flags.push({ code: "complex_onchain", message: known.reviewNote });
 				if (known && Number(row.tokenDecimal) !== known.decimals)
 					flags.push({
 						code: "parse_warning",
@@ -161,6 +177,18 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 			txlist: group.txlist,
 			txlistinternal: group.txlistinternal,
 			tokentx: group.tokentx,
+			nativeSymbols: [...group.txlist, ...group.txlistinternal].flatMap(
+				(row) => {
+					const symbol = row.nativeSymbol ?? row.tokenSymbol ?? row.asset;
+					return symbol ? [symbol] : [];
+				},
+			),
+			providerRows: [...group.txlist, ...group.txlistinternal, ...group.tokentx]
+				.filter((row) => row.providerRaw)
+				.map((row) => JSON.parse(row.providerRaw ?? "{}") as unknown),
+			receipts: group.txlist
+				.filter((row) => row.receiptRaw)
+				.map((row) => JSON.parse(row.receiptRaw ?? "{}") as unknown),
 		};
 		const make = (
 			kind: string,
@@ -193,6 +221,30 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 					`W${chain.nativeAsset}`) ||
 			(clean.some((leg) => leg.asset === `W${chain.nativeAsset}`) &&
 				clean.some((leg) => leg.asset === chain.nativeAsset));
+		const bridge = [
+			...group.txlist,
+			...group.txlistinternal,
+			...group.tokentx,
+		].some(
+			(row) =>
+				chain.bridgeContracts.some(
+					(contract) =>
+						row.from?.toLowerCase() === contract ||
+						row.to?.toLowerCase() === contract,
+				) ||
+				row.type === "0x7e" ||
+				/bridge|depositeth|withdraweth|retryable|finalizedeposit/i.test(
+					row.functionName ?? "",
+				) ||
+				(input.chainId !== 1 &&
+					row.to?.toLowerCase() === wallet &&
+					(/binance|coindcx|coinbase|kraken|okx|bybit/i.test(
+						[row.fromLabel, row.fromTag, row.exchange]
+							.filter(Boolean)
+							.join(" "),
+					) ||
+						row.from === "0x0000000000000000000000000000000000000000")),
+		);
 		const defi = /bridge|addliquidity|removeliquidity|mint\(|burn\(/i.test(
 			main?.functionName ?? "",
 		);
@@ -231,6 +283,7 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 			new Set(outgoing.map((leg) => leg.asset)).size > 1;
 		const complex =
 			wrap ||
+			bridge ||
 			defi ||
 			multi ||
 			(incoming.length > 0 && outgoing.length > 0 && !initiated && !ownMove) ||
@@ -239,11 +292,13 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 			? [
 					{
 						code: "complex_onchain",
-						message: wrap
-							? `${chain.nativeAsset} wrap/unwrap requires manual tax classification`
-							: defi
-								? "Liquidity or bridge activity; each movement retained for review"
-								: "Transaction is outside simple transfer/swap patterns; each movement retained for review",
+						message: bridge
+							? "Possible bridge between chains"
+							: wrap
+								? `${chain.nativeAsset} wrap/unwrap requires manual tax classification`
+								: defi
+									? "Liquidity or bridge activity; each movement retained for review"
+									: "Transaction is outside simple transfer/swap patterns; each movement retained for review",
 					},
 				]
 			: [];
@@ -297,8 +352,17 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 				});
 			}
 		}
-		if (markers.length) mapped.push(make("spam", 0, markers));
-		if (D(gas).gt("0")) {
+		if (markers.length)
+			mapped.push(
+				make(
+					markers.every((flag) => flag.code === "suspected_spam")
+						? "spam"
+						: "review",
+					0,
+					markers,
+				),
+			);
+		if (D(gas).gt("0") || fee.flags.length) {
 			let target = mapped.find(
 				(tx) => !tx.reviewFlags.some((flag) => flag.code === "suspected_spam"),
 			);
@@ -308,11 +372,7 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 			}
 			target.feeAsset = chain.nativeAsset;
 			target.feeAmount = gas;
-			if (chain.l1DataFees)
-				target.reviewFlags.push({
-					code: "fee_review_required",
-					message: "Non-mainnet gas may omit L1 data fees",
-				});
+			target.reviewFlags.push(...fee.flags);
 		}
 		if (!mapped.length)
 			mapped.push(
@@ -337,9 +397,29 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 			result.push({ tx: parsed });
 		}
 	}
-	return result.sort(
+	const sorted = result.sort(
 		(a, b) =>
 			a.tx.timestamp.localeCompare(b.tx.timestamp) ||
 			a.tx.sourceRef.localeCompare(b.tx.sourceRef),
 	);
+	const rename = chain.nativeRename;
+	if (rename) {
+		const first = sorted.find(({ tx }) => {
+			const symbols = record(tx.raw).nativeSymbols;
+			const historical =
+				tx.timestamp < new Date(rename.at).toISOString() ||
+				(Array.isArray(symbols) && symbols.includes(rename.from));
+			return (
+				historical &&
+				(tx.assetIn === chain.nativeAsset ||
+					tx.assetOut === chain.nativeAsset ||
+					tx.feeAsset === chain.nativeAsset)
+			);
+		});
+		first?.tx.reviewFlags.push({
+			code: "parse_warning",
+			message: `Polygon ${rename.from} was renamed ${rename.to} on ${rename.at}; mapped to ${rename.to} with the provider's original symbol retained in raw. Tax treatment requires CA review.`,
+		});
+	}
+	return sorted;
 }

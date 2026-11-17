@@ -1,4 +1,4 @@
-import type { IncomeKind } from "@tax/core";
+import { D, type IncomeKind } from "@tax/core";
 import {
 	type ApiRow,
 	amount,
@@ -60,11 +60,6 @@ export function mapBinanceWithdrawal(raw: ApiRow): SyncTx | null {
 	if (["0", "2", "3", "4"].includes(status)) return null;
 	const tx = start(raw, `withdraw:${text(raw, "id")}`, text(raw, "applyTime"));
 	if (status !== "6") return unknownRow(tx, "Unknown withdrawal status");
-	tx.reviewFlags.push({
-		code: "fee_review_required",
-		message:
-			"Binance withdrawal amount is treated as sent quantity with an additional fee; verify against the on-chain value (research §1.3)",
-	});
 	return validated({
 		...tx,
 		type: "withdrawal",
@@ -113,16 +108,13 @@ export function mapBinanceDust(raw: ApiRow, parent: ApiRow): SyncTx {
 		`dust:${text(parent, "transId")}:${text(raw, "transId")}`,
 		text(raw, "operateTime"),
 	);
-	tx.reviewFlags.push({
-		code: "fee_review_required",
-		message:
-			"Dust received amount may already be net of service charge; verify against balances (research §1.3)",
-	});
 	return validated({
 		...tx,
 		type: "swap",
 		assetIn: typeof raw.targetAsset === "string" ? raw.targetAsset : "BNB",
-		amountIn: amount(raw, "transferedAmount"),
+		amountIn: D(amount(raw, "transferedAmount"))
+			.plus(amount(raw, "serviceChargeAmount"))
+			.toFixed(),
 		assetOut: text(raw, "fromAsset"),
 		amountOut: amount(raw, "amount"),
 		feeAsset: "BNB",

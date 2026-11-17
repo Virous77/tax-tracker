@@ -78,5 +78,49 @@
 	"0x6b3595068778dd592e39a122f4f5a5cf09c90fe2": {
 		"symbol": "SUSHI",
 		"decimals": 18
+	},
+	"0x455e53cbb86018ac2b8092fdcd39d8444affc3f6": {
+		"symbol": "POL",
+		"decimals": 18
+	},
+	"0xb50721bcf8d664c30412cfbc6cf7a15145234ad1": {
+		"symbol": "ARB",
+		"decimals": 18
+	},
+	"0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf": {
+		"symbol": "CBBTC",
+		"decimals": 8
+	},
+	"0x56072c95faa701256059aa122697b133aded9279": {
+		"symbol": "SKY",
+		"decimals": 18
+	},
+	"0xdc035d45d973e3ec169d2276ddab16f1e407384f": {
+		"symbol": "USDS",
+		"decimals": 18
+	},
+	"0x57e114b691db790c35207b2e685d4a43181e6061": {
+		"symbol": "ENA",
+		"decimals": 18
+	},
+	"0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3": {
+		"symbol": "ONDO",
+		"decimals": 18
+	},
+	"0x6c3ea9036406852006290770bedfcaba0e23a0e8": {
+		"symbol": "PYUSD",
+		"decimals": 6
+	},
+	"0xaea46a60368a7bd060eec7df8cba43b7ef41ad85": {
+		"symbol": "FET",
+		"decimals": 18
+	},
+	"0x6de037ef9ad2725eb40118bb1702ebb27e4aeb24": {
+		"symbol": "RNDR",
+		"decimals": 18
+	},
+	"0xbe9895146f7af43049ca1c1ae358b0541ea49704": {
+		"symbol": "CBETH",
+		"decimals": 18
 	}
 }

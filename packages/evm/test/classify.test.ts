@@ -257,8 +257,8 @@ describe("EVM classifier", () => {
 		expect(row?.amountIn).toBe("1");
 		expect(row?.reviewFlags[0]?.code).toBe("parse_warning");
 	});
-	it("registry has 20 valid unique canonical contracts", () => {
-		expect(Object.keys(knownTokensForChain(1))).toHaveLength(20);
+	it("registry retains existing identities and includes researched additions", () => {
+		expect(Object.keys(knownTokensForChain(1))).toHaveLength(31);
 		expect(
 			Object.keys(knownTokensForChain(1)).every((key) =>
 				/^0x[0-9a-f]{40}$/.test(key),

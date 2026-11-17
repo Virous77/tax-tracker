@@ -111,6 +111,7 @@ describe("Binance mappings", () => {
 			amountOut: "8.91",
 			feeAmount: "0.004",
 			timestamp: "2019-10-12T11:12:02.000Z",
+			reviewFlags: [],
 		});
 	});
 	it("ignores a processing withdrawal", () =>
@@ -138,14 +139,17 @@ describe("Binance mappings", () => {
 			sourceRef: "convert:1",
 		});
 	});
-	it("maps official dust details with stable parent/detail ids", () => {
+	it("maps net dust receipts plus a separate service charge with stable ids", () => {
 		const parent = first(object(sample("binance-dribblet")).userAssetDribblets),
 			raw = first(parent.userAssetDribbletDetails);
-		expect(mapBinanceDust(raw, parent)).toMatchObject({
+		const tx = mapBinanceDust(raw, parent);
+		expect(tx.raw).toBe(raw);
+		expect(tx.reviewFlags).toEqual([]);
+		expect(tx).toMatchObject({
 			type: "swap",
 			sourceRef: "dust:45178372831:4359321",
 			amountOut: "0.0009",
-			amountIn: "0.000441",
+			amountIn: "0.00045",
 			feeAmount: "0.000009",
 		});
 	});

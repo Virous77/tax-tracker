@@ -1,1 +1,92 @@
-{}
+{
+	"0x55d398326f99059ff775485246999027b3197955": {
+		"symbol": "USDT",
+		"decimals": 18
+	},
+	"0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d": {
+		"symbol": "USDC",
+		"decimals": 18
+	},
+	"0xc5f0f7b66764f6ec8c8dff7ba683102295e16409": {
+		"symbol": "FDUSD",
+		"decimals": 18
+	},
+	"0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d": {
+		"symbol": "USD1",
+		"decimals": 18
+	},
+	"0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c": {
+		"symbol": "WBNB",
+		"decimals": 18
+	},
+	"0x2170ed0880ac9a755fd29b2688956bd959f933f8": {
+		"symbol": "ETH",
+		"decimals": 18
+	},
+	"0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c": {
+		"symbol": "BTC",
+		"decimals": 18
+	},
+	"0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82": {
+		"symbol": "CAKE",
+		"decimals": 18
+	},
+	"0x1d2f0da169ceb9fc7b3144628db156f3f6c60dbe": {
+		"symbol": "XRP",
+		"decimals": 18,
+		"reviewNote": "pegged token; exchange deposit identity requires verification"
+	},
+	"0x3ee2200efb3400fabb9aacf31297cbdd1d435d47": {
+		"symbol": "ADA",
+		"decimals": 18,
+		"reviewNote": "pegged token; exchange deposit identity requires verification"
+	},
+	"0xba2ae424d960c26247dd6c32edc70b295c744c43": {
+		"symbol": "DOGE",
+		"decimals": 8,
+		"reviewNote": "pegged token; exchange deposit identity requires verification"
+	},
+	"0x7083609fce4d1d8dc0c979aab8c869ea2c873402": {
+		"symbol": "DOT",
+		"decimals": 18,
+		"reviewNote": "pegged token; exchange deposit identity requires verification"
+	},
+	"0x4338665cbb7b2485a8855a139b75d5e34ab0db94": {
+		"symbol": "LTC",
+		"decimals": 18,
+		"reviewNote": "pegged token; exchange deposit identity requires verification"
+	},
+	"0xf8a0bf9cf54bb92f17374d9e9a321e6a111a51bd": {
+		"symbol": "LINK",
+		"decimals": 18,
+		"reviewNote": "pegged token; exchange deposit identity requires verification"
+	},
+	"0x570a5d26f7765ecb712c0924e4de545b89fd43df": {
+		"symbol": "SOL",
+		"decimals": 18,
+		"reviewNote": "pegged token; exchange deposit identity requires verification"
+	},
+	"0x1ce0c2827e2ef14d5c4f29a091d735a204794041": {
+		"symbol": "AVAX",
+		"decimals": 18,
+		"reviewNote": "pegged token; exchange deposit identity requires verification"
+	},
+	"0x2859e4544c4bb03966803b044a93563bd2d0dd4d": {
+		"symbol": "SHIB",
+		"decimals": 18,
+		"reviewNote": "pegged token; exchange deposit identity requires verification"
+	},
+	"0xce7de646e7208a4ef112cb6ed5038fa6cc6b12e3": {
+		"symbol": "TRX",
+		"decimals": 6,
+		"reviewNote": "pegged token; exchange deposit identity requires verification"
+	},
+	"0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3": {
+		"symbol": "DAI",
+		"decimals": 18
+	},
+	"0xe9e7cea3dedca5984780bafc599bd69add087d56": {
+		"symbol": "BUSD",
+		"decimals": 18
+	}
+}

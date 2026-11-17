@@ -5,9 +5,25 @@
 		"nativeAsset": "ETH",
 		"nativeDecimals": 18,
 		"explorerTxUrl": "https://etherscan.io/tx/{hash}",
-		"defaultProviders": ["etherscan", "blockscout"],
+		"defaultProviders": ["etherscan", "blockscout", "alchemy"],
 		"tokenListFile": "tokens-1.json",
-		"l1DataFees": false
+		"feeModel": "execution",
+		"alchemyNetwork": "eth-mainnet",
+		"bridgeContracts": [
+			"0x3154cf16ccdb4c6d922629664174b904d80f2c35",
+			"0x49048044d57e1c92a77f79988d21fa8faf74e97e",
+			"0x866e82a600a1414e583f7f13623f1ac5d58b0afa",
+			"0x8315177ab297ba92a06054ce80a67ed4dbd7ed3a",
+			"0x4dbd4fc535ac27206064b68ffcf827b0a60bab3f",
+			"0x0b9857ae2d4a3dbe74ffe1d7df045bb7f96e4840",
+			"0x72ce9c846789fdb6fc1f34ac4ad25dd9ef7031ef",
+			"0xa3a7b6f88361f48403514059f1f16c8e78d60eec",
+			"0xa0c68c638235ee32657e8f720a23cec1bfc77c77",
+			"0x40ec5b33f54e0e8a33a975908c5ba1c14e5bbbdf",
+			"0x8484ef722627bf18ca5ae6bcf031c23e6e922b30",
+			"0x401f6c983ea34274ec46f84d70b31c151321188b",
+			"0x2a88696e0ffa76baa1338f2c74497cc013495922"
+		]
 	},
 	{
 		"chainId": 8453,
@@ -15,9 +31,11 @@
 		"nativeAsset": "ETH",
 		"nativeDecimals": 18,
 		"explorerTxUrl": "https://basescan.org/tx/{hash}",
-		"defaultProviders": [],
+		"defaultProviders": ["alchemy", "etherscan", "blockscout"],
 		"tokenListFile": "tokens-8453.json",
-		"l1DataFees": true
+		"feeModel": "op-stack",
+		"alchemyNetwork": "base-mainnet",
+		"bridgeContracts": ["0x4200000000000000000000000000000000000010"]
 	},
 	{
 		"chainId": 42161,
@@ -25,9 +43,15 @@
 		"nativeAsset": "ETH",
 		"nativeDecimals": 18,
 		"explorerTxUrl": "https://arbiscan.io/tx/{hash}",
-		"defaultProviders": ["etherscan", "blockscout"],
+		"defaultProviders": ["etherscan", "blockscout", "alchemy"],
 		"tokenListFile": "tokens-42161.json",
-		"l1DataFees": true
+		"feeModel": "arbitrum",
+		"alchemyNetwork": "arb-mainnet",
+		"bridgeContracts": [
+			"0x5288c571fd7ad117bea99bf60fe0846c4e84f933",
+			"0x09e9222e96e7b4ae2a407b98d48e330053351eee",
+			"0x0000000000000000000000000000000000000064"
+		]
 	},
 	{
 		"chainId": 137,
@@ -35,9 +59,17 @@
 		"nativeAsset": "POL",
 		"nativeDecimals": 18,
 		"explorerTxUrl": "https://polygonscan.com/tx/{hash}",
-		"defaultProviders": ["etherscan", "blockscout"],
+		"defaultProviders": ["etherscan", "blockscout", "alchemy"],
 		"tokenListFile": "tokens-137.json",
-		"l1DataFees": false
+		"feeModel": "execution",
+		"alchemyNetwork": "polygon-mainnet",
+		"bridgeContracts": ["0xa6fa4fb5f76172d178d61b04b0ecd319c5d1c0aa"],
+		"nativeRename": {
+			"from": "MATIC",
+			"to": "POL",
+			"at": "2024-09-04T12:00:00Z"
+		},
+		"nativeTokenAliases": ["0x0000000000000000000000000000000000001010"]
 	},
 	{
 		"chainId": 56,
@@ -45,8 +77,10 @@
 		"nativeAsset": "BNB",
 		"nativeDecimals": 18,
 		"explorerTxUrl": "https://bscscan.com/tx/{hash}",
-		"defaultProviders": [],
+		"defaultProviders": ["nodereal", "etherscan"],
 		"tokenListFile": "tokens-56.json",
-		"l1DataFees": false
+		"feeModel": "execution",
+		"alchemyNetwork": null,
+		"bridgeContracts": []
 	}
 ]

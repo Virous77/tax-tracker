@@ -42,3 +42,9 @@ export function block(value: string): number {
 		throw new UpstreamError("Invalid explorer block number");
 	return number;
 }
+
+export function rpcText(value: unknown, name: string): string {
+	if (typeof value !== "string" || !value)
+		throw new UpstreamError(`Missing RPC field: ${name}`);
+	return value;
+}

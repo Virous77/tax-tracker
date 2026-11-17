@@ -91,27 +91,17 @@ describe("in-process multichain shared mock", () => {
 				).toBeGreaterThan(0);
 				for (const batch of batches)
 					expect(batch.cursor).toMatchObject({ provider: kind });
-				const unavailable = batches.some((batch) => batch.incomplete);
-				if (unavailable) {
+				expect(
+					batches.every((batch) => !batch.incomplete),
+					JSON.stringify(batches.map((batch) => batch.incomplete)),
+				).toBe(true);
+				const computed = holdings(rows),
+					actual = await evmConnector.balances(opts);
+				for (const balance of actual)
 					expect(
-						batches.every((batch) =>
-							batch.incomplete?.startsWith(
-								"Sent-transaction completeness check unavailable:",
-							),
-						),
-					).toBe(true);
-					await expect(evmConnector.balances(opts)).rejects.toThrow(
-						"history is incomplete",
-					);
-				} else {
-					const computed = holdings(rows),
-						actual = await evmConnector.balances(opts);
-					for (const balance of actual)
-						expect(
-							computed.get(balance.asset) ?? "0",
-							`${chainId} ${kind} ${balance.asset}`,
-						).toBe(balance.amount);
-				}
+						computed.get(balance.asset) ?? "0",
+						`${chainId} ${kind} ${balance.asset}`,
+					).toBe(balance.amount);
 				if (chainId === 8453) {
 					const sent = rows.filter((row) => row.tx.feeAmount);
 					expect(sent.length).toBeGreaterThan(0);

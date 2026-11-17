@@ -74,10 +74,12 @@ Server report `warnings` are grouped by exact code, message, asset and source. E
 
 Report warnings add optional `asset: string` and `source: string` context. Balance mismatch and negative-holding warnings carry the affected asset, a source only for per-source pools, and `txIds` for every ledger row contributing to that balance. A mismatch on an actual-only asset legitimately has `txIds: []`, with `asset`/`source` identifying the problem. A balance warning's `count` is one problem, regardless of the number of ledger links.
 
-The UI follow-up must update `apps/web/src/components/ReviewClient.tsx`: line 48 and lines 355/385
-assume every non-balance report item has `unresolved`; handle `kind: "warning"` separately and use its
-message and warning links. Lines 159, 174, 211, 216 and 230 compare against the removed `"stale"`
-status. `apps/web/src/lib/client/review-codes.ts:12` must add metadata for all five new codes. Those
-are the only TypeScript failures from this server contract change (11 diagnostics total). Overview
-and Report should preserve `error.details` on `report_not_computed` and explain the cause. Import
-summaries/lists should show skips separately from row errors and render their reasons.
+Review clients must handle warning, balance and unresolved report-item variants, current/missing report statuses and every review code. Report clients should preserve `report_not_computed` details. Import lists should display skipped-row counts and reasons separately from errors.
+
+The multichain/import handoff is specified field by field in `docs/SPEC-phase2.md` §9. Provider names add Alchemy and NodeReal; Etherscan stores a free/paid tier. Chain ids are exported once as `SUPPORTED_EVM_CHAIN_IDS` from core. Connection views expose nullable `runningJobId` and `lastSyncJobId`; poll their retained `/api/jobs/:id` rows to recover progress and per-stream results after reload.
+
+Imports return report-kind labels, selected/detected timezone and its source, coverage, and import warnings. PDF passwords are optional multipart input only. PDF account statements become balance snapshots, available at `/api/balances/snapshots` and import details, with a year-end apply action. Superseded ledger originals remain stored and appear in report exclusions; deleting their replacing import restores them. `rowsInserted` counts snapshot/TDS records as well as ledger rows.
+
+`ALCHEMY_API_BASE` accepts a URL such as `http://host.docker.internal:11601/alchemy/{network}/v2`; `NODEREAL_API_BASE` accepts `http://host.docker.internal:11601/nodereal`. Connectors append keys. Standalone builds externalize the importer package and trace its PDF worker and PDF.js modules, preserving Node worker URLs.
+
+UI integration: `components/import/RecipeWizard.tsx` currently declares `buildInitialRecipe`'s timezone parameter as `"IST" | "UTC"`. Change it to the shared timezone type (`ImportSummary["timezone"]` or `NonNullable<Recipe["timezone"]>`) to accept the expanded contract. This server task deliberately leaves UI components/pages/client code untouched. Until the UI follow-up, that helper causes two diagnostics in `pnpm typecheck` and blocks a clean Next/Docker build. Cached Next builds may miss these diagnostics.

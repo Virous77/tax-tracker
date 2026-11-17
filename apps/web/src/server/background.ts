@@ -17,6 +17,7 @@ export function startBackgroundJob<T>(
 	operation: (ctx: {
 		signal: AbortSignal;
 		progress: (p: ConnectorProgress) => void;
+		result: (value: T) => void;
 	}) => Promise<T>,
 ): { jobId: string } {
 	const jobId = db.jobs.create(kind, payload);
@@ -38,6 +39,9 @@ export function startBackgroundJob<T>(
 				try {
 					const result = await operation({
 						signal: controller.signal,
+						result: (value) => {
+							if (!job.cancelled) db.jobs.update(jobId, "running", value);
+						},
 						progress: (p) => {
 							if (!job.cancelled) db.jobs.progress(jobId, p);
 						},
@@ -45,7 +49,12 @@ export function startBackgroundJob<T>(
 					if (!job.cancelled) db.jobs.update(jobId, "completed", result);
 				} catch (error) {
 					if (!job.cancelled)
-						db.jobs.update(jobId, "failed", null, publicError(error).message);
+						db.jobs.update(
+							jobId,
+							"failed",
+							db.jobs.get(jobId)?.result ?? null,
+							publicError(error).message,
+						);
 				} finally {
 					active.delete(job);
 					finish();

@@ -276,13 +276,20 @@ describe("API happy path", () => {
 		const imported = await response.json();
 		expect(imported).toMatchObject({
 			rowsRead: 10,
-			rowsInserted: 7,
-			rowsError: 3,
+			rowsInserted: 8,
+			rowsError: 2,
 		});
 		const detail = await (
 			await call("getImport", "GET", undefined, { id: imported.id })
 		).json();
-		expect(detail.rowErrors).toHaveLength(3);
+		expect(detail.rowErrors).toHaveLength(2);
+		expect(
+			database()
+				.transactions.all()
+				.some((tx) =>
+					tx.reviewFlags.some((flag) => flag.code === "complex_onchain"),
+				),
+		).toBe(true);
 		expect(
 			(await call("computeReport", "POST", {}, { taxYear: "2025-26" })).status,
 		).toBe(200);

@@ -192,7 +192,7 @@ function guessColumn(
 
 function buildInitialRecipe(
 	sheet: ImportSheet,
-	timezone: "IST" | "UTC",
+	timezone: Recipe["timezone"],
 ): Recipe {
 	const h = sheet.headers;
 	const timestamp =

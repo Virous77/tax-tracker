@@ -28,6 +28,8 @@ export function baseUrls(): ConnectorContext["baseUrls"] {
 			coindcx: process.env.COINDCX_API_BASE,
 			etherscan: process.env.ETHERSCAN_API_BASE,
 			blockscout: process.env.BLOCKSCOUT_API_BASE,
+			alchemy: process.env.ALCHEMY_API_BASE,
+			nodereal: process.env.NODEREAL_API_BASE,
 			coingecko: process.env.COINGECKO_API_BASE,
 		}).filter((entry): entry is [string, string] => Boolean(entry[1]?.trim())),
 	);

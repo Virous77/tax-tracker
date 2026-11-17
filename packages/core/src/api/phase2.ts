@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SUPPORTED_EVM_CHAIN_IDS } from "../connector.js";
 import { AssetSchema, DecimalStringSchema, TaxYearSchema } from "../ledger.js";
 
 const empty = z.object({}).strict();
@@ -35,21 +36,28 @@ export const ResetVaultRequestSchema = z
 export const ProviderNameSchema = z.enum([
 	"etherscan",
 	"blockscout",
+	"alchemy",
+	"nodereal",
 	"coingecko",
 ]);
 export const ProvidersResponseSchema = z.object({
-	etherscan: z.object({ keySet: z.boolean() }),
+	etherscan: z.object({ keySet: z.boolean(), tier: z.enum(["free", "paid"]) }),
+	alchemy: z.object({ keySet: z.boolean() }),
+	nodereal: z.object({ keySet: z.boolean() }),
 	blockscout: z.object({ keySet: z.boolean() }),
 	coingecko: z.object({ keySet: z.boolean() }),
 });
 export const PutProviderRequestSchema = z
-	.object({ apiKey: z.string().trim().min(1) })
+	.object({
+		apiKey: z.string().trim().min(1),
+		tier: z.enum(["free", "paid"]).optional(),
+	})
 	.strict();
 export const ConnectionOptionsSchema = z
 	.object({
 		extraSymbols: z.array(z.string().regex(/^[A-Z0-9]+$/)).optional(),
 		providers: z
-			.array(z.enum(["etherscan", "blockscout"]))
+			.array(z.enum(["etherscan", "blockscout", "alchemy", "nodereal"]))
 			.min(1)
 			.optional(),
 	})
@@ -67,6 +75,8 @@ export const ConnectionSchema = z.object({
 	lastSyncStatus: z.string().nullable(),
 	lastSyncError: z.string().nullable(),
 	running: z.boolean(),
+	runningJobId: z.string().nullable(),
+	lastSyncJobId: z.string().nullable(),
 });
 export const CreateConnectionRequestSchema = z
 	.object({
@@ -79,7 +89,9 @@ export const CreateConnectionRequestSchema = z
 			.regex(/^0x[0-9a-fA-F]{40}$/)
 			.transform((v) => v.toLowerCase())
 			.optional(),
-		chainId: z.literal(1).optional(),
+		chainId: z
+			.union(SUPPORTED_EVM_CHAIN_IDS.map((id) => z.literal(id)))
+			.optional(),
 		options: ConnectionOptionsSchema.optional(),
 	})
 	.strict()

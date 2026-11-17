@@ -7,7 +7,7 @@ import {
 	listConnections,
 	patchConnection,
 } from "./connections";
-import { required } from "./errors";
+import { ApiError, required } from "./errors";
 import { pricesStatus, startPriceFill } from "./price-jobs";
 import { connectionBalances, startSync } from "./sync";
 import { providers, vaultSession, vaultStatus } from "./vault";
@@ -41,16 +41,29 @@ export async function executePhase2(
 			return vaultStatus(vault);
 		case "getProviders":
 			return providers(db);
-		case "putProvider":
-			vault.put(
-				`provider:${api.ProviderNameSchema.parse(params.name)}`,
-				"provider_key",
-				api.PutProviderRequestSchema.parse(input).apiKey,
-			);
+		case "putProvider": {
+			const name = api.ProviderNameSchema.parse(params.name);
+			const body = api.PutProviderRequestSchema.parse(input);
+			if (body.tier && name !== "etherscan")
+				throw new ApiError(
+					400,
+					"validation_error",
+					"Only Etherscan accepts a tier.",
+				);
+			db.atomic(() => {
+				vault.put(`provider:${name}`, "provider_key", body.apiKey);
+				if (name === "etherscan" && body.tier)
+					db.settings.set("providers.etherscan.tier", body.tier);
+			});
 			return providers(db);
-		case "deleteProvider":
-			vault.delete(`provider:${api.ProviderNameSchema.parse(params.name)}`);
+		}
+		case "deleteProvider": {
+			const name = api.ProviderNameSchema.parse(params.name);
+			vault.delete(`provider:${name}`);
+			if (name === "etherscan")
+				db.settings.set("providers.etherscan.tier", "free");
 			return providers(db);
+		}
 		case "listConnections":
 			return listConnections(db);
 		case "createConnection":

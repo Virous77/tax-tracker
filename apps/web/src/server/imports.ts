@@ -14,9 +14,12 @@ import {
 	detectSource,
 	headerFingerprint,
 	type ImportResult,
+	importFileAsync,
 	isCoinDcx,
+	PdfImportError,
 	parseBinance,
 	parseCoinDcx,
+	REPORT_KIND_LABELS,
 	readSheets,
 	recipeChecks,
 	sha256,
@@ -26,6 +29,8 @@ import { libraryRecipes } from "@tax/recipes";
 import type { z } from "zod";
 import { runJob } from "./context";
 import { ApiError, required } from "./errors";
+import { isPdf, pdfApiError } from "./pdf-errors";
+import { insertReconciled } from "./reconciliation";
 
 function storedSheets(db: TaxDatabase, id: string): TableSheet[] {
 	const imported = required(db.imports.get(id));
@@ -55,17 +60,30 @@ function saveResult(
 		queues.set(key, ids);
 	}
 	return db.atomic(() => {
-		const count = db.transactions.insert(
+		const count = insertReconciled(
+			db,
+			imported.id,
 			result.transactions.map((tx) => ({
 				tx: { ...tx, importId: imported.id },
 				rawRowId: queues.get(canonical(tx.raw))?.shift(),
 			})),
 		);
+		if (result.balanceSnapshot)
+			db.balanceSnapshots.save({
+				id: randomUUID(),
+				importId: imported.id,
+				venue: imported.source,
+				...result.balanceSnapshot,
+				createdAt: imported.createdAt,
+			});
 		const updated = {
 			...imported,
 			status: "imported" as const,
 			rowsRead: result.rowsRead,
-			rowsInserted: count.inserted,
+			rowsInserted:
+				count.inserted +
+				(result.balanceSnapshot?.rows.length ?? 0) +
+				(result.tdsSummary?.length ?? 0),
 			rowsDuplicate: count.duplicate,
 			rowsError: result.rowErrors.length,
 			rowsSkipped: result.skippedRows?.length ?? 0,
@@ -73,6 +91,14 @@ function saveResult(
 			recipeId,
 			rowErrors: result.rowErrors,
 			warnings: result.warnings,
+			reportKind: result.reportKind ?? null,
+			reportKindLabel: result.reportKind
+				? (REPORT_KIND_LABELS[result.reportKind] ?? null)
+				: null,
+			detectedTimezone: result.detectedTimezone ?? null,
+			timezoneSource: result.timezoneSource,
+			coverage: result.coverage ?? [],
+			tdsSummary: result.tdsSummary,
 			error: null,
 		};
 		if (
@@ -87,16 +113,104 @@ function saveResult(
 				"row_count_mismatch",
 				"Importer did not account for every row.",
 			);
-		return db.imports.save(updated);
+		db.imports.save(updated);
+		return required(db.imports.get(imported.id));
 	});
+}
+function pendingImport(
+	input: z.infer<typeof CreateImportRequestSchema>,
+	source: string,
+	rowsRead: number,
+	sheets: TableSheet[],
+): ImportDetail {
+	return {
+		id: randomUUID(),
+		source,
+		fileName: input.fileName,
+		fileSha256: sha256(input.file),
+		timezone: input.timezone,
+		reportKind: null,
+		reportKindLabel: null,
+		detectedTimezone: null,
+		timezoneSource: "user",
+		coverage: [],
+		status: "pending_recipe",
+		rowsRead: rowsRead,
+		rowsInserted: 0,
+		rowsDuplicate: 0,
+		rowsError: 0,
+		rowsSkipped: 0,
+		skippedRows: [],
+		recipeId: null,
+		createdAt: new Date().toISOString(),
+		error: null,
+		warnings: [],
+		rowErrors: [],
+		sheets: sheets.map((sheet) => ({
+			name: sheet.name,
+			headers: sheet.headers,
+			sampleRows: sheet.rows.slice(0, 20),
+			rowsRead: sheet.rows.length,
+		})),
+	};
 }
 export async function createImport(
 	db: TaxDatabase,
 	input: z.infer<typeof CreateImportRequestSchema>,
 ) {
+	if (isPdf(input.file)) {
+		let result: ImportResult;
+		try {
+			result = await importFileAsync(
+				{ name: input.fileName, bytes: input.file },
+				{
+					timezone: input.timezone,
+					pdfPassword: input.pdfPassword,
+					source: input.source,
+				},
+			);
+		} catch (error) {
+			if (error instanceof PdfImportError) throw pdfApiError(error);
+			throw new ApiError(
+				422,
+				"pdf_unsupported",
+				"The PDF could not be processed. Use a CSV or XLSX export.",
+			);
+		}
+		const source = result.reportKind?.split(":")[0] ?? "generic";
+		if (input.source !== "auto" && input.source !== source)
+			throw new ApiError(
+				422,
+				"unprocessable_file",
+				"This PDF does not match the selected venue.",
+			);
+		const imported = pendingImport(input, source, result.rowsRead, []);
+		return runJob(db, "import", { importId: imported.id }, async () =>
+			db.atomic(() => {
+				db.imports.save(imported);
+				const originals =
+					result.balanceSnapshot?.rows ??
+					result.tdsSummary ??
+					result.transactions.map((tx) => ({ raw: tx.raw }));
+				db.rawRows.insert(
+					originals.map((row, rowIndex) => ({
+						id: randomUUID(),
+						importId: imported.id,
+						sheet: result.reportKind ?? "PDF",
+						rowIndex,
+						data: row.raw,
+					})),
+				);
+				return saveResult(db, imported, result, null);
+			}),
+		);
+	}
 	let sheets: TableSheet[];
 	try {
-		sheets = readSheets({ name: input.fileName, bytes: input.file });
+		sheets = readSheets(
+			{ name: input.fileName, bytes: input.file },
+			{ allowDuplicateHeaders: true },
+		);
 	} catch {
 		throw new ApiError(
 			422,
@@ -129,31 +243,12 @@ export async function createImport(
 			"unprocessable_file",
 			"File does not match CoinDCX. Expected headers: Trade Completion time (or Transaction time), Side (Buy/Sell), and Gross Amount Paid/Received by the user(in INR) (or in base currency).",
 		);
-	const imported: ImportDetail = {
-		id: randomUUID(),
+	const imported = pendingImport(
+		input,
 		source,
-		fileName: input.fileName,
-		fileSha256: sha256(input.file),
-		timezone: input.timezone,
-		status: "pending_recipe",
-		rowsRead: sheets.reduce((count, sheet) => count + sheet.rows.length, 0),
-		rowsInserted: 0,
-		rowsDuplicate: 0,
-		rowsError: 0,
-		rowsSkipped: 0,
-		skippedRows: [],
-		recipeId: null,
-		createdAt: new Date().toISOString(),
-		error: null,
-		warnings: [],
-		rowErrors: [],
-		sheets: sheets.map((sheet) => ({
-			name: sheet.name,
-			headers: sheet.headers,
-			sampleRows: sheet.rows.slice(0, 20),
-			rowsRead: sheet.rows.length,
-		})),
-	};
+		sheets.reduce((count, sheet) => count + sheet.rows.length, 0),
+		sheets,
+	);
 	db.atomic(() => {
 		db.imports.save(imported);
 		db.rawRows.insert(

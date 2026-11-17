@@ -6,21 +6,50 @@ import {
 	PatchConnectionRequestSchema,
 } from "@tax/core/api";
 import type { TaxDatabase } from "@tax/db";
+import { chainConfig } from "@tax/evm";
 import { baseUrls, connectorFor, type SyncOptions } from "./connectors";
 import { ApiError, required } from "./errors";
-import { vaultSession } from "./vault";
+import { etherscanTier, vaultSession } from "./vault";
+
+function chainProviders(
+	db: TaxDatabase,
+	row: NonNullable<ReturnType<TaxDatabase["connections"]["get"]>>,
+): EvmProviderConfig["kind"][] {
+	const chain = chainConfig(row.chainId ?? 1);
+	return chain.defaultProviders.filter(
+		(kind): kind is EvmProviderConfig["kind"] =>
+			(row.options.providers === undefined ||
+				row.options.providers.some((selected) => selected === kind)) &&
+			(kind !== "etherscan" ||
+				!chain.etherscanPaidRequired ||
+				etherscanTier(db) === "paid"),
+	);
+}
 
 export function connectionView(db: TaxDatabase, id: string): Connection {
 	const row = required(db.connections.get(id));
 	const keySet =
 		row.kind === "evm"
-			? (row.options.providers ?? ["etherscan", "blockscout"]).some(
-					(provider) => Boolean(db.vault.get(`provider:${provider}`)),
+			? chainProviders(db, row).some((provider) =>
+					Boolean(db.vault.get(`provider:${provider}`)),
 				)
 			: Boolean(
 					db.vault.get(`conn:${id}:key`) && db.vault.get(`conn:${id}:secret`),
 				);
-	return { ...row, keySet, running: db.jobs.running(id) };
+	const jobs = db.jobs.forConnection(id);
+	const runningJobId =
+		jobs.find((job) => job.status === "running" || job.status === "pending")
+			?.id ?? null;
+	const lastSyncJobId =
+		jobs.find((job) => job.status === "completed" || job.status === "failed")
+			?.id ?? null;
+	return {
+		...row,
+		keySet,
+		running: runningJobId !== null,
+		runningJobId,
+		lastSyncJobId,
+	};
 }
 export const listConnections = (db: TaxDatabase): Connection[] =>
 	db.connections.list().map((row) => connectionView(db, row.id));
@@ -129,6 +158,21 @@ export async function connectionOptions(
 ): Promise<SyncOptions> {
 	const row = required(db.connections.get(id));
 	const vault = await vaultSession(db);
+	if (
+		row.kind === "evm" &&
+		!chainProviders(db, row).some((kind) => db.vault.get(`provider:${kind}`))
+	)
+		throw new ApiError(
+			409,
+			"provider_key_required",
+			`Configure a provider key for ${chainConfig(row.chainId ?? 1).name}.`,
+			{
+				chainId: row.chainId ?? 1,
+				needs: chainProviders(db, row).length
+					? chainProviders(db, row)
+					: chainProviders(db, { ...row, options: {} }),
+			},
+		);
 	vault.requireUnlocked();
 	const common = {
 		baseUrls: baseUrls(),
@@ -138,16 +182,26 @@ export async function connectionOptions(
 	};
 	if (row.kind === "evm") {
 		const providers: EvmProviderConfig[] = [];
-		for (const kind of row.options.providers ??
-			(["etherscan", "blockscout"] as const)) {
+		for (const kind of chainProviders(db, row)) {
 			const apiKey = vault.get(`provider:${kind}`);
-			if (apiKey) providers.push({ kind, apiKey });
+			if (apiKey)
+				providers.push({
+					kind,
+					apiKey,
+					...(kind === "etherscan" ? { tier: etherscanTier(db) } : {}),
+				});
 		}
 		if (!providers.length)
 			throw new ApiError(
 				409,
 				"provider_key_required",
-				"Configure an Etherscan or Blockscout provider key first.",
+				`Configure a usable provider key for ${chainConfig(row.chainId ?? 1).name}. Paid Etherscan access requires tier paid.`,
+				{
+					chainId: row.chainId ?? 1,
+					needs: chainProviders(db, row).length
+						? chainProviders(db, row)
+						: chainProviders(db, { ...row, options: {} }),
+				},
 			);
 		return {
 			...common,

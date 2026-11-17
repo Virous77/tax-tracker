@@ -94,10 +94,12 @@ Exports:
 - `coindcx` = `https://api.coindcx.com`
 - `etherscan` = `https://api.etherscan.io/v2/api`
 - `blockscout` = the default from research §3.3
+- `alchemy` = `https://{network}.g.alchemy.com/v2` (network from chain config; connector appends the key)
+- `nodereal` = `https://bsc-mainnet.nodereal.io/v1` (connector appends the key)
 - `coingecko` = `https://api.coingecko.com/api/v3`
 
 The app reads overrides from env vars `BINANCE_API_BASE`, `BINANCE_DATA_BASE`, `COINDCX_API_BASE`,
-`ETHERSCAN_API_BASE`, `BLOCKSCOUT_API_BASE` and `COINGECKO_API_BASE`.
+`ETHERSCAN_API_BASE`, `BLOCKSCOUT_API_BASE`, `ALCHEMY_API_BASE`, `NODEREAL_API_BASE` and `COINGECKO_API_BASE`.
 
 ### 3.2 HTTP wrapper (`packages/sync/src/http.ts`, also used by evm and prices)
 
@@ -228,9 +230,9 @@ New tables and columns (Drizzle migrations):
 - `vault_meta (id=1, json)`
 - `secrets (id, kind, iv, ct, tag, created_at)`
 - `connections (id, kind binance|coindcx|evm, label, chain_id?, address?, options_json, created_at, last_sync_at?, last_sync_status?, last_sync_error?)`:
-  - options: `{extraSymbols?: string[], providers?: ("etherscan"|"blockscout")[]}`;
+  - options: `{extraSymbols?: string[], providers?: ("etherscan"|"blockscout"|"alchemy"|"nodereal")[]}`;
   - exchange key secret ids: `conn:<id>:key`, `conn:<id>:secret`;
-  - provider keys are global: `provider:etherscan`, `provider:blockscout`, `provider:coingecko`.
+  - provider keys are global: `provider:etherscan`, `provider:blockscout`, `provider:alchemy`, `provider:nodereal`, `provider:coingecko`.
 - `sync_cursors (connection_id, stream, cursor_json, updated_at)`, PK `(connection_id, stream)`
 - `fetched_balances (connection_id, asset, wallet, amount, fetched_at)`
 - `imports`: add `kind file|api_sync` (default file) and `connection_id?`. A sync run is an import row named like
@@ -251,27 +253,32 @@ Errors use the existing envelope. New codes:
 - `wrong_passphrase` (401);
 - `sync_running` (409);
 - `upstream_auth` (502, with the vendor message);
-- `upstream_unavailable` (502).
+- `upstream_unavailable` (502);
+- `provider_key_required` (409): `details: {chainId, needs: string[]}` identifies usable providers for that chain. Provider order and paid-only Etherscan access come from `@tax/evm` chain data. Only configured keys are passed to connectors; Base/BNB free Etherscan keys do not qualify. Connection provider selections can narrow the configured fallback list;
+- `pdf_password_required`, `pdf_wrong_password`, `pdf_no_text`, `pdf_unknown_layout`, `pdf_unsupported` (422): helpful static messages; library messages and passwords are never returned. Unsupported covers Form 16A, invalid PDFs and extraction timeouts;
+- `pdf_too_large` (413): PDF input, page or extracted-text limits;
+- `snapshot_not_year_end` (409): `details: {asOf, taxYear, reason:"outside_year_end_window"}`;
+- `row_count_mismatch` (422): parser did not account for every source row.
 
-| Method & path                       | Body / query                                                       | Response                                                                                                                             |
-| ----------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| GET `/api/vault`                    |                                                                    | `{initialized, unlocked, autoUnlock:boolean, idleLockMinutes}`                                                                       |
-| POST `/api/vault/setup`             | `{passphrase}`                                                     | vault status (unlocked)                                                                                                              |
-| POST `/api/vault/unlock` / `lock`   | `{passphrase}` / –                                                 | vault status                                                                                                                         |
-| POST `/api/vault/change-passphrase` | `{current, next}`                                                  | vault status                                                                                                                         |
-| POST `/api/vault/reset`             | `{confirm:"RESET"}`                                                | vault status (not initialized), connections keep existing but show `keySet:false`                                                    |
-| GET `/api/providers`                |                                                                    | `{etherscan:{keySet}, blockscout:{keySet}, coingecko:{keySet}}`                                                                      |
-| PUT / DELETE `/api/providers/:name` | `{apiKey}`                                                         | same as GET (needs the vault unlocked)                                                                                               |
-| GET `/api/connections`              |                                                                    | `Connection[]`: `{id, kind, label, chainId?, address?, options, keySet, lastSyncAt, lastSyncStatus, lastSyncError, running:boolean}` |
-| POST `/api/connections`             | `{kind, label, apiKey?, apiSecret?, address?, chainId?, options?}` | `Connection` (exchange kinds need the vault unlocked; EVM addresses are validated and lower-cased; duplicate → 409)                  |
-| PATCH `/api/connections/:id`        | `{label?, options?, apiKey?, apiSecret?}`                          | `Connection`                                                                                                                         |
-| DELETE `/api/connections/:id`       |                                                                    | 204                                                                                                                                  |
-| POST `/api/connections/:id/check`   |                                                                    | `KeyCheck` (a key that can trade or withdraw → `ok:true, readOnly:false`, and the UI warns loudly)                                   |
-| POST `/api/connections/:id/sync`    |                                                                    | 202 `{jobId}`                                                                                                                        |
-| GET `/api/connections/:id/balances` |                                                                    | `{fetchedAt, rows:[{asset, fetched, computed, difference, flagged}]}`, where computed = `computeHoldings` for that venue/address now |
-| GET `/api/jobs/:id`                 |                                                                    | `{id, kind:"sync"                                                                                                                    | "price_fill", status, progress?, result?: SyncSummary | PriceFillSummary, error?}` |
-| GET `/api/prices/status`            | `taxYear`                                                          | `{enabled, needed, cached, missing:[{asset, date}], sources:{binanceKlines:true, coingecko:{keySet}}}`                               |
-| POST `/api/prices/fill`             | `{taxYear}`                                                        | 202 `{jobId}` (`prices.enabled` must be true, otherwise 409 `prices_disabled`)                                                       |
+| Method & path                       | Body / query                                                                                                  | Response                                                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET `/api/vault`                    |                                                                                                               | `{initialized, unlocked, autoUnlock:boolean, idleLockMinutes}`                                                                                                              |
+| POST `/api/vault/setup`             | `{passphrase}`                                                                                                | vault status (unlocked)                                                                                                                                                     |
+| POST `/api/vault/unlock` / `lock`   | `{passphrase}` / –                                                                                            | vault status                                                                                                                                                                |
+| POST `/api/vault/change-passphrase` | `{current, next}`                                                                                             | vault status                                                                                                                                                                |
+| POST `/api/vault/reset`             | `{confirm:"RESET"}`                                                                                           | vault status (not initialized), connections keep existing but show `keySet:false`                                                                                           |
+| GET `/api/providers`                | —                                                                                                             | `{etherscan:{keySet,tier}, blockscout:{keySet}, alchemy:{keySet}, nodereal:{keySet}, coingecko:{keySet}}`; tier is free/paid                                                |
+| PUT / DELETE `/api/providers/:name` | `{apiKey,tier?}`; tier free/paid for Etherscan only                                                           | same as GET (needs the vault unlocked)                                                                                                                                      |
+| GET `/api/connections`              | —                                                                                                             | `Connection[]`: `{id,kind,label,chainId?,address?,options,keySet,lastSyncAt,lastSyncStatus,lastSyncError,running,runningJobId,lastSyncJobId}`; job ids are nullable strings |
+| POST `/api/connections`             | `{kind, label, apiKey?, apiSecret?, address?, chainId?, options?}` (`chainId` from `SUPPORTED_EVM_CHAIN_IDS`) | `Connection` (exchange kinds need the vault unlocked; EVM addresses are validated and lower-cased; duplicate → 409)                                                         |
+| PATCH `/api/connections/:id`        | `{label?, options?, apiKey?, apiSecret?}`                                                                     | `Connection`                                                                                                                                                                |
+| DELETE `/api/connections/:id`       |                                                                                                               | 204                                                                                                                                                                         |
+| POST `/api/connections/:id/check`   |                                                                                                               | `KeyCheck` (a key that can trade or withdraw → `ok:true, readOnly:false`, and the UI warns loudly)                                                                          |
+| POST `/api/connections/:id/sync`    |                                                                                                               | 202 `{jobId}`                                                                                                                                                               |
+| GET `/api/connections/:id/balances` |                                                                                                               | `{fetchedAt, rows:[{asset, fetched, computed, difference, flagged}]}`, where computed = `computeHoldings` for that venue/address now                                        |
+| GET `/api/jobs/:id`                 | —                                                                                                             | `{id,kind,status,progress?,result?,error?}`; sync or price-fill progress and result                                                                                         |
+| GET `/api/prices/status`            | `taxYear`                                                                                                     | `{enabled, needed, cached, missing:[{asset, date}], sources:{binanceKlines:true, coingecko:{keySet}}}`                                                                      |
+| POST `/api/prices/fill`             | `{taxYear}`                                                                                                   | 202 `{jobId}` (`prices.enabled` must be true, otherwise 409 `prices_disabled`)                                                                                              |
 
 - **`SyncSummary`:** `{importId, streams:[{stream, rowsFetched, rowsInserted, rowsDuplicate, rowsFlagged, incomplete?}], balanceCheck:[{asset, fetched, computed, difference}], notices:string[]}`.
 - **`PriceFillSummary`:** `{requested, fetched, fromCache, missing:[{asset,date}]}`.
@@ -283,6 +290,29 @@ Errors use the existing envelope. New codes:
   - if prices are enabled, a price fill runs for the affected tax years.
 - **Review:** GET `/api/review` gains the two new codes (already in `ReviewCodeSchema` and the UI's
   `review-codes.ts`) and a `connections` group listing failed or incomplete last syncs.
+
+| Method & path                            | Body / query                                                                                            | Response                                                                                                |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| POST `/api/imports`                      | multipart `file`, `source`, `timezone`, optional transient `pdfPassword`; PDF detected by `%PDF-` bytes | 201 `ImportSummary`; CSV/XLSX retain recipe fallback; PDFs return typed errors above                    |
+| GET `/api/imports`                       | —                                                                                                       | `ImportSummary[]`                                                                                       |
+| GET `/api/imports/:id`                   | —                                                                                                       | summary plus `rowErrors`, optional `balanceSnapshot`, optional `tdsSummary`                             |
+| DELETE `/api/imports/:id`                | —                                                                                                       | 204; deletes owned snapshot and restores rows superseded by this import                                 |
+| GET `/api/balances/snapshots`            | —                                                                                                       | `[{id,importId,venue,asOf,timezone,rows,createdAt,comparison:[{asset,statement,computed,difference}]}]` |
+| POST `/api/balances/snapshots/:id/apply` | `{taxYear}`                                                                                             | actual balances for the year; 409 `snapshot_not_year_end` outside the allowed window                    |
+
+Import summary additions (persisted with each import):
+
+- `reportKind: string|null`, `reportKindLabel: string|null` (labels from `REPORT_KIND_LABELS`). Generic/pending and API imports use null when no file report kind applies.
+- `detectedTimezone: string|null`, `timezoneSource: "file"|"user"`; `timezone` remains the user's selection. All timezone fields and recipe timezones accept IST, UTC and fixed `±HH:MM`, up to ±14:00 (14 hours requires zero minutes). Explicit file zones take precedence and conflicting selections produce import warnings.
+- `warnings: ReviewFlag[]` includes import-level warnings such as missing order-history fees and timezone conflicts.
+- `coverage: {reportKind,firstTimestamp,lastTimestamp}[]` records observed ledger bounds, not proof of completeness.
+- Detail-only `balanceSnapshot: {id,importId,venue,asOf,timezone,rows:[{asset,amount,wallet?,raw}],createdAt}` and `tdsSummary: {source,tdsInr,period?,raw}[]` are optional. TDS summaries have no parser yet; the storage path accepts them without ledger rows.
+
+A snapshot's `asOf` is the statement's date. Comparison uses the close of that date in its stated timezone and active venue history through that instant. All amounts and differences are decimal strings; `difference = statement - computed`. Wallet rows aggregate by asset. Snapshot imports create no ledger transactions; their stored snapshot rows count toward `rowsInserted`, so the existing row-accounting identity still holds. Applying requires that this close is within 24 hours of the IST year end. It replaces matching asset balances in the current pool (venue-scoped for `per_source`, unscoped for `global`) and preserves other actual-balance entries. A snapshot of one venue applied in global mode represents only the statement's quantities; users holding the same asset elsewhere must adjust their global actual balance.
+
+File and API batches share `reconcileReportKinds`. Same-kind cross-channel fingerprints are resolved as a multiset before report-kind quantity aggregation, preventing an API/file fill from counting twice toward an order. Confident replacements set `transactions.superseded_by` to the incoming import id; rows and raw originals stay stored. Active engine, holdings and price-planning inputs omit them, and reports list `{txId,reason:"superseded"}` in `excluded`. The foreign key uses `ON DELETE SET NULL`, so deleting the replacing import restores the earlier rows. Ambiguous rows are inserted with `possible_duplicate` naming candidate ids and bypass fingerprint suppression. Confirmed duplicates retain linked raw rows and count once as duplicates.
+
+Connection job ids derive from retained job rows: `runningJobId` identifies the current pending/running sync, `lastSyncJobId` the newest completed/failed sync. They survive reload/restart; interrupted jobs become failed on boot. Per-stream summaries are checkpointed after each batch, including when later work fails. No job purging is performed. Every EVM connector receives all owned EVM addresses on its own chain.
 
 ## 10. UI
 

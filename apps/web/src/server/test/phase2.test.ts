@@ -241,6 +241,9 @@ it("returns 202 before work finishes, rejects overlapping syncs, persists progre
 	const response = await call("syncConnection", "POST", undefined, connection);
 	expect(response.status).toBe(202);
 	const { jobId } = await response.json();
+	expect(await (await call("listConnections")).json()).toMatchObject([
+		{ runningJobId: jobId, lastSyncJobId: null, running: true },
+	]);
 	expect(
 		(await call("syncConnection", "POST", undefined, connection)).status,
 	).toBe(409);
@@ -264,6 +267,9 @@ it("returns 202 before work finishes, rejects overlapping syncs, persists progre
 			await call("connectionBalances", "GET", undefined, connection)
 		).json(),
 	).toMatchObject({ rows: [{ flagged: false, computed: "1" }] });
+	expect(await (await call("listConnections")).json()).toMatchObject([
+		{ runningJobId: null, lastSyncJobId: jobId, running: false },
+	]);
 	const second = await (
 		await call("syncConnection", "POST", undefined, connection)
 	).json();
@@ -273,6 +279,13 @@ it("returns 202 before work finishes, rejects overlapping syncs, persists progre
 	).toMatchObject({
 		result: { streams: [{ rowsInserted: 0, rowsDuplicate: 1 }] },
 	});
+	closeDatabases();
+	expect(await (await call("listConnections")).json()).toMatchObject([
+		{ runningJobId: null, lastSyncJobId: second.jobId },
+	]);
+	expect((await call("getJob", "GET", undefined, { id: jobId })).status).toBe(
+		200,
+	);
 	expect(database().transactions.all()).toHaveLength(1);
 	expect(database().cursors.get(connection.id)).toEqual({
 		trades: { lastId: "1" },
@@ -443,3 +456,87 @@ for (const fileFirst of [true, false])
 			});
 		expect(database().transactions.all()).toHaveLength(1);
 	});
+
+it("creates every supported chain and fails fast with chain-specific provider requirements", async () => {
+	const { SUPPORTED_EVM_CHAIN_IDS } = await import("@tax/core");
+	const { connectionOptions } = await import("../connections");
+	await setup();
+	const connections = new Map<number, { id: string }>();
+	for (const chainId of SUPPORTED_EVM_CHAIN_IDS) {
+		const response = await call("createConnection", "POST", {
+			kind: "evm",
+			label: `Chain ${chainId}`,
+			address: `0x${"a".repeat(40)}`,
+			chainId,
+		});
+		expect(response.status).toBe(201);
+		const connection = await response.json();
+		connections.set(chainId, connection);
+		expect(connection).toMatchObject({
+			chainId,
+			keySet: false,
+			runningJobId: null,
+			lastSyncJobId: null,
+		});
+		const sync = await call("syncConnection", "POST", undefined, connection);
+		expect(sync.status).toBe(409);
+		const error = await sync.json();
+		expect(error).toMatchObject({
+			error: { code: "provider_key_required", details: { chainId } },
+		});
+		expect(error.error.details.needs.length).toBeGreaterThan(0);
+	}
+	const base = connections.get(8453);
+	if (!base) throw new Error("Missing Base connection");
+	await call(
+		"putProvider",
+		"PUT",
+		{ apiKey: "hidden-free", tier: "free" },
+		{ name: "etherscan" },
+	);
+	expect((await call("syncConnection", "POST", undefined, base)).status).toBe(
+		409,
+	);
+	await call(
+		"putProvider",
+		"PUT",
+		{ apiKey: "hidden-paid", tier: "paid" },
+		{ name: "etherscan" },
+	);
+	expect(await connectionOptions(database(), base.id)).toMatchObject({
+		providers: [{ kind: "etherscan", tier: "paid" }],
+	});
+	for (const name of ["alchemy", "nodereal"])
+		expect(
+			(await call("putProvider", "PUT", { apiKey: `hidden-${name}` }, { name }))
+				.status,
+		).toBe(200);
+	expect(await (await call("getProviders")).json()).toMatchObject({
+		alchemy: { keySet: true },
+		nodereal: { keySet: true },
+		etherscan: { keySet: true, tier: "paid" },
+	});
+	const sibling = await (
+		await call("createConnection", "POST", {
+			kind: "evm",
+			label: "Other Base wallet",
+			chainId: 8453,
+			address: `0x${"b".repeat(40)}`,
+		})
+	).json();
+	const options = await connectionOptions(database(), base.id);
+	expect(options).toMatchObject({
+		ownAddresses: [`0x${"a".repeat(40)}`, sibling.address],
+		providers: [{ kind: "alchemy" }, { kind: "etherscan", tier: "paid" }],
+	});
+	expect(
+		(
+			await call("createConnection", "POST", {
+				kind: "evm",
+				label: "Unsupported",
+				address: `0x${"a".repeat(40)}`,
+				chainId: 10,
+			})
+		).status,
+	).toBe(400);
+});

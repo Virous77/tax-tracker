@@ -35,8 +35,19 @@ export function vaultStatus(vault: Vault) {
 }
 export function providers(db: TaxDatabase) {
 	return {
-		etherscan: { keySet: Boolean(db.vault.get("provider:etherscan")) },
+		etherscan: {
+			keySet: Boolean(db.vault.get("provider:etherscan")),
+			tier: etherscanTier(db),
+		},
+		alchemy: { keySet: Boolean(db.vault.get("provider:alchemy")) },
+		nodereal: { keySet: Boolean(db.vault.get("provider:nodereal")) },
 		blockscout: { keySet: Boolean(db.vault.get("provider:blockscout")) },
 		coingecko: { keySet: Boolean(db.vault.get("provider:coingecko")) },
 	};
+}
+
+export function etherscanTier(db: TaxDatabase): "free" | "paid" {
+	return db.settings.get("providers.etherscan.tier") === "paid"
+		? "paid"
+		: "free";
 }

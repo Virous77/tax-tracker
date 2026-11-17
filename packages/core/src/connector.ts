@@ -5,6 +5,8 @@ import type { LedgerTx } from "./ledger.js";
  * Connectors do network I/O but never touch the database; the app owns persistence, dedupe and cursors.
  */
 
+export const SUPPORTED_EVM_CHAIN_IDS = [1, 8453, 42161, 137, 56] as const;
+
 export type ConnectorKind = "binance" | "coindcx" | "evm";
 
 /** Opaque per-stream resume point, stored as JSON by the app and handed back unchanged. */
@@ -77,8 +79,9 @@ export interface CoinDcxSyncOptions extends ConnectorContext {
 }
 
 export interface EvmProviderConfig {
-	kind: "etherscan" | "blockscout";
+	kind: "etherscan" | "blockscout" | "alchemy" | "nodereal";
 	apiKey: string;
+	tier?: "free" | "paid";
 }
 
 export interface EvmSyncOptions extends ConnectorContext {

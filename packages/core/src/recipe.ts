@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TimezoneSchema } from "./time.js";
 export const RecipeSchema = z.object({
 	id: z.string().min(1),
 	name: z.string().min(1),
@@ -22,7 +23,7 @@ export const RecipeSchema = z.object({
 		txHash: z.string().optional(),
 	}),
 	dateFormat: z.string().min(1),
-	timezone: z.enum(["IST", "UTC"]).optional(),
+	timezone: TimezoneSchema.optional(),
 	sideMap: z
 		.record(
 			z.string(),

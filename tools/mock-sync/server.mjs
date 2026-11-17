@@ -1930,6 +1930,21 @@ function handleEvm(ctx, provider) {
 				},
 				headers,
 			);
+		if (action === "eth_getTransactionCount") {
+			const address = (param(ctx, "address") ?? "").toLowerCase();
+			if (!/^0x[0-9a-f]{40}$/.test(address))
+				return etherscanNotOk(ctx, "Error! Invalid address format");
+			return send(
+				ctx,
+				200,
+				{
+					jsonrpc: "2.0",
+					id: 1,
+					result: transactionCountHex(chainId, address),
+				},
+				headers,
+			);
+		}
 		if (action === "eth_getTransactionReceipt") {
 			const tx = findTransaction(chainId, param(ctx, "txhash"));
 			if (emptyScenario() || !tx)
@@ -2292,10 +2307,13 @@ function nativeBalanceHex(chainId, address) {
 	return hexQuantity(native.get(address) ?? 0n);
 }
 
-function transactionCountHex(chainId, address) {
+function transactionCountHex(chainId, address, tag = "latest") {
 	if (emptyScenario()) return "0x0";
+	const end = /^0x[0-9a-f]+$/i.test(tag ?? "")
+		? Number(BigInt(tag))
+		: CHAINS[chainId].headBlock;
 	const count = chainTransactionsFor(chainId).filter(
-		(tx) => tx.from === address,
+		(tx) => tx.from === address && tx.blockNumber <= end,
 	).length;
 	return hexQuantity(count);
 }
@@ -2339,7 +2357,7 @@ async function handleRpc(ctx, vendor, chainId, key) {
 		const address = String(first).toLowerCase();
 		if (!/^0x[0-9a-f]{40}$/.test(address))
 			return rpcError(ctx, id, -32602, "Invalid address");
-		return rpcSend(ctx, id, transactionCountHex(chainId, address));
+		return rpcSend(ctx, id, transactionCountHex(chainId, address, params[1]));
 	}
 
 	if (method === "eth_call") {

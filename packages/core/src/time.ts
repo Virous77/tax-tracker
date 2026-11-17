@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 const istOffsetMs = 330 * 60 * 1000;
 export function istDate(utcIso: string): string {
 	const instant = new Date(utcIso);
@@ -28,3 +30,30 @@ export function taxYearBounds(id: string): {
 		endExclusiveUtc: `${year + 1}-03-31T18:30:00.000Z`,
 	};
 }
+
+export function timezoneOffsetMinutes(timezone: string): number {
+	if (timezone === "IST") return 330;
+	if (timezone === "UTC") return 0;
+	const match = timezone.match(/^([+-])(\d{2}):(\d{2})$/);
+	if (!match)
+		throw new Error("Timezone must be IST, UTC or a fixed offset ±HH:MM.");
+	const hours = Number(match[2]);
+	const minutes = Number(match[3]);
+	if (hours > 14 || minutes > 59 || (hours === 14 && minutes !== 0))
+		throw new Error("Timezone offset must be within ±14:00.");
+	return (match[1] === "-" ? -1 : 1) * (hours * 60 + minutes);
+}
+
+export const TimezoneSchema = z
+	.union([
+		z.enum(["IST", "UTC"]),
+		z.templateLiteral([z.enum(["+", "-"]), z.string().regex(/\d{2}:\d{2}/)]),
+	])
+	.refine((value) => {
+		try {
+			timezoneOffsetMinutes(value);
+			return true;
+		} catch {
+			return false;
+		}
+	}, "Timezone must be IST, UTC or a fixed offset within ±14:00.");

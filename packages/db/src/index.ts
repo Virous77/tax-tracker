@@ -16,6 +16,8 @@ import {
 	VdaReportSchema,
 } from "@tax/core";
 import {
+	type BalanceSnapshot,
+	BalanceSnapshotSchema,
 	GetImportResponseSchema,
 	type ImportDetail,
 	type ReportMissingDetails,
@@ -98,6 +100,33 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 				.map((key) => [key, null]),
 		),
 	});
+
+	const duplicateTransaction = (
+		tx: LedgerTx,
+		absorbed: Set<string>,
+		skipCrossChannel = false,
+	): string | undefined => {
+		const direct = sqlite
+			.prepare("SELECT id FROM transactions WHERE source=? AND source_ref=?")
+			.get(tx.source, tx.sourceRef) as { id: string } | undefined;
+		const linked = sqlite
+			.prepare(
+				"SELECT t.id FROM raw_rows r JOIN transactions t ON t.id=r.tx_id WHERE r.source=? AND r.source_ref=? LIMIT 1",
+			)
+			.get(tx.source, tx.sourceRef) as { id: string } | undefined;
+		if (direct ?? linked) return (direct ?? linked)?.id;
+		const sibling = siblingChannel(tx.source),
+			fingerprint = eventFingerprint(tx);
+		if (skipCrossChannel || !sibling || !fingerprint) return undefined;
+		const candidates = sqlite
+			.prepare(
+				"SELECT t.id FROM transactions t WHERE t.superseded_by IS NULL AND t.source=? AND t.type=? AND t.fingerprint=? AND NOT EXISTS (SELECT 1 FROM raw_rows r WHERE r.tx_id=t.id AND r.source=?) ORDER BY t.id",
+			)
+			.all(sibling, tx.type, fingerprint, tx.source) as { id: string }[];
+		const exact = candidates.find((row) => !absorbed.has(row.id));
+		if (exact) absorbed.add(exact.id);
+		return exact?.id;
+	};
 	const repositories = {
 		imports: {
 			syncConnections: (id: string): string[] => {
@@ -118,6 +147,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 						GetImportResponseSchema.parse({
 							...v,
 							sheets: v.sheets ?? undefined,
+							tdsSummary: v.tdsSummary ?? undefined,
 							connectionLabel: v.connectionId
 								? (orm
 										.select()
@@ -137,6 +167,12 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 					? GetImportResponseSchema.parse({
 							...row,
 							sheets: row.sheets ?? undefined,
+							tdsSummary: row.tdsSummary ?? undefined,
+							balanceSnapshot: orm
+								.select()
+								.from(schema.balanceSnapshots)
+								.where(eq(schema.balanceSnapshots.importId, id))
+								.get(),
 							connectionLabel: row.connectionId
 								? (orm
 										.select()
@@ -198,7 +234,56 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 					.orderBy(schema.rawRows.sheet, schema.rawRows.rowIndex)
 					.all(),
 		},
+		balanceSnapshots: {
+			list: () =>
+				orm
+					.select()
+					.from(schema.balanceSnapshots)
+					.orderBy(desc(schema.balanceSnapshots.createdAt))
+					.all()
+					.map((row) => BalanceSnapshotSchema.parse(row)),
+			get: (id: string) => {
+				const row = orm
+					.select()
+					.from(schema.balanceSnapshots)
+					.where(eq(schema.balanceSnapshots.id, id))
+					.get();
+				return row ? BalanceSnapshotSchema.parse(row) : undefined;
+			},
+			save: (snapshot: BalanceSnapshot) => {
+				const row = BalanceSnapshotSchema.parse(snapshot);
+				orm.insert(schema.balanceSnapshots).values(row).run();
+				return row;
+			},
+		},
 		transactions: {
+			matchDuplicates: (transactions: LedgerTx[]) => {
+				const absorbed = new Set<string>();
+				return transactions.flatMap((tx) => {
+					const existingId = duplicateTransaction(tx, absorbed);
+					return existingId ? [{ incomingId: tx.id, existingId }] : [];
+				});
+			},
+			active: (): LedgerTx[] => {
+				const excluded = new Set(
+					repositories.transactions.superseded().map((row) => row.txId),
+				);
+				return repositories.transactions
+					.all()
+					.filter((tx) => !excluded.has(tx.id));
+			},
+			superseded: (): { txId: string; importId: string }[] =>
+				sqlite
+					.prepare(
+						"SELECT id AS txId, superseded_by AS importId FROM transactions WHERE superseded_by IS NOT NULL ORDER BY id",
+					)
+					.all() as { txId: string; importId: string }[],
+			supersede: (id: string, importId: string) => {
+				sqlite
+					.prepare("UPDATE transactions SET superseded_by=? WHERE id=?")
+					.run(importId, id);
+				invalidateReports("ledger_changed");
+			},
 			all: () =>
 				orm
 					.select()
@@ -234,11 +319,18 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 						)
 					: undefined;
 			},
-			insert: (rows: { tx: LedgerTx; rawRowId?: string }[]) =>
+			insert: (
+				rows: {
+					tx: LedgerTx;
+					rawRowId?: string;
+					duplicateOf?: string;
+					skipCrossChannel?: boolean;
+				}[],
+			) =>
 				orm.transaction(() => {
 					let inserted = 0;
 					const absorbed = new Set<string>();
-					for (const { tx, rawRowId } of rows) {
+					for (const { tx, rawRowId, duplicateOf, skipCrossChannel } of rows) {
 						let value = LedgerTxSchema.parse(tx);
 						const supplementFileTds = (txId: string) => {
 							if (
@@ -282,44 +374,21 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 									)
 									.run(txId, value.source, value.sourceRef, rawRowId);
 						};
-						const existing = sqlite
-							.prepare(
-								"SELECT id FROM transactions WHERE source=? AND source_ref=?",
-							)
-							.get(value.source, value.sourceRef) as { id: string } | undefined;
-						const linked = sqlite
-							.prepare(
-								"SELECT t.id FROM raw_rows r JOIN transactions t ON t.id=r.tx_id WHERE r.source=? AND r.source_ref=? LIMIT 1",
-							)
-							.get(value.source, value.sourceRef) as { id: string } | undefined;
-						const known = existing ?? linked;
+						const matchedId =
+							duplicateOf ??
+							duplicateTransaction(value, absorbed, skipCrossChannel);
+						if (duplicateOf) absorbed.add(duplicateOf);
+						const known = matchedId ? { id: matchedId } : undefined;
 						if (known) {
 							link(known.id);
 							supplementFileTds(known.id);
 							continue;
 						}
 						const sibling = siblingChannel(value.source);
-						if (sibling) {
-							const fingerprint = eventFingerprint(value);
-							const candidates = fingerprint
-								? (sqlite
-										.prepare(
-											"SELECT t.id FROM transactions t WHERE t.source=? AND t.type=? AND t.fingerprint=? AND NOT EXISTS (SELECT 1 FROM raw_rows r WHERE r.tx_id=t.id AND r.source=?) ORDER BY t.id",
-										)
-										.all(sibling, value.type, fingerprint, value.source) as {
-										id: string;
-									}[])
-								: [];
-							const exact = candidates.find((row) => !absorbed.has(row.id));
-							if (exact) {
-								absorbed.add(exact.id);
-								link(exact.id);
-								supplementFileTds(exact.id);
-								continue;
-							}
+						if (sibling && !skipCrossChannel) {
 							const others = sqlite
 								.prepare(
-									"SELECT id,timestamp,amount_in,amount_out FROM transactions WHERE source=? AND type=? AND asset_in IS ? AND asset_out IS ?",
+									"SELECT id,timestamp,amount_in,amount_out FROM transactions WHERE superseded_by IS NULL AND source=? AND type=? AND asset_in IS ? AND asset_out IS ?",
 								)
 								.all(
 									sibling,
@@ -561,6 +630,19 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 					.set({ progress, updatedAt: new Date().toISOString() })
 					.where(eq(schema.jobs.id, id))
 					.run(),
+			forConnection: (
+				connectionId: string,
+			): (typeof schema.jobs.$inferSelect)[] => {
+				const ids = sqlite
+					.prepare(
+						"SELECT id FROM jobs WHERE kind='sync' AND json_extract(payload, '$.connectionId')=? ORDER BY rowid DESC",
+					)
+					.all(connectionId) as { id: string }[];
+				return ids.flatMap(({ id }) => {
+					const row = repositories.jobs.get(id);
+					return row ? [row] : [];
+				});
+			},
 			running: (connectionId: string) =>
 				orm
 					.select()

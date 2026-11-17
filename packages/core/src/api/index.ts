@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { TimezoneSchema } from "../time.js";
+
+export { TimezoneSchema } from "../time.js";
+
 import {
 	ConnectionSchema,
 	Phase2ApiContract,
@@ -9,6 +13,8 @@ import {
 export * from "./phase2.js";
 
 import {
+	AssetSchema,
+	DecimalStringSchema,
 	IncomeKindSchema,
 	LedgerTxFieldsSchema,
 	LedgerTxSchema,
@@ -95,7 +101,45 @@ export const ImportSourceSchema = z.enum([
 	"coindcx",
 	"generic",
 ]);
-export const TimezoneSchema = z.enum(["IST", "UTC"]);
+export const BalanceSnapshotRowSchema = z.object({
+	asset: AssetSchema,
+	amount: NonNegativeDecimalSchema,
+	wallet: z.string().optional(),
+	raw: z.unknown(),
+});
+export const BalanceSnapshotSchema = z.object({
+	id: z.string(),
+	importId: z.string(),
+	venue: z.string(),
+	asOf: z.iso.date(),
+	timezone: TimezoneSchema,
+	rows: z.array(BalanceSnapshotRowSchema),
+	createdAt: z.iso.datetime(),
+});
+export const BalanceSnapshotsResponseSchema = z.array(
+	BalanceSnapshotSchema.extend({
+		comparison: z.array(
+			z.object({
+				asset: AssetSchema,
+				statement: DecimalStringSchema,
+				computed: DecimalStringSchema,
+				difference: DecimalStringSchema,
+			}),
+		),
+	}),
+);
+export const ApplyBalanceSnapshotRequestSchema = z
+	.object({ taxYear: TaxYearSchema })
+	.strict();
+export type BalanceSnapshot = z.infer<typeof BalanceSnapshotSchema>;
+export const TdsSummarySchema = z.array(
+	z.object({
+		source: z.string(),
+		tdsInr: NonNegativeDecimalSchema,
+		period: z.string().optional(),
+		raw: z.unknown(),
+	}),
+);
 export const ImportStatusSchema = z.enum([
 	"pending_recipe",
 	"imported",
@@ -138,6 +182,19 @@ export const ImportSummarySchema = z.object({
 	fileName: z.string(),
 	fileSha256: z.string(),
 	timezone: TimezoneSchema,
+	reportKind: z.string().nullable().default(null),
+	reportKindLabel: z.string().nullable().default(null),
+	detectedTimezone: z.string().nullable().default(null),
+	timezoneSource: z.enum(["file", "user"]).default("user"),
+	coverage: z
+		.array(
+			z.object({
+				reportKind: z.string(),
+				firstTimestamp: z.iso.datetime(),
+				lastTimestamp: z.iso.datetime(),
+			}),
+		)
+		.default([]),
 	status: ImportStatusSchema,
 	rowsRead: z.number().int().nonnegative(),
 	rowsInserted: z.number().int().nonnegative(),
@@ -158,6 +215,7 @@ export const CreateImportRequestSchema = z.object({
 		.instanceof(Uint8Array)
 		.refine((v) => v.byteLength <= 25 * 1024 * 1024, "File exceeds 25 MB"),
 	fileName: z.string().min(1),
+	pdfPassword: z.string().optional(),
 	source: ImportSourceSchema,
 	timezone: TimezoneSchema,
 });
@@ -167,6 +225,8 @@ export const ListImportsResponseSchema = z.array(ImportSummarySchema);
 export const GetImportRequestSchema = IdParamsSchema;
 export const GetImportResponseSchema = ImportSummarySchema.extend({
 	rowErrors: z.array(RowErrorSchema),
+	tdsSummary: TdsSummarySchema.optional(),
+	balanceSnapshot: BalanceSnapshotSchema.optional(),
 });
 export const ConfirmImportRequestSchema = z.object({
 	recipe: RecipeSchema,
@@ -500,6 +560,19 @@ export const ApiContract = {
 		path: "/api/review",
 		request: ReviewRequestSchema,
 		response: ReviewResponseSchema,
+	},
+	listBalanceSnapshots: {
+		method: "GET",
+		path: "/api/balances/snapshots",
+		request: EmptyRequestSchema,
+		response: BalanceSnapshotsResponseSchema,
+	},
+	applyBalanceSnapshot: {
+		method: "POST",
+		path: "/api/balances/snapshots/:id/apply",
+		params: IdParamsSchema,
+		request: ApplyBalanceSnapshotRequestSchema,
+		response: ActualBalancesResponseSchema,
 	},
 	getActualBalances: {
 		method: "GET",

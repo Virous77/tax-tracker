@@ -1,5 +1,9 @@
 import type { ActualBalance, LedgerTx, Recipe, VdaReport } from "@tax/core";
-import type { ImportDetail, ImportSummary } from "@tax/core/api";
+import type {
+	BalanceSnapshot,
+	ImportDetail,
+	ImportSummary,
+} from "@tax/core/api";
 import {
 	index,
 	integer,
@@ -18,7 +22,20 @@ export const imports = sqliteTable("imports", {
 	source: text("source").notNull(),
 	fileName: text("file_name").notNull(),
 	fileSha256: text("file_sha256").notNull(),
-	timezone: text("timezone", { enum: ["IST", "UTC"] }).notNull(),
+	timezone: text("timezone").$type<ImportSummary["timezone"]>().notNull(),
+	reportKind: text("report_kind"),
+	reportKindLabel: text("report_kind_label"),
+	detectedTimezone: text("detected_timezone"),
+	timezoneSource: text("timezone_source", { enum: ["file", "user"] })
+		.notNull()
+		.default("user"),
+	coverage: text("coverage_json", { mode: "json" })
+		.$type<ImportSummary["coverage"]>()
+		.notNull()
+		.default([]),
+	tdsSummary: text("tds_summary_json", { mode: "json" }).$type<
+		ImportDetail["tdsSummary"]
+	>(),
 	status: text("status", {
 		enum: ["pending_recipe", "imported", "failed"],
 	}).notNull(),
@@ -66,6 +83,9 @@ export const transactions = sqliteTable(
 		source: text("source").notNull(),
 		sourceRef: text("source_ref").notNull(),
 		fingerprint: text("fingerprint"),
+		supersededBy: text("superseded_by").references(() => imports.id, {
+			onDelete: "set null",
+		}),
 		importId: text("import_id").references(() => imports.id, {
 			onDelete: "cascade",
 		}),
@@ -102,6 +122,7 @@ export const transactions = sqliteTable(
 	(t) => [
 		uniqueIndex("transactions_source_ref").on(t.source, t.sourceRef),
 		index("transactions_fingerprint").on(t.fingerprint),
+		index("transactions_superseded_by").on(t.supersededBy),
 	],
 );
 export const recipes = sqliteTable("recipes", {
@@ -249,4 +270,19 @@ export const reportInvalidations = sqliteTable("report_invalidations", {
 	cause: text("cause", {
 		enum: ["ledger_changed", "settings_changed", "balances_changed"],
 	}).notNull(),
+});
+
+export const balanceSnapshots = sqliteTable("balance_snapshots", {
+	id: text("id").primaryKey(),
+	importId: text("import_id")
+		.notNull()
+		.unique()
+		.references(() => imports.id, { onDelete: "cascade" }),
+	venue: text("venue").notNull(),
+	asOf: text("as_of").notNull(),
+	timezone: text("timezone").$type<BalanceSnapshot["timezone"]>().notNull(),
+	rows: text("rows_json", { mode: "json" })
+		.$type<BalanceSnapshot["rows"]>()
+		.notNull(),
+	createdAt: text("created_at").notNull(),
 });

@@ -2,6 +2,7 @@ import { ApiContract, ErrorEnvelopeSchema } from "@tax/core/api";
 import { z } from "zod";
 import { SESSION_COOKIE, validSession } from "./auth";
 import { ApiError } from "./errors";
+import { isPdf } from "./pdf-errors";
 import { execute } from "./service";
 import { publicError } from "./upstream-errors";
 export type Endpoint = keyof typeof ApiContract;
@@ -40,10 +41,17 @@ async function importBody(request: Request) {
 			"validation_error",
 			"An uploaded file is required.",
 		);
+	const fileBytes = new Uint8Array(await file.arrayBuffer());
+	const pdf = isPdf(fileBytes);
 	if (file.size > fileLimit)
-		throw new ApiError(413, "file_too_large", "File exceeds 25 MB.");
+		throw new ApiError(
+			413,
+			pdf ? "pdf_too_large" : "file_too_large",
+			pdf ? "PDF exceeds the 25 MB upload limit." : "File exceeds 25 MB.",
+		);
 	const mime = file.type.toLowerCase();
 	if (
+		!pdf &&
 		![
 			"",
 			"text/csv",
@@ -56,17 +64,18 @@ async function importBody(request: Request) {
 		throw new ApiError(
 			422,
 			"unsupported_file",
-			"Only CSV and XLSX exports are supported.",
+			"Only CSV, XLSX and text-based PDF exports are supported.",
 		);
 	const fileName = file.name.split(/[\\/]/).at(-1) ?? "";
-	if (!/\.(csv|xlsx)$/i.test(fileName))
+	if (!pdf && !/\.(csv|xlsx)$/i.test(fileName))
 		throw new ApiError(
 			422,
 			"unsupported_file",
 			"Only .csv and .xlsx files are supported.",
 		);
 	return {
-		file: new Uint8Array(await file.arrayBuffer()),
+		file: fileBytes,
+		pdfPassword: form.get("pdfPassword") ?? undefined,
 		fileName,
 		source: form.get("source") ?? "auto",
 		timezone: form.get("timezone"),

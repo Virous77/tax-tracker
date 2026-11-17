@@ -34,9 +34,6 @@ it("reconciles signed sync and flags every difference against the shared mock", 
 		url: string | URL,
 		init: HttpRequest = {},
 	) {
-		// The shared fixture user has no Earn positions; these two endpoints are absent from the mock.
-		if (new URL(url).pathname.endsWith("/position"))
-			return Promise.resolve({ rows: [], total: "0" });
 		return request.call(this, url, { ...init, notBeforeMs: 0 });
 	});
 	const dir = await mkdtemp(join(tmpdir(), "tax-live-gate-"));
@@ -172,8 +169,7 @@ it("reconciles signed sync and flags every difference against the shared mock", 
 			const differences = balances.rows.filter(
 				(row: { flagged: boolean }) => row.flagged,
 			) as { asset: string; difference: string }[];
-			if (connection.id !== binance.id)
-				expect(differences, JSON.stringify(balances)).toEqual([]);
+			expect(differences, JSON.stringify(balances)).toEqual([]);
 			for (const row of differences) {
 				expect(
 					db.imports

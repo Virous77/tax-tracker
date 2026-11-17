@@ -7,6 +7,7 @@ export interface ChainConfig {
 	nativeDecimals: number;
 	explorerTxUrl: string;
 	defaultProviders: string[];
+	etherscanPaidRequired?: boolean;
 	tokenListFile: string;
 	feeModel: string;
 	alchemyNetwork?: string | null;

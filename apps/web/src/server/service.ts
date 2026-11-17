@@ -2,6 +2,10 @@ import * as api from "@tax/core/api";
 import { listTaxYears } from "@tax/rules";
 import { previewPayload, suggestRecipe } from "./ai/index";
 import { invalidateSessions, login, sessionCookie } from "./auth";
+import {
+	applyBalanceSnapshot,
+	listBalanceSnapshots,
+} from "./balance-snapshots";
 import { database } from "./context";
 import { ApiError, required } from "./errors";
 import { exportReport } from "./exports";
@@ -118,6 +122,16 @@ export async function execute(
 			break;
 		case "review":
 			value = review(db, api.ReviewRequestSchema.parse(input).taxYear);
+			break;
+		case "listBalanceSnapshots":
+			value = listBalanceSnapshots(db);
+			break;
+		case "applyBalanceSnapshot":
+			value = applyBalanceSnapshot(
+				db,
+				id,
+				api.ApplyBalanceSnapshotRequestSchema.parse(input).taxYear,
+			);
 			break;
 		case "getActualBalances":
 			value = db.actualBalances.get(

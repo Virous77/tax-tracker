@@ -19,7 +19,7 @@ import { providers, vaultSession } from "./vault";
 
 function plan(db: TaxDatabase, taxYear: string) {
 	return planPriceFill({
-		transactions: db.transactions.all(),
+		transactions: db.transactions.active(),
 		taxYear,
 		settings: getSettings(db),
 		cache: db.prices.all(),

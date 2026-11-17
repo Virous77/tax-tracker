@@ -40,19 +40,8 @@ it("syncs Ethereum against the in-process shared mock, preserves own-address leg
 		const opts = options(mock.url),
 			batches = await collect(opts),
 			rows = batches.flatMap((batch) => batch.rows.map((row) => row.tx));
-		const missingNonceRoute = batches.some((batch) =>
-			batch.incomplete?.startsWith(
-				"Sent-transaction completeness check unavailable:",
-			),
-		);
 		expect(
-			batches.every(
-				(batch) =>
-					!batch.incomplete ||
-					batch.incomplete.startsWith(
-						"Sent-transaction completeness check unavailable:",
-					),
-			),
+			batches.every((batch) => !batch.incomplete),
 			JSON.stringify(batches.map((batch) => batch.incomplete)),
 		).toBe(true);
 		expect(rows.some((tx) => tx.type === "swap")).toBe(true);
@@ -76,19 +65,10 @@ it("syncs Ethereum against the in-process shared mock, preserves own-address leg
 		expect(receiver?.sourceRef).not.toBe(sender?.sourceRef);
 		for (const batch of batches) opts.cursors[batch.stream] = batch.cursor;
 		const resumed = (await collect(opts)).flatMap((batch) => batch.rows);
-		if (missingNonceRoute) {
-			expect(resumed.map((row) => row.tx.sourceRef)).toEqual(
-				rows.map((tx) => tx.sourceRef),
-			);
-			await expect(evmConnector.balances(opts)).rejects.toThrow(
-				"history is incomplete",
-			);
-		} else {
-			expect(resumed).toHaveLength(0);
-			expect(
-				(await evmConnector.balances(opts)).some((row) => row.asset === "USDC"),
-			).toBe(true);
-		}
+		expect(resumed).toHaveLength(0);
+		expect(
+			(await evmConnector.balances(opts)).some((row) => row.asset === "USDC"),
+		).toBe(true);
 		expect(await evmConnector.checkKey(opts)).toMatchObject({
 			ok: true,
 			readOnly: true,
@@ -106,13 +86,7 @@ it("walks shared mock big_history without exceeding the explorer cap", async () 
 		});
 		const batches = await collect(options(mock.url));
 		expect(
-			batches.every(
-				(batch) =>
-					!batch.incomplete ||
-					batch.incomplete.startsWith(
-						"Sent-transaction completeness check unavailable:",
-					),
-			),
+			batches.every((batch) => !batch.incomplete),
 			JSON.stringify(batches.map((batch) => batch.incomplete)),
 		).toBe(true);
 		expect(batches.flatMap((batch) => batch.rows).length).toBeGreaterThan(3000);

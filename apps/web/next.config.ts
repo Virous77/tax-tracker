@@ -8,15 +8,11 @@ const config: NextConfig = {
 	serverExternalPackages: [
 		"better-sqlite3",
 		"@tax/db",
+		"@tax/importers",
 		"@tax/rates",
 		"@tax/rules",
 	],
-	transpilePackages: [
-		"@tax/core",
-		"@tax/engine",
-		"@tax/importers",
-		"@tax/recipes",
-	],
+	transpilePackages: ["@tax/core", "@tax/engine", "@tax/recipes"],
 	outputFileTracingExcludes: {
 		"/*": [
 			"../../data/**/*",
@@ -35,6 +31,10 @@ const config: NextConfig = {
 	outputFileTracingIncludes: {
 		"/*": [
 			"../../packages/db/migrations/**/*",
+			"../../packages/importers/dist/pdf/**/*.js",
+			"../../packages/importers/node_modules/pdfjs-dist/package.json",
+			"../../packages/importers/node_modules/pdfjs-dist/legacy/build/pdf.mjs",
+			"../../packages/importers/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
 			"../../packages/rates/data/**/*.csv",
 			"../../packages/rules/data/**/*.json",
 			"../../packages/rules/dist/data/**/*.json",

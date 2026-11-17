@@ -35,7 +35,8 @@
 		"tokenListFile": "tokens-8453.json",
 		"feeModel": "op-stack",
 		"alchemyNetwork": "base-mainnet",
-		"bridgeContracts": ["0x4200000000000000000000000000000000000010"]
+		"bridgeContracts": ["0x4200000000000000000000000000000000000010"],
+		"etherscanPaidRequired": true
 	},
 	{
 		"chainId": 42161,
@@ -81,6 +82,7 @@
 		"tokenListFile": "tokens-56.json",
 		"feeModel": "execution",
 		"alchemyNetwork": null,
-		"bridgeContracts": []
+		"bridgeContracts": [],
+		"etherscanPaidRequired": true
 	}
 ]

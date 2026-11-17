@@ -134,7 +134,7 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 		const report = VdaReportSchema.parse(
 			computeVdaReport({
 				transactions: db.transactions
-					.all()
+					.active()
 					.filter((tx) => tx.timestamp < bound),
 				rules: loadRules("india-vda", taxYear),
 				settings,
@@ -146,6 +146,18 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 					db.prices.mappings(),
 				),
 			}),
+		);
+		const throughYear = new Set(
+			db.transactions
+				.all()
+				.filter((tx) => tx.timestamp < bound)
+				.map((tx) => tx.id),
+		);
+		report.excluded.push(
+			...db.transactions
+				.superseded()
+				.filter((row) => throughYear.has(row.txId))
+				.map(({ txId }) => ({ txId, reason: "superseded" })),
 		);
 		report.warnings = groupWarnings([...report.warnings, ...warnings]);
 		return db.reports.save(report);

@@ -1,0 +1,88 @@
+User_ID,UTC_Time,Account,Operation,Coin,Change,Remark
+synthetic-user,2026-04-01 00:00:00,Spot,Simple Earn Flexible Interest,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:01,Spot,Savings Interest,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:02,Spot,Savings distribution,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:03,Spot,Pool Distribution,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:04,Spot,Launchpool Interest,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:05,Spot,Staking Rewards,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:06,Spot,ETH 2.0 Staking Rewards,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:07,Spot,Simple Earn Locked Rewards,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:08,Spot,POS savings interest,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:09,Spot,BNB Vault Rewards,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:10,Spot,Swap Farming Rewards,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:11,Spot,Liquid Swap rewards,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:12,Spot,Airdrop Assets,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:13,Spot,Distribution,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:14,Spot,Simple Earn Flexible Airdrop,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:15,Spot,HODLer Airdrops Distribution,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:16,Spot,Launchpool Airdrop,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:17,Spot,Megadrop Rewards,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:18,Spot,Cash Voucher distribution,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:19,Spot,Campaign Related Reward,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:20,Spot,Commission Rebate,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:21,Spot,Commission History,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:22,Spot,Referral Kickback,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:23,Spot,Referral Commission,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:24,Spot,Referrer rebates,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:25,Spot,Commission Fee Shared With You,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:26,Spot,Super BNB Mining,ETH,0.001,synthetic
+synthetic-user,2026-04-01 00:00:27,Spot,Transaction Buy,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:27,Spot,Transaction Spend,USDT,-100,synthetic
+synthetic-user,2026-04-01 00:00:27,Spot,Transaction Fee,BNB,-0.01,synthetic
+synthetic-user,2026-04-01 00:00:28,Spot,Transaction Revenue,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:28,Spot,Transaction Sold,USDT,-100,synthetic
+synthetic-user,2026-04-01 00:00:28,Spot,Transaction Related,BNB,-0.01,synthetic
+synthetic-user,2026-04-01 00:00:29,Spot,Buy,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:29,Spot,Sell,USDT,-100,synthetic
+synthetic-user,2026-04-01 00:00:29,Spot,Fee,BNB,-0.01,synthetic
+synthetic-user,2026-04-01 00:00:30,Spot,Binance Convert,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:30,Spot,Binance Convert,BNB,2,synthetic
+synthetic-user,2026-04-01 00:00:31,Spot,Small assets exchange BNB,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:31,Spot,Small assets exchange BNB,BNB,2,synthetic
+synthetic-user,2026-04-01 00:00:32,Spot,Small Assets Exchange BNB,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:32,Spot,Small Assets Exchange BNB,BNB,2,synthetic
+synthetic-user,2026-04-01 00:00:33,Spot,ETH 2.0 Staking,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:33,Spot,ETH 2.0 Staking,BNB,2,synthetic
+synthetic-user,2026-04-01 00:00:34,Spot,Stablecoins Auto-Conversion,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:34,Spot,Stablecoins Auto-Conversion,BNB,2,synthetic
+synthetic-user,2026-04-01 00:00:35,Spot,Asset Conversion Transfer,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:35,Spot,Asset Conversion Transfer,BNB,2,synthetic
+synthetic-user,2026-04-01 00:00:36,Spot,Large OTC trading,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:36,Spot,Large OTC trading,BNB,2,synthetic
+synthetic-user,2026-04-01 00:00:37,Spot,Buy Crypto With Card,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:37,Spot,Buy Crypto With Card,BNB,2,synthetic
+synthetic-user,2026-04-01 00:00:38,Spot,BNB Fee Deduction,BNB,-0.001,synthetic
+synthetic-user,2026-04-01 00:00:39,Spot,Deposit,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:40,Spot,Fiat Deposit,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:41,Spot,Buy Crypto,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:42,Spot,Withdraw,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:43,Spot,Fiat Withdraw,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:44,Spot,Fiat Withdrawal,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:45,Spot,Send,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:00:46,Spot,transfer_in,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:47,Spot,transfer_out,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:48,Spot,Transfer Between Main and Funding Wallet,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:49,Spot,Transfer Between Spot Account and UM Futures Account,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:50,Spot,Transfer Between Spot Account and CM Futures Account,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:51,Spot,Transfer Between Main Account/Futures and Margin Account,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:52,Spot,Simple Earn Flexible Subscription,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:53,Spot,Simple Earn Flexible Redemption,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:54,Spot,Simple Earn Locked Subscription,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:55,Spot,Simple Earn Locked Redemption,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:56,Spot,Staking Purchase,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:57,Spot,Staking Redemption,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:58,Spot,POS savings purchase,ETH,1,synthetic
+synthetic-user,2026-04-01 00:00:59,Spot,POS savings redemption,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:00,Spot,Savings purchase,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:01,Spot,Savings Principal redemption,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:02,Spot,Launchpool Subscription/Redemption,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:03,Spot,Realized Profit and Loss,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:04,Spot,Funding Fee,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:05,Spot,Token Swap - Redenomination/Rebranding,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:06,Spot,Binance Card Spending,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:07,Spot,Crypto Box,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:08,Spot,New Operation Not In Catalogue,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:09,Spot,Distribution,ETH,-1,synthetic
+synthetic-user,2026-04-01 00:01:10,Spot,Unknown Without Change,ETH,,synthetic
+synthetic-user,2026-04-01 00:01:11,Cross Margin,Borrow,ETH,1,synthetic
+synthetic-user,2026-04-01 00:01:12,Coin-M Futures,New Futures Operation,ETH,-1,synthetic

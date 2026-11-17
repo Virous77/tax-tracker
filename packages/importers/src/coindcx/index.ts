@@ -1,11 +1,21 @@
 import { parseReports } from "../reports.js";
 import { readSheets } from "../spreadsheet.js";
 import type { Importer, ImportOptions, TableSheet } from "../types.js";
+import { reportKind as form16aPdf } from "./form16a-pdf.js";
+import { reportKind as futures } from "./futures-orders.js";
 import { reportKind as instant } from "./instant-orders.js";
+import { reportKind as options } from "./options.js";
 import { reportKind as orders } from "./order-history.js";
 import { reportKind as spot } from "./spot-orders.js";
 
-export const coindcxReportKinds = [orders, instant, spot] as const;
+export const coindcxPdfReportKinds = [form16aPdf] as const;
+export const coindcxReportKinds = [
+	orders,
+	instant,
+	spot,
+	futures,
+	options,
+] as const;
 export function isCoinDcx(sheet: TableSheet): boolean {
 	return coindcxReportKinds.some((kind) => kind.detect(sheet));
 }

@@ -2,6 +2,7 @@ import type { ReportKind } from "../reports.js";
 import { COINDCX_HEADERS as columns } from "./headers.js";
 import { column, convert, isTradeReport } from "./trade-report.js";
 export const reportKind: ReportKind = {
+	verified: true,
 	id: "coindcx:instant-orders",
 	detect: (sheet) => isTradeReport(sheet) && !column(sheet, columns.pair),
 	parse: (raw, sheet, context) =>

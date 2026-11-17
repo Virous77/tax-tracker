@@ -1,12 +1,14 @@
 export {
 	binance,
 	binanceKind,
+	binancePdfReportKinds,
 	binanceReportKinds,
 	parseBinance,
 } from "./binance/index.js";
 export { recipeChecks } from "./checks.js";
 export {
 	coindcx,
+	coindcxPdfReportKinds,
 	coindcxReportKinds,
 	isCoinDcx,
 	parseCoinDcx,
@@ -55,6 +57,7 @@ export function importFile(
 	file: InputFile,
 	opts: ImportOptions & { source?: "auto" | "binance" | "coindcx" | "generic" },
 ) {
+	if (isPdf(file)) throw pdfError("pdf_requires_async");
 	const sheets = readSheets(file, { allowDuplicateHeaders: true });
 	const source =
 		!opts.source || opts.source === "auto" ? detectSource(sheets) : opts.source;
@@ -67,4 +70,28 @@ export function importFile(
 				: (() => {
 						throw new Error("Unknown layout; supply a reviewed recipe.");
 					})();
+}
+export { AWAITING_HEADER_SAMPLES, REPORT_KIND_LABELS } from "./labels.js";
+export {
+	importPdf,
+	type PdfErrorCode,
+	PdfImportError,
+	pdfReportKinds,
+	positionedLines,
+} from "./pdf/index.js";
+export {
+	type ReportReconciliation,
+	reconcileReportKinds,
+	transactionReportKind,
+} from "./reconcile.js";
+
+import { importPdf, isPdf } from "./pdf/index.js";
+import { pdfError } from "./pdf/text.js";
+export async function importFileAsync(
+	file: InputFile,
+	opts: Parameters<typeof importFile>[1],
+) {
+	return isPdf(file) || /\.pdf$/i.test(file.name)
+		? importPdf(file, opts)
+		: importFile(file, opts);
 }

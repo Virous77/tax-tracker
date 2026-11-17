@@ -1,0 +1,35 @@
+export const REPORT_KIND_LABELS: Readonly<Record<string, string>> = {
+	"binance:spot-order-history": "Binance Spot Order History",
+	"binance:spot-trade-history": "Binance Spot Trade History",
+	"binance:spot-trade-history-assets":
+		"Binance Spot Trade History (asset columns)",
+	"binance:legacy-spot-trade-history": "Binance Spot Trade History (legacy)",
+	"binance:transaction-history": "Binance Transaction History Statement",
+	"binance:deposits": "Binance Deposit History",
+	"binance:withdrawals": "Binance Withdrawal History",
+	"binance:wallet-history": "Binance Wallet History (legacy)",
+	"binance:convert": "Binance Convert History",
+	"binance:fiat": "Binance Fiat History",
+	"binance:futures-trades": "Binance Futures Trade History",
+	"binance:futures-transactions": "Binance Futures Transaction History",
+	"binance:account-statement-pdf": "Binance Account Statement",
+	"binance:mixed": "Binance Combined Reports",
+	"coindcx:order-history": "CoinDCX Order History",
+	"coindcx:instant-orders": "CoinDCX Trade Report — Instant Orders",
+	"coindcx:spot-orders": "CoinDCX Trade Report — Spot Orders",
+	"coindcx:futures-orders": "CoinDCX Futures Orders",
+	"coindcx:options": "CoinDCX Options",
+	"coindcx:form16a-pdf": "CoinDCX Form 16A",
+	"coindcx:mixed": "CoinDCX Trade Report",
+};
+
+export const AWAITING_HEADER_SAMPLES = [
+	"binance:p2p",
+	"binance:margin",
+	"binance:options",
+	"binance:futures-orders",
+	"binance:buy-crypto",
+	"binance:earn",
+	"coindcx:wallet-history",
+	"coindcx:tds-summary",
+] as const;

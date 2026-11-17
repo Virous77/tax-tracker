@@ -7,9 +7,11 @@ import {
 	parseTimestamp,
 	RowParseError,
 	splitPair,
+	tradePriceQuote,
 } from "../values.js";
 
 export const reportKind: ReportKind = {
+	verified: true,
 	id: "coindcx:order-history",
 	timezone: "UTC",
 	detect: (sheet) =>
@@ -39,9 +41,16 @@ export const reportKind: ReportKind = {
 			]?.trim() ?? "";
 		const status = get("Status").toLowerCase();
 		if (
-			!["filled", "partially_filled", "cancelled", "canceled", "open"].includes(
-				status,
-			)
+			![
+				"filled",
+				"partially_filled",
+				"partially_cancelled",
+				"cancelled",
+				"canceled",
+				"open",
+				"init",
+				"rejected",
+			].includes(status)
 		)
 			throw new RowParseError("Unknown order status.");
 		const totalQuantity = numberString(get("Total Quantity"));
@@ -94,7 +103,7 @@ export const reportKind: ReportKind = {
 		tx.amountIn = side === "buy" ? executed : total;
 		tx.assetOut = side === "buy" ? quote : base;
 		tx.amountOut = side === "buy" ? total : executed;
-		tx.priceQuote = { asset: quote, price };
+		tx.priceQuote = tradePriceQuote(side, tx.type, quote, price);
 		if (quote === "INR") {
 			tx.inrValue = total;
 			tx.inrRateSource = "trade_inr";
@@ -104,6 +113,18 @@ export const reportKind: ReportKind = {
 			tx.feeAsset = quote;
 		}
 		if (get("Total Tds INR")) tx.tdsInr = numberString(get("Total Tds INR"));
+		if ((get("Avg Price").split(".")[1]?.length ?? 0) > 10)
+			tx.reviewFlags.push({
+				code: "parse_warning",
+				message:
+					"Average price has more than ten decimal places and may contain float noise; the exported value has been preserved (catalogue §2.2).",
+			});
+		if (tx.feeAmount !== undefined)
+			tx.reviewFlags.push({
+				code: "parse_warning",
+				message:
+					"Fee may include GST; no split has been inferred (catalogue §2.2).",
+			});
 		return LedgerTxSchema.parse(tx);
 	},
 };

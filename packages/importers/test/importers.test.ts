@@ -110,30 +110,29 @@ describe("verified research fixtures", () => {
 			reviewFlags: [{ code: "parse_warning", message: expect.any(String) }],
 		});
 	});
-	it("accounts for every statement row and avoids overlapping trade/wallet entries", () => {
+	it("keeps all statement operations, rebuilds unique pairs and flags ambiguous legs", () => {
 		const result = binance.parse(file("binance-transaction-statement.csv"), {
 			timezone: "UTC",
 		});
 		expect(result.rowsRead).toBe(32);
-		expect(result.transactions).toHaveLength(2);
-		expect(result.rowErrors).toHaveLength(3);
-		expect(result.skippedRows).toHaveLength(27);
+		expect(result.rowErrors).toEqual([]);
+		expect(result.transactions.length + (result.skippedRows?.length ?? 0)).toBe(
+			result.rowsRead,
+		);
 		expect(
-			result.transactions.length +
-				result.rowErrors.length +
-				(result.skippedRows?.length ?? 0),
-		).toBe(result.rowsRead);
-		expect(result.transactions[0]).toMatchObject({
-			type: "income",
-			incomeKind: "interest",
-			amountIn: "0.00001234",
-		});
+			result.transactions.find((tx) => tx.incomeKind === "interest"),
+		).toMatchObject({ type: "income", amountIn: "0.00001234" });
 		expect(
-			result.skippedRows?.some((row) => row.reason.includes("overlaps")),
+			result.transactions.some(
+				(tx) => Array.isArray(tx.raw) && tx.type === "swap",
+			),
 		).toBe(true);
 		expect(
-			result.rowErrors.some((row) => row.message.includes("Unknown")),
+			result.transactions.some((tx) =>
+				tx.reviewFlags.some((f) => f.code === "unknown_type"),
+			),
 		).toBe(true);
+		expect(result.skippedRows?.every((r) => r.raw !== undefined)).toBe(true);
 	});
 	it("reads CoinDCX workbook numeric text, tabs, partial fills, TDS and net INR conversion", () => {
 		const input = file("coindcx-report.xlsx");
@@ -143,9 +142,15 @@ describe("verified research fixtures", () => {
 		expect(sheets[0]?.rows[0]?.Quantity).toBe("2000");
 		const result = coindcx.parse(input, { timezone: "IST" });
 		expect(result.rowsRead).toBe(10);
-		expect(result.transactions).toHaveLength(7);
-		expect(result.rowErrors).toHaveLength(3);
-		expect(new Set(result.transactions.map((tx) => tx.sourceRef)).size).toBe(7);
+		expect(result.transactions).toHaveLength(8);
+		expect(result.rowErrors).toHaveLength(2);
+		expect(new Set(result.transactions.map((tx) => tx.sourceRef)).size).toBe(8);
+		expect(result.transactions.at(-1)).toMatchObject({
+			type: "fee",
+			reviewFlags: expect.arrayContaining([
+				expect.objectContaining({ code: "complex_onchain" }),
+			]),
+		});
 		expect(result.transactions[1]).toMatchObject({
 			tdsInr: "90.74",
 			assetOut: "USDT",
@@ -165,9 +170,9 @@ describe("verified research fixtures", () => {
 		expect(result.transactions.every((tx) => tx.gstInr === undefined)).toBe(
 			true,
 		);
-		expect(result.transactions.at(-1)?.timestamp).toBe(
-			"2026-03-31T18:30:35.000Z",
-		);
+		expect(
+			result.transactions.filter((tx) => tx.type !== "fee").at(-1)?.timestamp,
+		).toBe("2026-03-31T18:30:35.000Z");
 	});
 	it("applies generic recipes, signed quantities, digit grouping and checks", () => {
 		const input = file("generic-signed-amounts.csv");

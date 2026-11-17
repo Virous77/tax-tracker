@@ -1,0 +1,2 @@
+Transaction ID,Transaction time,Type of Transaction,Gross P&L for this transaction(in INR),Net P&L for this transaction(in INR),Fees(in INR)
+synthetic-inr-future-1,2026-04-01 00:00:00,Realised P&L,100,99,1

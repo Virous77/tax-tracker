@@ -5,6 +5,9 @@ packages:
 # Supply-chain cooldown: never resolve a version published less than 10 days ago (value in minutes).
 minimumReleaseAge: 14400
 
+ignoredOptionalDependencies:
+  - "@napi-rs/canvas"
+
 # Only these packages may run install scripts.
 onlyBuiltDependencies:
   - better-sqlite3

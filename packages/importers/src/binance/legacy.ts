@@ -1,4 +1,4 @@
-import { D, type LedgerTx, LedgerTxSchema } from "@tax/core";
+import { type LedgerTx, LedgerTxSchema } from "@tax/core";
 import { timezoneFromFileName } from "../timezone.js";
 import type { ImportOptions, TableSheet } from "../types.js";
 import {
@@ -10,21 +10,17 @@ import {
 	splitPair,
 	tradePriceQuote,
 } from "../values.js";
-import { BINANCE_INCOME } from "./headers.js";
 export function rowTransaction(
 	raw: Record<string, string>,
 	sheet: TableSheet,
-	kind: "trade" | "oldTrade" | "statement" | "wallet",
+	kind: "trade" | "oldTrade" | "wallet",
 	opts: ImportOptions,
 	sourceRef: string,
 	fileName: string,
 ): LedgerTx {
 	if (raw.__extraColumns)
 		throw new RowParseError("Row has more cells than the header.");
-	const dateColumn =
-		kind === "statement"
-			? "UTC_Time"
-			: (sheet.headers.find((v) => /^date/i.test(v)) ?? "");
+	const dateColumn = sheet.headers.find((v) => /^date/i.test(v)) ?? "";
 	const fileTimezone = timezoneFromFileName(fileName);
 	const timezoneExplicit =
 		/UTC(?:\+0)?\)/i.test(dateColumn) || dateColumn === "UTC_Time";
@@ -49,34 +45,20 @@ export function rowTransaction(
 			message:
 				"Header timezone conflicts with the selected timezone or has an unsupported offset. Verify this timestamp.",
 		});
-	if (kind === "statement") {
-		const operation = raw.Operation ?? "";
-		const income = BINANCE_INCOME[operation];
-		if (!income)
-			throw new RowParseError(
-				"Unknown or unsupported statement operation; requires manual review or a recipe.",
-			);
-		const quantity = numberString(raw.Change ?? "");
-		if (!D(quantity).gt("0"))
-			throw new RowParseError(
-				"Income receipt must have positive change.",
-				"number",
-			);
-		tx.type = "income";
-		tx.incomeKind = income;
-		tx.assetIn = raw.Coin?.toUpperCase();
-		tx.amountIn = quantity;
-		return LedgerTxSchema.parse(tx);
-	}
+
 	if (kind === "wallet") {
 		if (
 			!["completed", "successful"].includes(
 				(raw.Status ?? "").trim().toLowerCase(),
 			)
-		)
-			throw new RowParseError(
-				"Wallet row is not completed; it has no confirmed balance effect.",
-			);
+		) {
+			tx.reviewFlags.push({
+				code: "unknown_type",
+				message:
+					"Wallet row is not completed; original is preserved with no balance effect.",
+			});
+			return LedgerTxSchema.parse(tx);
+		}
 		const combined = sheet.headers.includes("TransactionFee");
 		if (combined && !/deposit|withdraw/i.test(fileName))
 			throw new RowParseError(
@@ -109,7 +91,12 @@ export function rowTransaction(
 		if (raw.Network) tx.chain = raw.Network;
 		return LedgerTxSchema.parse(tx);
 	}
-	const [base, quote] = splitPair(raw.Pair ?? raw.Market ?? "");
+	const [base, quote] = splitPair(
+		raw.Pair ?? raw.Market ?? "",
+		raw["Quote Asset"] ? [raw["Quote Asset"]] : undefined,
+	);
+	if (raw["Base Asset"] && raw["Base Asset"].toUpperCase() !== base)
+		throw new RowParseError("Base Asset does not match the pair.");
 	const side = (raw.Side ?? raw.Type ?? "").toLowerCase();
 	if (!["buy", "sell"].includes(side))
 		throw new RowParseError("Unknown trade side.");

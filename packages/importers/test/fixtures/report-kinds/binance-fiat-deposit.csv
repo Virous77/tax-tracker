@@ -1,0 +1,3 @@
+Date(UTC+0),Coin,Amount,Status,Payment Method,Indicated Amount,Fee,Order ID
+2026-04-01 00:00:00,EUR,100,Successful,Bank,100,1,fiat-synthetic-1
+2026-04-01 00:00:01,EUR,100,Pending,Bank,100,1,fiat-synthetic-2

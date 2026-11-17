@@ -8,9 +8,11 @@ import {
 	parseTimestamp,
 	RowParseError,
 	splitPair,
+	tradePriceQuote,
 } from "../values.js";
 
 export const reportKind: ReportKind = {
+	verified: true,
 	id: "binance:spot-order-history",
 	allowDuplicateHeaders: true,
 	detect: (sheet) =>
@@ -42,7 +44,8 @@ export const reportKind: ReportKind = {
 					(header) => normaliseHeader(header) === normaliseHeader(key),
 				) ?? ""
 			]?.trim() ?? "";
-		const [base, quote] = splitPair(get("Pair"));
+		const traded = parseAmountWithAsset(get("Trading total"));
+		const [base, quote] = splitPair(get("Pair"), [traded.asset]);
 		const quantity = parseAmountWithAsset(get("Executed"), base).amount;
 		const ordered = parseAmountWithAsset(get("Order Amount"), base).amount;
 		if (D(quantity).lt("0") || D(quantity).gt(ordered))
@@ -52,11 +55,19 @@ export const reportKind: ReportKind = {
 			);
 		const status = get("Status").toUpperCase();
 		if (
-			!["FILLED", "PARTIALLY_FILLED", "CANCELED", "CANCELLED"].includes(status)
+			![
+				"FILLED",
+				"PARTIALLY_FILLED",
+				"CANCELED",
+				"CANCELLED",
+				"NEW",
+				"PENDING_CANCEL",
+				"REJECTED",
+				"EXPIRED",
+				"EXPIRED_IN_MATCH",
+			].includes(status)
 		)
 			throw new RowParseError("Unknown spot order status.");
-		if (!["limit", "market", "stop-limit"].includes(get("Type").toLowerCase()))
-			throw new RowParseError("Unsupported spot order type.");
 		if (D(quantity).isZero())
 			return {
 				skip: `Spot order ${status} has zero executed quantity; no trade occurred.`,
@@ -90,11 +101,16 @@ export const reportKind: ReportKind = {
 		tx.amountIn = side === "buy" ? quantity : total;
 		tx.assetOut = side === "buy" ? quote : base;
 		tx.amountOut = side === "buy" ? total : quantity;
-		tx.priceQuote = { asset: quote, price };
+		tx.priceQuote = tradePriceQuote(side, tx.type, quote, price);
 		if (quote === "INR") {
 			tx.inrValue = total;
 			tx.inrRateSource = "trade_inr";
 		}
+		tx.reviewFlags.push({
+			code: "fee_review_required",
+			message:
+				"Order History contains no fee; import Spot Trade History to obtain the actual fee and fee asset (catalogue §1.3).",
+		});
 		return LedgerTxSchema.parse(tx);
 	},
 };

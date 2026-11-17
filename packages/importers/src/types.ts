@@ -13,6 +13,7 @@ export interface TableSheet {
 export type ImportTimezone = "IST" | "UTC" | `${"+" | "-"}${string}`;
 export interface ImportOptions {
 	timezone: ImportTimezone;
+	pdfPassword?: string;
 	recipe?: Recipe;
 }
 export interface RowError {
@@ -22,7 +23,25 @@ export interface RowError {
 	raw?: unknown;
 	field?: "date" | "number" | "other";
 }
+export interface TdsSummaryRow {
+	source: string;
+	tdsInr: string;
+	period?: string;
+	raw: unknown;
+}
+export interface BalanceSnapshot {
+	asOf: string;
+	timezone: ImportTimezone;
+	rows: { asset: string; amount: string; wallet?: string; raw: unknown }[];
+}
 export interface ImportResult {
+	coverage?: {
+		reportKind: string;
+		firstTimestamp: string;
+		lastTimestamp: string;
+	}[];
+	balanceSnapshot?: BalanceSnapshot;
+	tdsSummary?: TdsSummaryRow[];
 	reportKind?: string;
 	detectedTimezone?: string;
 	timezoneSource: "file" | "user";
@@ -31,7 +50,12 @@ export interface ImportResult {
 	warnings: ReviewFlag[];
 	sheets?: { name: string; rowsRead: number; reportKind?: string }[];
 	rowErrors: RowError[];
-	skippedRows?: { rowIndex: number; sheet: string; reason: string }[];
+	skippedRows?: {
+		rowIndex: number;
+		sheet: string;
+		reason: string;
+		raw?: unknown;
+	}[];
 }
 export interface Importer {
 	id: "binance" | "coindcx" | "generic";

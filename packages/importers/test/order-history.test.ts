@@ -55,6 +55,7 @@ describe("Binance Spot Order History", () => {
 					rowIndex: 2,
 					sheet: expect.any(String),
 					reason: expect.stringContaining("CANCELED has zero executed"),
+					raw: expect.objectContaining({ Status: "CANCELED" }),
 				},
 			]);
 			expect(result.transactions[0]).toMatchObject({
@@ -65,7 +66,7 @@ describe("Binance Spot Order History", () => {
 				amountIn: "12",
 				assetOut: "USDT",
 				amountOut: "24",
-				priceQuote: { asset: "USDT", price: "2" },
+				priceQuote: { asset: "USDT", price: "1" },
 				timestamp: "2025-08-02T05:01:00.000Z",
 				raw: {
 					Time: "2025-08-02 10:00:00",
@@ -220,7 +221,7 @@ describe("CoinDCX Order history", () => {
 			amountOut: "510",
 			feeAsset: "USDT",
 			feeAmount: "2.55",
-			priceQuote: { asset: "USDT", price: "51000" },
+			priceQuote: { asset: "USDT", price: "1" },
 		});
 		expect(result.transactions[2]?.inrValue).toBeUndefined();
 		expect(result.transactions[3]).toMatchObject({

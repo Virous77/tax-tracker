@@ -1,0 +1,8 @@
+Order ID,Market,Pair,Total Quantity,Remaining Quantity,Price Per Unit,Avg Price,Fee Amount,Total Tds INR,Side,Order Type,Status,Exchange Code,Created At,Updated At
+synthetic-status-0,USDTINR,I-USDT_INR,20,20,80,81,8.1,16.119,sell,limit_order,init,I,2025-08-01 10:00:00 UTC,2025-08-01 10:01:00 UTC
+synthetic-status-1,USDTINR,I-USDT_INR,20,20,80,81,8.1,16.119,sell,limit_order,open,I,2025-08-01 10:00:00 UTC,2025-08-01 10:01:00 UTC
+synthetic-status-2,USDTINR,I-USDT_INR,20,20,80,81,8.1,16.119,sell,limit_order,partially_filled,I,2025-08-01 10:00:00 UTC,2025-08-01 10:01:00 UTC
+synthetic-status-3,USDTINR,I-USDT_INR,20,20,80,81,8.1,16.119,sell,limit_order,filled,I,2025-08-01 10:00:00 UTC,2025-08-01 10:01:00 UTC
+synthetic-status-4,USDTINR,I-USDT_INR,20,20,80,81,8.1,16.119,sell,limit_order,partially_cancelled,I,2025-08-01 10:00:00 UTC,2025-08-01 10:01:00 UTC
+synthetic-status-5,USDTINR,I-USDT_INR,20,20,80,81,8.1,16.119,sell,limit_order,cancelled,I,2025-08-01 10:00:00 UTC,2025-08-01 10:01:00 UTC
+synthetic-status-6,USDTINR,I-USDT_INR,20,20,80,81,8.1,16.119,sell,limit_order,rejected,I,2025-08-01 10:00:00 UTC,2025-08-01 10:01:00 UTC

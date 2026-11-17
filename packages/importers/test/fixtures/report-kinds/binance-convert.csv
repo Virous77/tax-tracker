@@ -1,0 +1,3 @@
+Date,Pair,Type,Sell,Buy,Price,Inverse Price,Date Updated,Status
+2026-04-01 00:00:00,ETHBTC,Instant,0.5 ETH,0.01 BTC,0.02,50,2026-04-01 00:00:01,Successful
+2026-04-01 00:00:02,ETHBTC,Instant,0.5 ETH,0.01 BTC,0.02,50,2026-04-01 00:00:02,Pending

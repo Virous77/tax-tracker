@@ -1,6 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { D } from "@tax/core";
-import { importFile, readSheets } from "../dist/index.js";
+import { importFile } from "../dist/index.js";
 
 const directory = new URL("../../../data/real-exports/", import.meta.url);
 const counts = (values) =>
@@ -31,14 +31,7 @@ for (const name of (await readdir(directory))
 				ref ===
 				`${repeat.transactions[index]?.source}:${repeat.transactions[index]?.sourceRef}`,
 		);
-		const sheets = readSheets(file, { allowDuplicateHeaders: true });
-		const pairs = [
-			...new Set(
-				sheets.flatMap((sheet) =>
-					sheet.rows.flatMap((row) => (row.Pair ? [row.Pair] : [])),
-				),
-			),
-		].sort();
+
 		const skips = result.skippedRows ?? [];
 		const accounted =
 			result.transactions.length + result.rowErrors.length + skips.length ===
@@ -59,12 +52,11 @@ for (const name of (await readdir(directory))
 					result.rowErrors.map((row) =>
 						row.message.startsWith("[")
 							? "Ledger validation failed; inspect locally."
-							: row.message,
+							: "Row could not be parsed; inspect locally.",
 					),
 				),
 				timezoneUsed: result.detectedTimezone ?? "UTC",
 				timezoneSource: result.timezoneSource,
-				pairsSeen: pairs,
 				uniqueReferences: new Set(references).size,
 				stableReferences: stable ? references.length : 0,
 				accountedRows: accounted ? result.rowsRead : 0,

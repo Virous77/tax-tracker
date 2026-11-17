@@ -56,21 +56,3 @@ export const BINANCE_INCOME: Record<
 	string,
 	"interest" | "staking" | "airdrop" | "referral" | "mining"
 >;
-export const STATEMENT_OVERLAP = new Set([
-	"Transaction Buy",
-	"Transaction Spend",
-	"Transaction Fee",
-	"Transaction Sold",
-	"Transaction Revenue",
-	"Transaction Related",
-	"Buy",
-	"Sell",
-	"Fee",
-	"Deposit",
-	"Withdraw",
-	"Fiat Deposit",
-	"Fiat Withdraw",
-	"Fiat Withdrawal",
-	"Send",
-	"Buy Crypto",
-]);

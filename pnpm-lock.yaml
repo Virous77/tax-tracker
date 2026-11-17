@@ -212,9 +212,15 @@ importers:
       '@tax/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@tax/evm':
+        specifier: workspace:*
+        version: link:../../packages/evm
       '@tax/importers':
         specifier: workspace:*
         version: link:../../packages/importers
+      '@tax/prices':
+        specifier: workspace:*
+        version: link:../../packages/prices
       '@tax/rates':
         specifier: workspace:*
         version: link:../../packages/rates
@@ -224,6 +230,12 @@ importers:
       '@tax/rules':
         specifier: workspace:*
         version: link:../../packages/rules
+      '@tax/sync':
+        specifier: workspace:*
+        version: link:../../packages/sync
+      '@tax/vault':
+        specifier: workspace:*
+        version: link:../../packages/vault
       lucide-react:
         specifier: 1.70.0
         version: 1.70.0(@types/react@19.3.0)(react@19.3.1)
@@ -304,6 +316,19 @@ importers:
         specifier: 26.6.6
         version: 26.6.6
 
+  packages/evm:
+    dependencies:
+      '@tax/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tax/sync':
+        specifier: workspace:*
+        version: link:../sync
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+
   packages/importers:
     dependencies:
       '@tax/core':
@@ -315,6 +340,22 @@ importers:
       fflate:
         specifier: 0.8.3
         version: 0.8.3
+      pdfjs-dist:
+        specifier: 6.5.438
+        version: 6.5.438
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+
+  packages/prices:
+    dependencies:
+      '@tax/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tax/sync':
+        specifier: workspace:*
+        version: link:../sync
     devDependencies:
       '@types/node':
         specifier: 26.6.6
@@ -351,6 +392,26 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+
+  packages/sync:
+    dependencies:
+      '@tax/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+
+  packages/vault:
+    dependencies:
+      '@tax/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: 26.6.6
@@ -1811,6 +1872,10 @@ packages:
     resolution: {integrity: sha512-enSlaiat05iasnzmgNxRj8reFdj3puY2QpNgP1aPIaVfT6nn9ICuPoFlKHk8EN22HcwewshO+mN2DGbkCEOtqQ==}
     engines: {node: '>=14.0.0'}
 
+  pdfjs-dist@6.5.438:
+    resolution: {integrity: sha512-vg8Pw1x+AFKy4AMDvhuWl5cOYV8d698UoEANoFFhc79hqXDnZQqnOXoxw3HG907WHOg1JYOvLhP756boddFxpA==}
+    engines: {node: '>=22.13.0 || >=24'}
+
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -2030,6 +2095,9 @@ packages:
 
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
+
+ignoredOptionalDependencies:
+  - '@napi-rs/canvas'
 
 snapshots:
 
@@ -2950,6 +3018,8 @@ snapshots:
   obug@3.0.0: {}
 
   path-expression-matcher@1.6.2: {}
+
+  pdfjs-dist@6.5.438: {}
 
   picocolors@1.1.1: {}
 

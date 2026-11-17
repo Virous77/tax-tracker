@@ -3,6 +3,7 @@ import { z } from "zod";
 import { SESSION_COOKIE, validSession } from "./auth";
 import { ApiError } from "./errors";
 import { execute } from "./service";
+import { publicError } from "./upstream-errors";
 export type Endpoint = keyof typeof ApiContract;
 const fileLimit = 25 * 1024 * 1024;
 async function importBody(request: Request) {
@@ -185,8 +186,13 @@ export async function handle(
 		if (output === undefined)
 			return new Response(null, { status: 204, headers: result.headers });
 		return Response.json(output, {
-			status:
-				name === "createTransaction" || name === "createImport" ? 201 : 200,
+			status: ["syncConnection", "fillPrices"].includes(name)
+				? 202
+				: ["createTransaction", "createImport", "createConnection"].includes(
+							name,
+						)
+					? 201
+					: 200,
 			headers: { "Cache-Control": "no-store", ...result.headers },
 		});
 	} catch (error) {
@@ -203,11 +209,7 @@ export async function handle(
 								message: issue.message,
 							})),
 						)
-					: new ApiError(
-							500,
-							"internal_error",
-							"The operation could not be completed.",
-						);
+					: publicError(error);
 		return Response.json(
 			ErrorEnvelopeSchema.parse({
 				error: {

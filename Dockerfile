@@ -3,6 +3,10 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN corepack enable && corepack prepare pnpm@12.18.0 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/vault/package.json ./packages/vault/package.json
+COPY packages/prices/package.json ./packages/prices/package.json
+COPY packages/sync/package.json ./packages/sync/package.json
+COPY packages/evm/package.json ./packages/evm/package.json
 COPY packages/core/package.json ./packages/core/package.json
 COPY packages/rules/package.json ./packages/rules/package.json
 COPY packages/engine/package.json ./packages/engine/package.json

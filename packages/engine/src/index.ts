@@ -11,12 +11,14 @@ import {
 	istDate,
 	type LedgerTx,
 	LedgerTxSchema,
+	type PriceLookup,
 	type ReportWarning,
 	roundInr,
 	TaxYearSchema,
 	taxYearBounds,
 	type Valuation,
 	type VdaReport,
+	venueForSource,
 } from "@tax/core";
 import { type VdaRules, VdaRulesSchema } from "@tax/rules";
 import { BalanceBook } from "./balances.js";
@@ -32,6 +34,7 @@ import {
 	valueTransaction,
 } from "./valuation.js";
 
+export { computeHoldings } from "./holdings.js";
 export { type Lot, LotBook, type LotSlice } from "./lots.js";
 export { compareTransactions, matchTransfers } from "./matching.js";
 export { valueTransaction } from "./valuation.js";
@@ -42,6 +45,7 @@ export interface ComputeVdaInput {
 	taxYear: string;
 	actualBalances?: ActualBalance[];
 	fx: FxLookup;
+	priceLookup?: PriceLookup;
 }
 export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 	const settings = EngineSettingsSchema.parse(input.settings);
@@ -76,8 +80,14 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 			throw new Error("FX lookup returned a future publication date");
 		return parsed;
 	};
-	const included = transactions.filter(
+	const throughYear = transactions.filter(
 		(tx) => Date.parse(tx.timestamp) < Date.parse(bounds.endExclusiveUtc),
+	);
+	const excluded = throughYear
+		.filter((tx) => tx.reviewFlags.some((f) => f.code === "suspected_spam"))
+		.map((tx) => ({ txId: tx.id, reason: "suspected_spam" }));
+	const included = throughYear.filter(
+		(tx) => !excluded.some((row) => row.txId === tx.id),
 	);
 	const inYear = (tx: LedgerTx) =>
 		Date.parse(tx.timestamp) >= Date.parse(bounds.startUtc);
@@ -99,7 +109,14 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 		});
 	const matches = matchTransfers(included, settings);
 	const withdrawals = new Map(matches.map((m) => [m.withdrawal.id, m]));
-	for (const match of matches)
+	for (const match of matches) {
+		if (D(match.feeQuantity).lt("0"))
+			warn({
+				txId: match.withdrawal.id,
+				code: "fee_review_required",
+				message:
+					"Hash-matched deposit exceeds withdrawal; confirm amounts and network fee.",
+			});
 		if (match.ambiguous)
 			warn({
 				txId: match.withdrawal.id,
@@ -107,10 +124,11 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 				message:
 					"Multiple possible transfer pairs; earliest chronological pair was inferred. Confirm source history before filing.",
 			});
+	}
 	const deposits = new Map(matches.map((m) => [m.deposit.id, m]));
 	const moved = new Map<string, LotSlice[]>();
 	const pool = (source: string) =>
-		settings.lotPool === "global" ? "global" : source;
+		settings.lotPool === "global" ? "global" : venueForSource(source);
 	const lots = new LotBook();
 	const holdings = new BalanceBook(settings);
 	const tds = new TdsBook();
@@ -132,6 +150,31 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 				raw: tx.raw,
 			};
 		});
+	const prepareTransfer = (match: (typeof matches)[number]) => {
+		if (moved.has(match.deposit.id)) return;
+		const slices = lots.consume(
+			match.withdrawal.assetOut ?? "",
+			pool(match.withdrawal.source),
+			match.withdrawal.amountOut ?? "0",
+		);
+		const ratio = D(match.deposit.amountIn ?? "0").div(
+			match.withdrawal.amountOut ?? "1",
+		);
+		moved.set(
+			match.deposit.id,
+			slices.map((lot) => ({
+				...lot,
+				qty: lot.qty.mul(ratio),
+				costInr:
+					lot.costInr === null
+						? null
+						: settings.feeTreatment === "include"
+							? lot.costInr
+							: lot.costInr.mul(ratio),
+				trailTxIds: [...lot.trailTxIds, match.withdrawal.id],
+			})),
+		);
+	};
 	for (const [order, tx] of included.entries()) {
 		const current = inYear(tx);
 		const sourcePool = pool(tx.source);
@@ -150,14 +193,21 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 			tx.amountIn !== undefined;
 		const needsValue = isTrade || tx.type === "income" || tx.type === "gift";
 		const valuation: Valuation = needsValue
-			? valueTransaction(tx, settings, checkedFx, rate)
+			? valueTransaction(tx, settings, checkedFx, rate, input.priceLookup)
 			: { txId: tx.id, valueInr: null };
 
 		const gross = valuation.valueInr === null ? null : D(valuation.valueInr);
 		let fee = D("0");
 		let unknownFee = false;
 		if (settings.feeTreatment === "include" && isTrade) {
-			const value = feeValueInr(tx, valuation, settings, checkedFx, rate);
+			const value = feeValueInr(
+				tx,
+				valuation,
+				settings,
+				checkedFx,
+				rate,
+				input.priceLookup,
+			);
 			if (value.valueInr === null) {
 				unknownFee = true;
 				warn({
@@ -171,6 +221,21 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 				...value,
 				valueInr: value.valueInr === null ? null : roundInr(value.valueInr),
 			};
+		}
+		if (valuation.marketPrice) {
+			const asset = ["buy", "income", "gift"].includes(tx.type)
+				? tx.assetIn
+				: tx.assetOut;
+			if (
+				valuation.marketPrice.dayBasis === "UTC" ||
+				(valuation.marketPrice.source === "binance_klines" &&
+					valuation.marketPrice.sourceId !== `${asset}USDT`)
+			)
+				warn({
+					txId: tx.id,
+					code: "parse_warning",
+					message: `Market price from ${valuation.marketPrice.source} (${valuation.marketPrice.sourceId}), ${valuation.marketPrice.date} ${valuation.marketPrice.dayBasis ?? "IST"}, ${valuation.marketPrice.kind}; confirm date basis and asset identity.`,
+				});
 		}
 		if (needsValue) {
 			valuations.push({
@@ -201,34 +266,24 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 			tx.id,
 		);
 		if (tx.type === "withdrawal" && tx.assetOut && tx.amountOut) {
-			const slices = lots.consume(tx.assetOut, sourcePool, tx.amountOut);
 			const match = withdrawals.get(tx.id);
 			if (match) {
-				const ratio = D(match.deposit.amountIn ?? "0").div(tx.amountOut);
-				moved.set(
-					match.deposit.id,
-					slices.map((lot) => ({
-						...lot,
-						qty: lot.qty.mul(ratio),
-						costInr:
-							lot.costInr === null
-								? null
-								: settings.feeTreatment === "include"
-									? lot.costInr
-									: lot.costInr.mul(ratio),
-						trailTxIds: [...lot.trailTxIds, tx.id],
-					})),
-				);
-			} else if (current)
-				warn({
-					txId: tx.id,
-					code: "unmatched_transfer",
-					message:
-						"Withdrawal has no matching deposit in the reporting history.",
-				});
+				prepareTransfer(match);
+			} else {
+				lots.consume(tx.assetOut, sourcePool, tx.amountOut);
+				if (current)
+					warn({
+						txId: tx.id,
+						code: "unmatched_transfer",
+						message:
+							"Withdrawal has no matching deposit in the reporting history.",
+					});
+			}
 		}
 		if (tx.type === "deposit" && tx.assetIn && tx.amountIn) {
 			if (deposits.has(tx.id)) {
+				const match = deposits.get(tx.id);
+				if (match) prepareTransfer(match);
 				for (const lot of moved.get(tx.id) ?? [])
 					lots.add({
 						...lot,
@@ -339,7 +394,7 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 		) {
 			const matched = withdrawals.get(tx.id);
 			const includedNetworkFee =
-				matched && tx.feeAsset === tx.assetOut
+				matched && tx.feeAsset === tx.assetOut && D(matched.feeQuantity).gt("0")
 					? D(matched.feeQuantity)
 					: D("0");
 			const extraFee = D(tx.feeAmount).minus(includedNetworkFee);
@@ -391,6 +446,7 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 		},
 		balances,
 		unresolved: disposals.unresolved,
+		excluded,
 		warnings,
 		valuations,
 		ledger: transactions,

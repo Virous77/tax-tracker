@@ -21,7 +21,11 @@
 		"next": "16.4.5",
 		"react": "19.3.1",
 		"react-dom": "19.3.1",
-		"zod": "4.6.7"
+		"zod": "4.6.7",
+		"@tax/prices": "workspace:*",
+		"@tax/vault": "workspace:*",
+		"@tax/sync": "workspace:*",
+		"@tax/evm": "workspace:*"
 	},
 	"devDependencies": {
 		"@tailwindcss/postcss": "4.3.4",

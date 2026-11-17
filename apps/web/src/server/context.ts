@@ -1,6 +1,9 @@
 import { resolve } from "node:path";
 import { openDatabase, type TaxDatabase } from "@tax/db";
 
+import { cancelBackgroundJobs } from "./background";
+import { closeVaultSessions, vaultSession } from "./vault";
+
 const databases = new Map<string, TaxDatabase>();
 export function database(): TaxDatabase {
 	const dir = resolve(
@@ -11,11 +14,16 @@ export function database(): TaxDatabase {
 		db = openDatabase(dir);
 		db.jobs.recover();
 		databases.set(dir, db);
+		void vaultSession(db);
 	}
 	return db;
 }
 export function closeDatabases(): void {
-	for (const db of databases.values()) db.close();
+	closeVaultSessions();
+	for (const db of databases.values()) {
+		cancelBackgroundJobs(db);
+		db.close();
+	}
 	databases.clear();
 }
 export async function runJob<T>(

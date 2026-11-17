@@ -1,0 +1,25 @@
+{
+	"transactions": [
+		{
+			"id": "00000000-0000-4000-8000-000000000001",
+			"source": "evm:1",
+			"sourceRef": "1",
+			"importId": null,
+			"timestamp": "2026-05-01T00:00:00Z",
+			"type": "income",
+			"raw": {
+				"fixture": 1
+			},
+			"reviewFlags": [
+				{
+					"code": "suspected_spam",
+					"message": "Unknown unsolicited token"
+				}
+			],
+			"assetIn": "ERC20:1:0XABC",
+			"amountIn": "100",
+			"inrValue": "1000"
+		}
+	],
+	"taxYear": "2026-27"
+}

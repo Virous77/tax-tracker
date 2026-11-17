@@ -6,6 +6,7 @@ import {
 	NonNegativeDecimalSchema,
 } from "./ledger.js";
 export const EngineSettingsSchema = z.object({
+	marketPriceBasis: z.enum(["close", "vwap"]).default("close"),
 	feeTreatment: z.enum(["exclude", "include"]).default("exclude"),
 	lotMethod: z.literal("FIFO").default("FIFO"),
 	lotPool: z.enum(["global", "per_source"]).default("global"),
@@ -22,6 +23,9 @@ export const EngineSettingsSchema = z.object({
 	).default("0.01"),
 });
 export const EngineSettingsPatchSchema = z.object({
+	marketPriceBasis: EngineSettingsSchema.shape.marketPriceBasis
+		.removeDefault()
+		.optional(),
 	feeTreatment: EngineSettingsSchema.shape.feeTreatment
 		.removeDefault()
 		.optional(),

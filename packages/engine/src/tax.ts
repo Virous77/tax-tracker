@@ -6,6 +6,7 @@ import {
 	roundInr,
 	type TdsSource,
 	type VdaTotals,
+	venueForSource,
 } from "@tax/core";
 import type { VdaRules } from "@tax/rules";
 import { compareText } from "./matching.js";
@@ -54,7 +55,8 @@ export class TdsBook {
 		isDisposal: boolean,
 		warn: (flag: ReviewFlag) => void,
 	): void {
-		const row = this.sources.get(tx.source) ?? {
+		const source = venueForSource(tx.source);
+		const row = this.sources.get(source) ?? {
 			credit: D("0"),
 			transfers: D("0"),
 			txIds: [],
@@ -63,20 +65,20 @@ export class TdsBook {
 		if (tx.tdsInr !== undefined || isDisposal) row.txIds.push(tx.id);
 		if (isDisposal && transferValue !== null)
 			row.transfers = row.transfers.plus(transferValue);
-		if (isDisposal && tx.source === "binance")
+		if (isDisposal && source === "binance")
 			warn({
 				txId: tx.id,
 				code: "tds_not_deducted",
 				message:
 					"Platform does not deduct TDS; review buyer obligations and reconcile Form 26AS/AIS.",
 			});
-		if (isDisposal && tx.source !== "binance" && tx.source !== "coindcx")
+		if (isDisposal && source !== "binance" && source !== "coindcx")
 			warn({
 				txId: tx.id,
 				code: "tds_not_deducted",
 				message: `TDS deduction status for ${tx.source} is unknown; verify payer obligations and Form 26AS/AIS.`,
 			});
-		this.sources.set(tx.source, row);
+		this.sources.set(source, row);
 	}
 	finish(
 		rules: VdaRules,

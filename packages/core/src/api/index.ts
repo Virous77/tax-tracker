@@ -1,5 +1,14 @@
 import { z } from "zod";
 import {
+	ConnectionSchema,
+	Phase2ApiContract,
+	PricesSettingsPatchSchema,
+	PricesSettingsSchema,
+} from "./phase2.js";
+
+export * from "./phase2.js";
+
+import {
 	IncomeKindSchema,
 	LedgerTxFieldsSchema,
 	LedgerTxSchema,
@@ -49,10 +58,15 @@ export const AiSettingsSchema = z.object({
 });
 export const SettingsResponseSchema = EngineSettingsSchema.extend({
 	ai: AiSettingsSchema,
+	prices: PricesSettingsSchema.default({
+		enabled: false,
+		coingeckoFallback: true,
+	}),
 	defaultTaxYear: TaxYearSchema,
 });
 export const GetSettingsRequestSchema = EmptyRequestSchema;
 export const PutSettingsRequestSchema = EngineSettingsPatchSchema.extend({
+	prices: PricesSettingsPatchSchema.optional(),
 	ai: z
 		.object({
 			baseUrl: z.url().optional(),
@@ -117,6 +131,9 @@ export const ReportMissingDetailsSchema = z.object({
 export type ReportMissingDetails = z.infer<typeof ReportMissingDetailsSchema>;
 export const ImportSummarySchema = z.object({
 	id: z.string(),
+	kind: z.enum(["file", "api_sync"]).optional(),
+	connectionId: z.string().nullable().optional(),
+	connectionLabel: z.string().nullable().optional(),
 	source: z.string(),
 	fileName: z.string(),
 	fileSha256: z.string(),
@@ -313,6 +330,7 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 ]);
 export type ReportReviewItem = z.infer<typeof ReportReviewItemSchema>;
 export const ReviewResponseSchema = z.object({
+	connections: z.array(ConnectionSchema).default([]),
 	reportStatus: z.enum(["current", "missing"]),
 	reportStatuses: z.array(
 		z.object({
@@ -362,6 +380,7 @@ export type SentPayload = z.infer<typeof SentPayloadSchema>;
 export type ImportDetail = z.infer<typeof GetImportResponseSchema>;
 
 export const ApiContract = {
+	...Phase2ApiContract,
 	health: {
 		method: "GET",
 		path: "/api/health",

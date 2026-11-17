@@ -7,6 +7,10 @@ export function settingsRows(settings: EngineSettings): string[][] {
 			"Fee & GST treatment",
 			settings.feeTreatment === "include" ? "Include fees" : "Exclude fees",
 		],
+		[
+			"Market price basis (pending CA verification)",
+			settings.marketPriceBasis === "vwap" ? "IST-day VWAP" : "IST-day close",
+		],
 		["Lot matching method", "FIFO (First-In, First-Out)"],
 		[
 			"Lot pool scope",
@@ -15,7 +19,7 @@ export function settingsRows(settings: EngineSettings): string[][] {
 				: "Global (all wallets)",
 		],
 		[
-			"USDT / stablecoin INR rate",
+			"USDT INR rate",
 			settings.usdtInrRate === "sbi_usd_tt"
 				? "SBI TT buying USD/INR"
 				: "Ledger USDT/INR (fallback SBI TT)",

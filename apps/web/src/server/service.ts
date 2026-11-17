@@ -7,6 +7,7 @@ import { ApiError, required } from "./errors";
 import { exportReport } from "./exports";
 import type { Endpoint } from "./http";
 import { confirmImport, createImport, previewRecipe } from "./imports";
+import { executePhase2 } from "./phase2";
 import { computeReport, getReport, putBalances } from "./reports";
 import { getSettings, putSettings } from "./settings";
 import {
@@ -16,6 +17,7 @@ import {
 	patchTransaction,
 	review,
 } from "./transactions";
+import { vaultSession } from "./vault";
 export async function execute(
 	name: Endpoint,
 	input: unknown,
@@ -24,6 +26,16 @@ export async function execute(
 	request: Request,
 ): Promise<{ value: unknown; headers?: Record<string, string> }> {
 	const db = database();
+	await vaultSession(db);
+	if (name in api.Phase2ApiContract)
+		return {
+			value: await executePhase2(
+				name as keyof typeof api.Phase2ApiContract,
+				input,
+				params,
+				db,
+			),
+		};
 	const id = params.id ?? "";
 	const year = params.taxYear ?? "";
 	let value: unknown;
@@ -60,6 +72,16 @@ export async function execute(
 			);
 			break;
 		case "deleteImport":
+			if (
+				db.imports
+					.syncConnections(id)
+					.some((connectionId) => db.jobs.running(connectionId))
+			)
+				throw new ApiError(
+					409,
+					"sync_running",
+					"Wait for the linked connection's sync to finish before deleting this import.",
+				);
 			if (!db.imports.delete(id))
 				throw new ApiError(404, "not_found", "Import not found.");
 			break;
@@ -135,6 +157,7 @@ export async function execute(
 		}
 		case "logout":
 			invalidateSessions();
+			(await vaultSession(db)).lock();
 			return {
 				value: undefined,
 				headers: {

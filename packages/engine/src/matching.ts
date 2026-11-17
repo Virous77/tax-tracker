@@ -1,4 +1,9 @@
-import { D, type EngineSettings, type LedgerTx } from "@tax/core";
+import {
+	D,
+	type EngineSettings,
+	type LedgerTx,
+	normalizedTxHash,
+} from "@tax/core";
 export interface TransferMatch {
 	withdrawal: LedgerTx;
 	deposit: LedgerTx;
@@ -22,7 +27,39 @@ export function matchTransfers(
 	const sorted = [...transactions].sort(compareTransactions);
 	const used = new Set<string>();
 	const result: TransferMatch[] = [];
+	const usedWithdrawals = new Set<string>();
 	for (const withdrawal of sorted) {
+		if (
+			withdrawal.type !== "withdrawal" ||
+			!withdrawal.txHash ||
+			!withdrawal.amountOut
+		)
+			continue;
+		const candidates = sorted.filter(
+			(tx) =>
+				tx.type === "deposit" &&
+				tx.assetIn === withdrawal.assetOut &&
+				tx.amountIn &&
+				tx.txHash &&
+				normalizedTxHash(tx.txHash) ===
+					normalizedTxHash(withdrawal.txHash ?? "") &&
+				!used.has(tx.id),
+		);
+		const deposit = candidates[0];
+		if (!deposit) continue;
+		used.add(deposit.id);
+		usedWithdrawals.add(withdrawal.id);
+		result.push({
+			withdrawal,
+			deposit,
+			feeQuantity: D(withdrawal.amountOut)
+				.minus(deposit.amountIn ?? "0")
+				.toFixed(),
+			ambiguous: candidates.length > 1,
+		});
+	}
+	for (const withdrawal of sorted) {
+		if (usedWithdrawals.has(withdrawal.id)) continue;
 		if (withdrawal.type !== "withdrawal" || !withdrawal.amountOut) continue;
 		const amount = D(withdrawal.amountOut);
 		const minimum = amount.mul(D("1").minus(settings.transferAmountTolerance));

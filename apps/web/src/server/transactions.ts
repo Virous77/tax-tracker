@@ -8,6 +8,7 @@ import {
 } from "@tax/core/api";
 import type { TaxDatabase } from "@tax/db";
 import { listTaxYears } from "@tax/rules";
+import { listConnections } from "./connections";
 import { ApiError, required } from "./errors";
 import { reportReviewItems } from "./report-review";
 
@@ -206,6 +207,9 @@ export function review(db: TaxDatabase, taxYear?: string) {
 			: ("missing" as const),
 	}));
 	return {
+		connections: listConnections(db).filter((row) =>
+			["failed", "incomplete"].includes(row.lastSyncStatus ?? ""),
+		),
 		reportStatus: reports.length === years.length ? "current" : "missing",
 		reportStatuses,
 		computeTaxYears: reportStatuses

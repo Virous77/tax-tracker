@@ -5,10 +5,13 @@ import { fileURLToPath } from "node:url";
 import {
 	type ActualBalance,
 	ActualBalanceSchema,
+	D,
+	eventFingerprint,
 	type LedgerTx,
 	LedgerTxSchema,
 	type Recipe,
 	RecipeSchema,
+	siblingChannel,
 	type VdaReport,
 	VdaReportSchema,
 } from "@tax/core";
@@ -21,6 +24,7 @@ import Database, { type Database as SQLiteDatabase } from "better-sqlite3";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { phase2Repositories } from "./phase2.js";
 import * as schema from "./schema.js";
 
 export * as schema from "./schema.js";
@@ -40,6 +44,27 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 			"../migrations",
 		),
 	});
+	sqlite.transaction(() => {
+		const rows = sqlite
+			.prepare("SELECT * FROM transactions WHERE fingerprint IS NULL")
+			.all() as Record<string, unknown>[];
+		for (const row of rows) {
+			const tx = {
+				source: row.source,
+				sourceRef: row.source_ref,
+				timestamp: row.timestamp,
+				type: row.type,
+				assetIn: row.asset_in ?? undefined,
+				amountIn: row.amount_in ?? undefined,
+				assetOut: row.asset_out ?? undefined,
+				amountOut: row.amount_out ?? undefined,
+				txHash: row.tx_hash ?? undefined,
+			} as LedgerTx;
+			sqlite
+				.prepare("UPDATE transactions SET fingerprint=? WHERE id=?")
+				.run(eventFingerprint(tx), row.id);
+		}
+	})();
 	const invalidateReports = (
 		cause: Exclude<ReportMissingDetails["cause"], "never_computed">,
 		onlyTaxYear?: string,
@@ -66,6 +91,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 	};
 	const txValues = (tx: LedgerTx) => ({
 		...tx,
+		fingerprint: eventFingerprint(tx),
 		...Object.fromEntries(
 			Object.keys(schema.transactions)
 				.filter((key) => key in tx && tx[key as keyof LedgerTx] === undefined)
@@ -74,20 +100,52 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 	});
 	const repositories = {
 		imports: {
+			syncConnections: (id: string): string[] => {
+				const related = sqlite
+					.prepare(
+						"SELECT DISTINCT i.connection_id AS connectionId FROM raw_rows r JOIN imports i ON i.id=r.import_id JOIN transactions t ON t.id=r.tx_id WHERE t.import_id=? AND i.connection_id IS NOT NULL UNION SELECT connection_id AS connectionId FROM imports WHERE id=? AND connection_id IS NOT NULL",
+					)
+					.all(id, id) as { connectionId: string }[];
+				return related.map((row) => row.connectionId);
+			},
 			list: () =>
 				orm
 					.select()
 					.from(schema.imports)
 					.orderBy(desc(schema.imports.createdAt))
 					.all()
-					.map((v) => GetImportResponseSchema.parse(v)),
+					.map((v) =>
+						GetImportResponseSchema.parse({
+							...v,
+							sheets: v.sheets ?? undefined,
+							connectionLabel: v.connectionId
+								? (orm
+										.select()
+										.from(schema.connections)
+										.where(eq(schema.connections.id, v.connectionId))
+										.get()?.label ?? null)
+								: null,
+						}),
+					),
 			get: (id: string) => {
 				const row = orm
 					.select()
 					.from(schema.imports)
 					.where(eq(schema.imports.id, id))
 					.get();
-				return row ? GetImportResponseSchema.parse(row) : undefined;
+				return row
+					? GetImportResponseSchema.parse({
+							...row,
+							sheets: row.sheets ?? undefined,
+							connectionLabel: row.connectionId
+								? (orm
+										.select()
+										.from(schema.connections)
+										.where(eq(schema.connections.id, row.connectionId))
+										.get()?.label ?? null)
+								: null,
+						})
+					: undefined;
 			},
 			save: (value: ImportDetail) => {
 				const row = GetImportResponseSchema.parse(value);
@@ -100,6 +158,25 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 			},
 			delete: (id: string) =>
 				orm.transaction(() => {
+					const imported = orm
+						.select()
+						.from(schema.imports)
+						.where(eq(schema.imports.id, id))
+						.get();
+					sqlite
+						.prepare(
+							"DELETE FROM sync_cursors WHERE connection_id IN (SELECT i.connection_id FROM raw_rows r JOIN imports i ON i.id=r.import_id JOIN transactions t ON t.id=r.tx_id WHERE t.import_id=?)",
+						)
+						.run(id);
+					if (imported?.connectionId)
+						sqlite
+							.prepare("DELETE FROM sync_cursors WHERE connection_id=?")
+							.run(imported.connectionId);
+					sqlite
+						.prepare(
+							"UPDATE raw_rows SET tx_id=NULL WHERE tx_id IN (SELECT id FROM transactions WHERE import_id=?)",
+						)
+						.run(id);
 					const result = orm
 						.delete(schema.imports)
 						.where(eq(schema.imports.id, id))
@@ -160,8 +237,133 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 			insert: (rows: { tx: LedgerTx; rawRowId?: string }[]) =>
 				orm.transaction(() => {
 					let inserted = 0;
+					const absorbed = new Set<string>();
 					for (const { tx, rawRowId } of rows) {
-						const value = LedgerTxSchema.parse(tx);
+						let value = LedgerTxSchema.parse(tx);
+						const supplementFileTds = (txId: string) => {
+							if (
+								value.source !== "coindcx" ||
+								value.tdsInr === undefined ||
+								!D(value.tdsInr).gt("0")
+							)
+								return;
+							const stored = orm
+								.select()
+								.from(schema.transactions)
+								.where(eq(schema.transactions.id, txId))
+								.get();
+							if (
+								stored?.source !== "coindcx-api" ||
+								stored.userEdited ||
+								stored.tdsInr !== null
+							)
+								return;
+							orm
+								.update(schema.transactions)
+								.set({
+									tdsInr: value.tdsInr,
+									reviewFlags: [
+										...stored.reviewFlags,
+										{
+											code: "parse_warning",
+											message: `TDS credit supplied by exact-matching CoinDCX file row in import ${value.importId}; the linked original contains the deduction.`,
+										},
+									],
+								})
+								.where(eq(schema.transactions.id, txId))
+								.run();
+							invalidateReports("ledger_changed");
+						};
+						const link = (txId: string) => {
+							if (rawRowId)
+								sqlite
+									.prepare(
+										"UPDATE raw_rows SET tx_id=?,source=?,source_ref=? WHERE id=?",
+									)
+									.run(txId, value.source, value.sourceRef, rawRowId);
+						};
+						const existing = sqlite
+							.prepare(
+								"SELECT id FROM transactions WHERE source=? AND source_ref=?",
+							)
+							.get(value.source, value.sourceRef) as { id: string } | undefined;
+						const linked = sqlite
+							.prepare(
+								"SELECT t.id FROM raw_rows r JOIN transactions t ON t.id=r.tx_id WHERE r.source=? AND r.source_ref=? LIMIT 1",
+							)
+							.get(value.source, value.sourceRef) as { id: string } | undefined;
+						const known = existing ?? linked;
+						if (known) {
+							link(known.id);
+							supplementFileTds(known.id);
+							continue;
+						}
+						const sibling = siblingChannel(value.source);
+						if (sibling) {
+							const fingerprint = eventFingerprint(value);
+							const candidates = fingerprint
+								? (sqlite
+										.prepare(
+											"SELECT t.id FROM transactions t WHERE t.source=? AND t.type=? AND t.fingerprint=? AND NOT EXISTS (SELECT 1 FROM raw_rows r WHERE r.tx_id=t.id AND r.source=?) ORDER BY t.id",
+										)
+										.all(sibling, value.type, fingerprint, value.source) as {
+										id: string;
+									}[])
+								: [];
+							const exact = candidates.find((row) => !absorbed.has(row.id));
+							if (exact) {
+								absorbed.add(exact.id);
+								link(exact.id);
+								supplementFileTds(exact.id);
+								continue;
+							}
+							const others = sqlite
+								.prepare(
+									"SELECT id,timestamp,amount_in,amount_out FROM transactions WHERE source=? AND type=? AND asset_in IS ? AND asset_out IS ?",
+								)
+								.all(
+									sibling,
+									value.type,
+									value.assetIn ?? null,
+									value.assetOut ?? null,
+								) as {
+								id: string;
+								timestamp: string;
+								amount_in: string | null;
+								amount_out: string | null;
+							}[];
+							const near = others.find(
+								(other) =>
+									Math.abs(
+										Date.parse(other.timestamp) - Date.parse(value.timestamp),
+									) <= 2000 ||
+									((value.amountIn !== undefined ||
+										value.amountOut !== undefined) &&
+										(!value.amountIn ||
+											(other.amount_in &&
+												D(value.amountIn)
+													.minus(other.amount_in)
+													.abs()
+													.lte("0.00000001"))) &&
+										(!value.amountOut ||
+											(other.amount_out &&
+												D(value.amountOut)
+													.minus(other.amount_out)
+													.abs()
+													.lte("0.00000001")))),
+							);
+							if (near)
+								value = {
+									...value,
+									reviewFlags: [
+										...value.reviewFlags,
+										{
+											code: "possible_duplicate",
+											message: `Possible sibling-channel duplicate of ${near.id}; review both original rows.`,
+										},
+									],
+								};
+						}
 						inserted += orm
 							.insert(schema.transactions)
 							.values({ ...txValues(value), rawRowId })
@@ -172,6 +374,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 								],
 							})
 							.run().changes;
+						link(value.id);
 					}
 					if (inserted) invalidateReports("ledger_changed");
 					return { inserted, duplicate: rows.length - inserted };
@@ -301,6 +504,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 				}),
 		},
 		reports: {
+			invalidate: () => invalidateReports("ledger_changed"),
 			missingDetails: (taxYear: string): ReportMissingDetails =>
 				orm
 					.select({
@@ -351,6 +555,24 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 					.run();
 				return id;
 			},
+			progress: (id: string, progress: unknown) =>
+				orm
+					.update(schema.jobs)
+					.set({ progress, updatedAt: new Date().toISOString() })
+					.where(eq(schema.jobs.id, id))
+					.run(),
+			running: (connectionId: string) =>
+				orm
+					.select()
+					.from(schema.jobs)
+					.where(inArray(schema.jobs.status, ["pending", "running"]))
+					.all()
+					.some(
+						(row) =>
+							row.kind === "sync" &&
+							(row.payload as { connectionId?: string })?.connectionId ===
+								connectionId,
+					),
 			get: (id: string) =>
 				orm.select().from(schema.jobs).where(eq(schema.jobs.id, id)).get(),
 			update: (
@@ -365,19 +587,28 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 					.where(eq(schema.jobs.id, id))
 					.run().changes,
 			recover: () =>
-				orm
-					.update(schema.jobs)
-					.set({
-						status: "failed",
-						error: "Server restarted before completion; retry the operation.",
-						updatedAt: new Date().toISOString(),
-					})
-					.where(inArray(schema.jobs.status, ["pending", "running"]))
-					.run().changes,
+				orm.transaction(() => {
+					const changed = orm
+						.update(schema.jobs)
+						.set({
+							status: "failed",
+							error: "Server restarted before completion; retry the operation.",
+							updatedAt: new Date().toISOString(),
+						})
+						.where(inArray(schema.jobs.status, ["pending", "running"]))
+						.run().changes;
+					sqlite
+						.prepare(
+							"UPDATE connections SET last_sync_status='failed',last_sync_error='Server restarted before completion; retry to resume.' WHERE last_sync_status='running'",
+						)
+						.run();
+					return changed;
+				}),
 		},
 	};
 	return {
 		...repositories,
+		...phase2Repositories(sqlite, () => invalidateReports("ledger_changed")),
 		dataDir: directory,
 		atomic: <T>(fn: () => T): T => orm.transaction(fn),
 		health: () => sqlite.prepare("SELECT 1").get() !== undefined,

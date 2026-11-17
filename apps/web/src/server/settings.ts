@@ -24,6 +24,7 @@ export function getSettings(db: TaxDatabase) {
 	const ai = aiConfiguration(db);
 	return SettingsResponseSchema.parse({
 		...EngineSettingsSchema.parse(db.settings.get("engine") ?? {}),
+		prices: db.settings.get("prices") ?? {},
 		defaultTaxYear: db.settings.get("defaultTaxYear") ?? "2026-27",
 		ai: {
 			baseUrl: ai.baseUrl,
@@ -64,7 +65,7 @@ export function checkAiEndpoint(
 		);
 }
 export function putSettings(db: TaxDatabase, patch: SettingsUpdate) {
-	const { ai, defaultTaxYear, ...engine } = patch;
+	const { ai, defaultTaxYear, prices, ...engine } = patch;
 	if (
 		defaultTaxYear !== undefined &&
 		!listTaxYears().some((year) => year.id === defaultTaxYear)
@@ -85,6 +86,7 @@ export function putSettings(db: TaxDatabase, patch: SettingsUpdate) {
 		if (defaultTaxYear !== undefined)
 			db.settings.set("defaultTaxYear", defaultTaxYear);
 		if (ai) db.settings.set("ai", nextAi);
+		if (prices) db.settings.set("prices", { ...current.prices, ...prices });
 	});
 	return getSettings(db);
 }

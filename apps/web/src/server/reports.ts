@@ -6,9 +6,11 @@ import {
 	type ReviewFlag,
 	taxYearBounds,
 	VdaReportSchema,
+	venueForSource,
 } from "@tax/core";
 import type { TaxDatabase } from "@tax/db";
 import { computeVdaReport } from "@tax/engine";
+import { priceLookupFromCache } from "@tax/prices";
 import { createFxLookup, parseSbiCsv } from "@tax/rates";
 import { listTaxYears, loadRules } from "@tax/rules";
 import { runJob } from "./context";
@@ -60,8 +62,11 @@ export function putBalances(
 ) {
 	checkYear(taxYear);
 	const settings = getSettings(db);
+	const normalized = values.map((row) =>
+		row.source ? { ...row, source: venueForSource(row.source) } : row,
+	);
 	const keys = new Set<string>();
-	for (const value of values) {
+	for (const value of normalized) {
 		if (
 			(settings.lotPool === "global" && value.source !== undefined) ||
 			(settings.lotPool === "per_source" && !value.source)
@@ -76,7 +81,7 @@ export function putBalances(
 			throw new ApiError(409, "conflict", "Duplicate actual balance.");
 		keys.add(key);
 	}
-	return db.actualBalances.replace(taxYear, values);
+	return db.actualBalances.replace(taxYear, normalized);
 }
 export async function computeReport(db: TaxDatabase, taxYear: string) {
 	checkYear(taxYear);
@@ -88,6 +93,7 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 				code: "import_incomplete",
 				message: `Import ${item.fileName}: ${item.rowsError} excluded rows; status ${item.status}. Review the import before relying on this report.`,
 			}));
+		warnings.push(...db.imports.list().flatMap((item) => item.warnings));
 		let fx = (() => null) as ReturnType<typeof createFxLookup>;
 		try {
 			fx = createFxLookup(
@@ -135,6 +141,10 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 				taxYear,
 				actualBalances,
 				fx,
+				priceLookup: priceLookupFromCache(
+					db.prices.all(),
+					db.prices.mappings(),
+				),
 			}),
 		);
 		report.warnings = groupWarnings([...report.warnings, ...warnings]);

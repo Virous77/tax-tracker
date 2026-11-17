@@ -1,0 +1,15 @@
+{
+	"totals": {
+		"taxableIncome": "1000.00",
+		"cost": "1000.00"
+	},
+	"unresolved": [],
+	"tds": {
+		"bySource": [
+			{
+				"source": "binance",
+				"deductedByPlatform": false
+			}
+		]
+	}
+}

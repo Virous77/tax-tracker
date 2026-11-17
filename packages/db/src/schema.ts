@@ -1,6 +1,7 @@
 import type { ActualBalance, LedgerTx, Recipe, VdaReport } from "@tax/core";
 import type { ImportDetail, ImportSummary } from "@tax/core/api";
 import {
+	index,
 	integer,
 	primaryKey,
 	sqliteTable,
@@ -10,6 +11,10 @@ import {
 
 export const imports = sqliteTable("imports", {
 	id: text("id").primaryKey(),
+	kind: text("kind", { enum: ["file", "api_sync"] })
+		.notNull()
+		.default("file"),
+	connectionId: text("connection_id"),
 	source: text("source").notNull(),
 	fileName: text("file_name").notNull(),
 	fileSha256: text("file_sha256").notNull(),
@@ -46,6 +51,9 @@ export const rawRows = sqliteTable(
 			.references(() => imports.id, { onDelete: "cascade" }),
 		sheet: text("sheet").notNull(),
 		rowIndex: integer("row_index").notNull(),
+		txId: text("tx_id"),
+		source: text("source"),
+		sourceRef: text("source_ref"),
 		excelDate1904: integer("excel_date_1904", { mode: "boolean" }),
 		data: text("data", { mode: "json" }).$type<unknown>().notNull(),
 	},
@@ -57,6 +65,7 @@ export const transactions = sqliteTable(
 		id: text("id").primaryKey(),
 		source: text("source").notNull(),
 		sourceRef: text("source_ref").notNull(),
+		fingerprint: text("fingerprint"),
 		importId: text("import_id").references(() => imports.id, {
 			onDelete: "cascade",
 		}),
@@ -90,7 +99,10 @@ export const transactions = sqliteTable(
 			.notNull()
 			.default(false),
 	},
-	(t) => [uniqueIndex("transactions_source_ref").on(t.source, t.sourceRef)],
+	(t) => [
+		uniqueIndex("transactions_source_ref").on(t.source, t.sourceRef),
+		index("transactions_fingerprint").on(t.fingerprint),
+	],
 );
 export const recipes = sqliteTable("recipes", {
 	id: text("id").primaryKey(),
@@ -134,6 +146,7 @@ export const jobs = sqliteTable("jobs", {
 		enum: ["pending", "running", "completed", "failed"],
 	}).notNull(),
 	payload: text("payload", { mode: "json" }).$type<unknown>().notNull(),
+	progress: text("progress", { mode: "json" }).$type<unknown>(),
 	result: text("result", { mode: "json" }).$type<unknown>(),
 	error: text("error"),
 	createdAt: text("created_at").notNull(),
@@ -142,13 +155,82 @@ export const jobs = sqliteTable("jobs", {
 export const priceCache = sqliteTable(
 	"price_cache",
 	{
-		asset: text("asset").notNull(),
-		date: text("date").notNull(),
-		quote: text("quote").notNull(),
-		price: text("price").notNull(),
 		source: text("source").notNull(),
+		sourceId: text("source_id").notNull(),
+		quote: text("quote").notNull(),
+		dayBasis: text("day_basis", { enum: ["IST", "UTC"] }).notNull(),
+		date: text("date").notNull(),
+		kind: text("kind").notNull(),
+		price: text("price").notNull(),
+		final: integer("final", { mode: "boolean" }).notNull(),
+		fetchedAt: text("fetched_at").notNull(),
 	},
-	(t) => [primaryKey({ columns: [t.asset, t.date, t.quote] })],
+	(t) => [
+		primaryKey({
+			columns: [t.source, t.sourceId, t.quote, t.dayBasis, t.date, t.kind],
+		}),
+	],
+);
+export const assetPriceIds = sqliteTable(
+	"asset_price_ids",
+	{
+		asset: text("asset").notNull(),
+		chain: text("chain").notNull().default(""),
+		source: text("source").notNull(),
+		sourceId: text("source_id").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.asset, t.chain, t.source] })],
+);
+export const vaultMeta = sqliteTable("vault_meta", {
+	id: integer("id").primaryKey(),
+	json: text("json", { mode: "json" }).$type<unknown>().notNull(),
+});
+export const secrets = sqliteTable("secrets", {
+	id: text("id").primaryKey(),
+	kind: text("kind").notNull(),
+	iv: text("iv").notNull(),
+	ct: text("ct").notNull(),
+	tag: text("tag").notNull(),
+	createdAt: text("created_at").notNull(),
+});
+export const connections = sqliteTable("connections", {
+	id: text("id").primaryKey(),
+	kind: text("kind", { enum: ["binance", "coindcx", "evm"] }).notNull(),
+	label: text("label").notNull(),
+	chainId: integer("chain_id"),
+	address: text("address"),
+	options: text("options_json", { mode: "json" })
+		.$type<import("@tax/core/api").ConnectionOptions>()
+		.notNull(),
+	createdAt: text("created_at").notNull(),
+	lastSyncAt: text("last_sync_at"),
+	lastSyncStatus: text("last_sync_status"),
+	lastSyncError: text("last_sync_error"),
+});
+export const syncCursors = sqliteTable(
+	"sync_cursors",
+	{
+		connectionId: text("connection_id")
+			.notNull()
+			.references(() => connections.id, { onDelete: "cascade" }),
+		stream: text("stream").notNull(),
+		cursor: text("cursor_json", { mode: "json" }).$type<unknown>().notNull(),
+		updatedAt: text("updated_at").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.connectionId, t.stream] })],
+);
+export const fetchedBalances = sqliteTable(
+	"fetched_balances",
+	{
+		connectionId: text("connection_id")
+			.notNull()
+			.references(() => connections.id, { onDelete: "cascade" }),
+		asset: text("asset").notNull(),
+		wallet: text("wallet").notNull().default(""),
+		amount: text("amount").notNull(),
+		fetchedAt: text("fetched_at").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.connectionId, t.asset, t.wallet] })],
 );
 export const fxRates = sqliteTable(
 	"fx_rates",

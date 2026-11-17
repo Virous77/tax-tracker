@@ -4,6 +4,7 @@ import {
 	D,
 	type EngineSettings,
 	type ReportWarning,
+	venueForSource,
 } from "@tax/core";
 import { compareText } from "./matching.js";
 import { FIAT } from "./valuation.js";
@@ -17,6 +18,7 @@ export class BalanceBook {
 		txId: string,
 	): void {
 		if (!asset || !quantity || FIAT.has(asset)) return;
+		source = venueForSource(source);
 		const key = JSON.stringify([
 			asset,
 			this.settings.lotPool === "per_source" ? source : null,
@@ -43,12 +45,15 @@ export class BalanceBook {
 				);
 			if (this.settings.lotPool === "per_source" && item.source === undefined)
 				throw new Error("Per-source actual balances require source");
-			const key = JSON.stringify([item.asset, item.source ?? null]);
+			const normalizedSource = item.source
+				? venueForSource(item.source)
+				: undefined;
+			const key = JSON.stringify([item.asset, normalizedSource ?? null]);
 			if (seen.has(key)) throw new Error("Duplicate actual balance");
 			seen.add(key);
 			const row = this.rows.get(key) ?? {
 				asset: item.asset,
-				...(item.source ? { source: item.source } : {}),
+				...(normalizedSource ? { source: normalizedSource } : {}),
 				computed: "0",
 				txIds: [],
 			};

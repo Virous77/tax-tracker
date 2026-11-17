@@ -1,0 +1,15 @@
+{
+	"totals": {
+		"taxableIncome": "0.00"
+	},
+	"income": {
+		"rows": []
+	},
+	"balances": [],
+	"excluded": [
+		{
+			"txId": "00000000-0000-4000-8000-000000000001",
+			"reason": "suspected_spam"
+		}
+	]
+}

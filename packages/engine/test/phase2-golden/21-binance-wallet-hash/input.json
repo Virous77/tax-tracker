@@ -1,0 +1,67 @@
+{
+	"transactions": [
+		{
+			"id": "00000000-0000-4000-8000-000000000001",
+			"source": "binance",
+			"sourceRef": "1",
+			"importId": null,
+			"timestamp": "2026-05-01T00:00:00Z",
+			"type": "buy",
+			"raw": {
+				"fixture": 1
+			},
+			"reviewFlags": [],
+			"assetIn": "ETH",
+			"amountIn": "1",
+			"inrValue": "1000"
+		},
+		{
+			"id": "00000000-0000-4000-8000-000000000002",
+			"source": "binance-api",
+			"sourceRef": "2",
+			"importId": null,
+			"timestamp": "2026-05-02T00:00:00Z",
+			"type": "withdrawal",
+			"raw": {
+				"fixture": 2
+			},
+			"reviewFlags": [],
+			"assetOut": "ETH",
+			"amountOut": "1",
+			"txHash": "0xABCD",
+			"feeAsset": "ETH",
+			"feeAmount": "0.01"
+		},
+		{
+			"id": "00000000-0000-4000-8000-000000000003",
+			"source": "evm:1",
+			"sourceRef": "3",
+			"importId": null,
+			"timestamp": "2026-05-10T00:00:00Z",
+			"type": "deposit",
+			"raw": {
+				"fixture": 3
+			},
+			"reviewFlags": [],
+			"assetIn": "ETH",
+			"amountIn": "0.99",
+			"txHash": "abcd"
+		},
+		{
+			"id": "00000000-0000-4000-8000-000000000004",
+			"source": "evm:1",
+			"sourceRef": "4",
+			"importId": null,
+			"timestamp": "2026-05-11T00:00:00Z",
+			"type": "sell",
+			"raw": {
+				"fixture": 4
+			},
+			"reviewFlags": [],
+			"assetOut": "ETH",
+			"amountOut": "0.99",
+			"inrValue": "1980"
+		}
+	],
+	"taxYear": "2026-27"
+}

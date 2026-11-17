@@ -5,16 +5,10 @@ import {
 	type FxLookup,
 	istDate,
 	type LedgerTx,
+	type PriceLookup,
 	type Valuation,
 } from "@tax/core";
-export const USD_STABLECOINS = new Set([
-	"USDT",
-	"USDC",
-	"BUSD",
-	"DAI",
-	"FDUSD",
-	"TUSD",
-]);
+export const USD_STABLECOINS = new Set(["USDT"]);
 export const FIAT = new Set(["INR", "USD", "EUR", "GBP"]);
 export interface LedgerRate {
 	rate: string;
@@ -78,6 +72,7 @@ export function valueTransaction(
 	settings: EngineSettings,
 	fx: FxLookup,
 	ledgerRate: LedgerRate | null,
+	priceLookup?: PriceLookup,
 ): Valuation {
 	if (tx.inrValue !== undefined)
 		return {
@@ -142,6 +137,49 @@ export function valueTransaction(
 				fx: { currency: "USD", ...rate },
 			};
 	}
+	const asset =
+		tx.type === "buy" || tx.type === "income" || tx.type === "gift"
+			? tx.assetIn
+			: tx.assetOut;
+	if (asset && quantity && priceLookup) {
+		const price = priceLookup(
+			asset,
+			istDate(tx.timestamp),
+			settings.marketPriceBasis,
+		);
+		if (
+			price &&
+			D(price.price).isFinite() &&
+			D(price.price).gt("0") &&
+			price.date <= istDate(tx.timestamp)
+		) {
+			const base = {
+				txId: tx.id,
+				inrRateSource: "market_price_cache" as const,
+				marketPrice: price,
+			};
+			const value = D(quantity).mul(price.price);
+			if (price.quote === "INR") return { ...base, valueInr: value.toFixed() };
+			if (price.quote === "USD" || price.quote === "USDT") {
+				const rate =
+					settings.usdtInrRate === "ledger_usdt_inr" &&
+					ledgerRate &&
+					price.quote === "USDT"
+						? {
+								rate: ledgerRate.rate,
+								rateDate: istDate(ledgerRate.timestamp),
+								source: "ledger stablecoin/INR",
+							}
+						: fx("USD", istDate(tx.timestamp));
+				if (rate)
+					return {
+						...base,
+						valueInr: value.mul(rate.rate).toFixed(),
+						fx: { currency: "USD", ...rate },
+					};
+			}
+		}
+	}
 	return { txId: tx.id, valueInr: null };
 }
 export function feeValueInr(
@@ -150,6 +188,7 @@ export function feeValueInr(
 	settings: EngineSettings,
 	fx: FxLookup,
 	ledgerRate: LedgerRate | null,
+	priceLookup?: PriceLookup,
 ): AmountValuation {
 	const gst = D(tx.gstInr ?? "0");
 	if (!tx.feeAmount || D(tx.feeAmount).isZero())
@@ -176,6 +215,7 @@ export function feeValueInr(
 			settings,
 			fx,
 			ledgerRate,
+			priceLookup,
 		);
 		return {
 			...result,
@@ -198,5 +238,30 @@ export function feeValueInr(
 				.plus(D(valuation.valueInr).mul(tx.feeAmount).div(quantity))
 				.toFixed(),
 		};
+	if (tx.feeAsset && priceLookup) {
+		const result = valueTransaction(
+			{
+				...tx,
+				type: "sell",
+				assetOut: tx.feeAsset,
+				amountOut: tx.feeAmount,
+				assetIn: undefined,
+				amountIn: undefined,
+				inrValue: undefined,
+				priceQuote: undefined,
+			},
+			settings,
+			fx,
+			ledgerRate,
+			priceLookup,
+		);
+		return {
+			...result,
+			valueInr:
+				result.valueInr === null
+					? null
+					: D(result.valueInr).plus(gst).toFixed(),
+		};
+	}
 	return { txId: tx.id, valueInr: null };
 }

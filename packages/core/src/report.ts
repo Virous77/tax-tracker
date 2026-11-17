@@ -36,6 +36,17 @@ export const AmountValuationSchema = z.object({
 		})
 		.optional(),
 	rateTxId: z.string().optional(),
+	marketPrice: z
+		.object({
+			price: DecimalStringSchema,
+			quote: z.string(),
+			source: z.string(),
+			sourceId: z.string(),
+			date: z.iso.date(),
+			kind: z.string(),
+			dayBasis: z.enum(["IST", "UTC"]).optional(),
+		})
+		.optional(),
 });
 export const ValuationSchema = AmountValuationSchema.extend({
 	fee: AmountValuationSchema.optional(),
@@ -107,6 +118,11 @@ export const ReportWarningSchema = ReviewFlagSchema.extend({
 	txIds: z.array(z.string()).optional(),
 });
 export type ReportWarning = z.infer<typeof ReportWarningSchema>;
+export const ReportExcludedSchema = z.object({
+	txId: z.string(),
+	reason: z.string(),
+});
+export type ReportExcluded = z.infer<typeof ReportExcludedSchema>;
 export const VdaReportSchema = z.object({
 	taxYear: TaxYearSchema,
 	act: z.string(),
@@ -131,6 +147,7 @@ export const VdaReportSchema = z.object({
 	}),
 	balances: z.array(BalanceSchema),
 	unresolved: z.array(UnresolvedSchema),
+	excluded: z.array(ReportExcludedSchema).default([]),
 	warnings: z.array(ReportWarningSchema),
 	valuations: z.array(ValuationSchema),
 	ledger: z.array(LedgerTxSchema),

@@ -1124,7 +1124,7 @@ for (const address of OWN_ADDRESSES) {
 		word(bsc.tokens.get(address).get(ADDRESSES.bscUsdt) ?? 0n),
 		call.body.result,
 	);
-	const { legs, error } = await noderealLegs(56, address);
+	const { legs, error } = await noderealLegs(address);
 	check(
 		`nodereal BSC transfers ${address.slice(0, 8)}`,
 		!error,

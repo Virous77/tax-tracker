@@ -45,6 +45,8 @@ export const ReviewCodeSchema = z.enum([
 	"fx_unavailable",
 	"ambiguous_transfer",
 	"fee_review_required",
+	"suspected_spam",
+	"possible_duplicate",
 ]);
 export const ReviewFlagSchema = z.object({
 	code: ReviewCodeSchema,

@@ -177,4 +177,30 @@ export const REVIEW_CODE_INFO: Record<ReviewCode, ReviewCodeInfo> = {
 			return `/transactions?${params.toString()}`;
 		},
 	},
+	suspected_spam: {
+		code: "suspected_spam",
+		title: "Looks like a spam token",
+		severity: "warning",
+		explanation:
+			"This token arrived unasked and matches spam or address-poisoning patterns. It is left out of the tax calculation until you confirm it is real.",
+		fixLabel: "Inspect in Transactions",
+		fixHref: (tx, taxYear) => {
+			const params = new URLSearchParams({ flagged: "true", q: tx.sourceRef });
+			if (taxYear) params.set("taxYear", taxYear);
+			return `/transactions?${params.toString()}`;
+		},
+	},
+	possible_duplicate: {
+		code: "possible_duplicate",
+		title: "Possible duplicate of a file-imported row",
+		severity: "warning",
+		explanation:
+			"An API-synced row almost matches a row from an imported file. If both describe the same trade or transfer, it would be counted twice. Compare them and keep one.",
+		fixLabel: "Inspect in Transactions",
+		fixHref: (tx, taxYear) => {
+			const params = new URLSearchParams({ flagged: "true", q: tx.sourceRef });
+			if (taxYear) params.set("taxYear", taxYear);
+			return `/transactions?${params.toString()}`;
+		},
+	},
 };

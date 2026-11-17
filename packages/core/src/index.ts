@@ -1,4 +1,5 @@
 export * from "./api/index.js";
+export * from "./connector.js";
 export * from "./decimal.js";
 export * from "./endpoint.js";
 export * from "./ledger.js";

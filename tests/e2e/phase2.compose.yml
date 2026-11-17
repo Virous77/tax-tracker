@@ -1,0 +1,11 @@
+services:
+  app:
+    environment:
+      BINANCE_API_BASE: http://host.docker.internal:11602/binance
+      BINANCE_DATA_BASE: http://host.docker.internal:11602/binance-data
+      COINDCX_API_BASE: http://host.docker.internal:11602/coindcx
+      ETHERSCAN_API_BASE: http://host.docker.internal:11602/etherscan
+      BLOCKSCOUT_API_BASE: http://host.docker.internal:11602/blockscout
+      ALCHEMY_API_BASE: http://host.docker.internal:11602/alchemy/{network}/v2
+      NODEREAL_API_BASE: http://host.docker.internal:11602/nodereal
+      COINGECKO_API_BASE: http://host.docker.internal:11602/coingecko/api/v3

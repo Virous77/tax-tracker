@@ -28,6 +28,16 @@ beforeAll(async () => {
 		source: "binance",
 		timezone: "IST",
 	});
+	// Phase 2: explicit UTC headers win over the selection, so ambiguity now comes from a bare
+	// Binance order Time with no offset in the file name.
+	await importOk(
+		csv([
+			"Time,OrderNo,Pair,Type¹,Side,Order Price,Order Amount,Time,Executed²,Average Price,Trading total³,Status",
+			"2025-08-02 10:00:00,amb-1,BTCUSDT,Limit,BUY,100,1BTC,2025-08-02 10:01:00,1BTC,100,100USDT,FILLED",
+		]),
+		"orders.csv",
+		{ source: "binance", timezone: "IST" },
+	);
 	await importOk(
 		csv([
 			"Date(UTC),Pair,Side,Price,Executed,Amount,Fee",
@@ -82,9 +92,9 @@ describe("GET /api/review", () => {
 		expect(g?.items.map((t) => t.type)).toContain("withdrawal");
 	});
 
-	it("ambiguous_timezone: UTC-headed file read as IST", async () => {
+	it("ambiguous_timezone: Binance orders with a bare Time and no file-name offset", async () => {
 		const g = group(await review(), "ambiguous_timezone");
-		expect(g?.items.map((t) => t.type)).toEqual(["withdrawal"]);
+		expect(g?.items.map((t) => t.type)).toEqual(["swap"]);
 	});
 
 	it("taxYear filter narrows to that IST year", async () => {

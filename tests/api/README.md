@@ -21,3 +21,11 @@ Environment: `BASE_URL` (default `http://localhost:3101`), `APP_PORT`, `COMPOSE_
 `MOCK_PORT` (11501), `MOCK_FROM_APP` (default `http://host.docker.internal:<MOCK_PORT>/v1`).
 
 Known app defects are kept as failing tests and listed in `BUGS.md`.
+
+## Phase 2 (`14-*` … `23-*`)
+
+Sync tests need `tools/mock-sync/server.mjs` and `weight-proxy.mjs` (Binance only; see `BUGS.md`
+P2-API-1), and the env in `phase2.env` (compose project `taxapi2`, port 3111, all `*_API_BASE`
+overrides). Load it with `set -a && . tests/api/phase2.env && set +a` before `docker compose up` and
+`pnpm test:api`. `API_BASE_URL` replaces `BASE_URL`, which Vite overwrites. The full suite takes about
+35 minutes, mostly Binance syncs walking history from 2017.

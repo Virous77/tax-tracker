@@ -9,7 +9,7 @@ async function uploadGeneric(page: Page, file: string) {
 		.getByLabel(/Drop your exchange export here/)
 		.setInputFiles(path.join(GENERATED, file));
 	await page.getByRole("radio", { name: /^Auto-detect / }).check();
-	await page.getByRole("radio", { name: /^IST \(/ }).check();
+	await page.getByRole("radio", { name: /^IST / }).check();
 	await page.getByRole("button", { name: "Upload & import" }).click();
 	await expect(
 		page.getByRole("heading", { name: `Map Generic CSV / Sheet: ${file}` }),

@@ -101,7 +101,7 @@ describe("Binance fixtures", () => {
 		});
 	});
 
-	it("transaction statement imports only income rows and separates overlap skips from row errors (no drop)", async () => {
+	it("transaction statement rebuilds events, keeps unknown operations flagged, and accounts every leg (no drop)", async () => {
 		const s = await importOk(
 			fixture("binance-transaction-statement.csv"),
 			"statement.csv",
@@ -113,13 +113,15 @@ describe("Binance fixtures", () => {
 		);
 		const d = await detail(s.id);
 		expect(d.rowErrors).toHaveLength(s.rowsError);
-		expect(s.rowsSkipped).toBe(27);
-		expect(s.skippedRows).toHaveLength(27);
+		// Phase 2 (importers README, catalogue §1.5): a statement alone rebuilds trades/moves; the
+		// constituent legs are skips preserved in the grouped raw rows, unknown operations are flagged rows.
+		expect(s).toMatchObject({ rowsInserted: 23, rowsError: 0, rowsSkipped: 9 });
+		expect(s.skippedRows).toHaveLength(9);
 		for (const skipped of s.skippedRows)
 			expect(skipped).toMatchObject({
 				rowIndex: expect.any(Number),
 				sheet: expect.any(String),
-				reason: expect.stringContaining("overlaps"),
+				reason: expect.stringContaining("grouped transaction raw rows"),
 			});
 		for (const e of d.rowErrors) expect(e.raw).toBeDefined();
 		const txs = await allTx();
@@ -137,9 +139,9 @@ describe("Binance fixtures", () => {
 		expect(again).toMatchObject({
 			rowsRead: 32,
 			rowsInserted: 0,
-			rowsDuplicate: 2,
-			rowsError: 3,
-			rowsSkipped: 27,
+			rowsDuplicate: 23,
+			rowsError: 0,
+			rowsSkipped: 9,
 		});
 		expect(
 			again.rowsInserted +
@@ -173,8 +175,9 @@ describe("Binance fixtures", () => {
 		);
 	});
 
-	it("a UTC-headed file imported as IST keeps UTC instants and flags ambiguous_timezone", async () => {
-		await importOk(fixture("binance-deposits.csv"), "deposits.csv", {
+	it("a UTC-headed file imported as IST keeps UTC instants and warns about the conflicting selection", async () => {
+		// Phase 2 §9: an explicit file zone wins (no ambiguity flag) and a conflicting selection is warned.
+		const s = await importOk(fixture("binance-deposits.csv"), "deposits.csv", {
 			source: "binance",
 			timezone: "IST",
 		});
@@ -182,8 +185,14 @@ describe("Binance fixtures", () => {
 		expect(txs.find((t) => t.assetIn === "USDT")?.timestamp).toBe(
 			"2025-06-14T14:41:33.000Z",
 		);
-		for (const t of txs)
-			expect(t.reviewFlags.map((f) => f.code)).toContain("ambiguous_timezone");
+		expect(s).toMatchObject({
+			timezone: "IST",
+			detectedTimezone: "UTC",
+			timezoneSource: "file",
+		});
+		expect(
+			s.warnings.some((w) => /UTC/.test(w.message) && /IST/.test(w.message)),
+		).toBe(true);
 	});
 
 	it("2-digit-year deposit date 24-11-03 means 2024", async () => {
@@ -233,8 +242,8 @@ describe("CoinDCX workbook", () => {
 			source: "coindcx",
 			status: "imported",
 			rowsRead: 10,
-			rowsInserted: 7,
-			rowsError: 3,
+			rowsInserted: 8,
+			rowsError: 2,
 		});
 		expect(s.sheets?.map((x) => [x.name, x.rowsRead])).toEqual([
 			["Instant Orders", 2],
@@ -243,10 +252,10 @@ describe("CoinDCX workbook", () => {
 			["Crypto Dep&Wdl,Airdrop,Staking", 2],
 		]);
 		const d = await detail(s.id);
+		// Phase 2: the futures row is a review-only ledger row now, not a row error.
 		expect(d.rowErrors.map((e) => e.sheet).sort()).toEqual([
 			"Crypto Dep&Wdl,Airdrop,Staking",
 			"Crypto Dep&Wdl,Airdrop,Staking",
-			"Futures Orders (USDT-M)",
 		]);
 	});
 
@@ -442,8 +451,8 @@ describe("idempotency and dedupe", () => {
 			source: "coindcx",
 			timezone: "IST",
 		});
-		expect(b).toMatchObject({ rowsInserted: 0, rowsDuplicate: 7 });
-		expect((await allTx()).length).toBe(7);
+		expect(b).toMatchObject({ rowsInserted: 0, rowsDuplicate: 8 });
+		expect((await allTx()).length).toBe(8);
 	});
 
 	const header = "Date(UTC),Pair,Side,Price,Executed,Amount,Fee";

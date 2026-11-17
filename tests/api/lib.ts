@@ -7,9 +7,11 @@ import * as api from "../../packages/core/dist/api/index.js";
 
 export { api };
 // Vite sets BASE_URL="/" for its own use; only an absolute URL is ours.
-export const BASE_URL = /^https?:/.test(process.env.BASE_URL ?? "")
-	? (process.env.BASE_URL as string)
-	: "http://localhost:3101";
+export const BASE_URL = /^https?:/.test(process.env.API_BASE_URL ?? "")
+	? (process.env.API_BASE_URL as string)
+	: /^https?:/.test(process.env.BASE_URL ?? "")
+		? (process.env.BASE_URL as string)
+		: "http://localhost:3101";
 export const MOCK_PORT = Number(process.env.MOCK_PORT ?? 11501);
 export const MOCK_HOST_URL = `http://localhost:${MOCK_PORT}`;
 export const MOCK_FROM_APP =

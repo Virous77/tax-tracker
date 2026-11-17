@@ -260,7 +260,7 @@ describe("report-derived review problems", () => {
 });
 
 describe("intentional statement skips", () => {
-	it("skip-only files have no row errors or parse warnings, preserve skips on detail/list and re-import", async () => {
+	it("a statement with no dedicated history keeps its moves (Phase 2), with no row errors or parse warnings, and re-import is a duplicate", async () => {
 		const content = csv([
 			"UTC_Time,Account,Operation,Coin,Change,Remark",
 			"2026-05-01 00:00:00,Spot,Deposit,ETH,1,covered elsewhere",
@@ -270,15 +270,15 @@ describe("intentional statement skips", () => {
 			const imported = await importOk(content, "statement.csv", {
 				source: "binance",
 			});
+			// Phase 2: statement moves are kept unless a dedicated history covers them (importers README).
 			expect(imported).toMatchObject({
 				rowsRead: 2,
-				rowsInserted: 0,
-				rowsDuplicate: 0,
+				rowsInserted: attempt === 0 ? 2 : 0,
+				rowsDuplicate: attempt === 0 ? 0 : 2,
 				rowsError: 0,
-				rowsSkipped: 2,
+				rowsSkipped: 0,
 				warnings: [],
 			});
-			expect(imported.skippedRows.map((row) => row.rowIndex)).toEqual([0, 1]);
 			const detail = ok(
 				await call("GET", `/api/imports/${imported.id}`),
 				200,

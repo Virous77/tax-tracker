@@ -218,8 +218,8 @@ describe("tests/data edge-case pack (tests/data/README.md)", () => {
 		expect(b.scheduleVdaRows.filter((r) => r.asset === "BTC")).toHaveLength(1);
 	});
 
-	it("year-boundary.csv as IST: instants unchanged, every row gains ambiguous_timezone", async () => {
-		await importOk(edge("year-boundary.csv"), "year-boundary.csv", {
+	it("year-boundary.csv as IST: instants unchanged and the conflicting selection is warned", async () => {
+		const s = await importOk(edge("year-boundary.csv"), "year-boundary.csv", {
 			source: "binance",
 			timezone: "IST",
 		});
@@ -229,8 +229,11 @@ describe("tests/data edge-case pack (tests/data/README.md)", () => {
 			"2026-03-31T18:29:59.000Z",
 			"2026-03-31T18:30:00.000Z",
 		]);
-		for (const t of txs)
-			expect(t.reviewFlags.map((f) => f.code)).toContain("ambiguous_timezone");
+		// Phase 2 §9: the explicit UTC header wins and the IST selection is reported as a conflict.
+		expect(s.timezoneSource).toBe("file");
+		expect(
+			s.warnings.some((w) => /UTC/.test(w.message) && /IST/.test(w.message)),
+		).toBe(true);
 	});
 
 	it("tiny-amounts.csv keeps 1e-8 quantities and 0.00088 proceeds exactly", async () => {

@@ -213,7 +213,7 @@ test("delete confirm dialog traps focus and closes on Escape", async ({
 	await page.keyboard.press("Escape");
 	await expect(dialog).toBeHidden();
 	await expect(
-		page.getByRole("cell", { name: "malformed.csv", exact: true }),
+		page.getByRole("cell", { name: /^malformed\.csv( |$)/ }),
 	).toBeVisible();
 });
 

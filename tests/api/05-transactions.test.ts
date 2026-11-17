@@ -17,6 +17,7 @@ import {
 const FY25_START = "2025-03-31T18:30:00.000Z";
 const FY26_START = "2026-03-31T18:30:00.000Z";
 let coindcxImport = "";
+// Phase 2: the CoinDCX workbook's USDT-M futures row is now a review-only ledger row (importers README), so 8 CoinDCX rows and 17 in total.
 
 beforeAll(async () => {
 	await wipe();
@@ -47,8 +48,8 @@ const find = async (sourceRef: string) =>
 describe("GET /api/transactions filters", () => {
 	it("no filter returns everything with total", async () => {
 		const r = await listTx();
-		expect(r.total).toBe(16);
-		expect(r.items).toHaveLength(16);
+		expect(r.total).toBe(17);
+		expect(r.items).toHaveLength(17);
 	});
 
 	it("taxYear keeps only rows inside the IST year", async () => {
@@ -57,7 +58,7 @@ describe("GET /api/transactions filters", () => {
 		for (const t of a)
 			expect(t.timestamp >= FY25_START && t.timestamp < FY26_START).toBe(true);
 		for (const t of b) expect(t.timestamp >= FY26_START).toBe(true);
-		expect(a.length + b.length).toBe(16);
+		expect(a.length + b.length).toBe(17);
 	});
 
 	it("asset matches either side of the trade", async () => {
@@ -73,12 +74,12 @@ describe("GET /api/transactions filters", () => {
 	it("type, source, flagged", async () => {
 		for (const t of await allTx({ type: "swap" })) expect(t.type).toBe("swap");
 		const cdx = await allTx({ source: "coindcx" });
-		expect(cdx).toHaveLength(7);
+		expect(cdx).toHaveLength(8);
 		const flagged = await allTx({ flagged: true });
 		const clean = await allTx({ flagged: false });
 		for (const t of flagged) expect(t.reviewFlags.length).toBeGreaterThan(0);
 		for (const t of clean) expect(t.reviewFlags).toEqual([]);
-		expect(flagged.length + clean.length).toBe(16);
+		expect(flagged.length + clean.length).toBe(17);
 	});
 
 	it("q searches source refs and notes", async () => {
@@ -128,9 +129,9 @@ describe("pagination and sort", () => {
 		const p1 = await listTx({ page: 1, pageSize: 5, sort: "timestamp:asc" });
 		const p2 = await listTx({ page: 2, pageSize: 5, sort: "timestamp:asc" });
 		const p4 = await listTx({ page: 4, pageSize: 5, sort: "timestamp:asc" });
-		expect(p1).toMatchObject({ page: 1, pageSize: 5, total: 16 });
+		expect(p1).toMatchObject({ page: 1, pageSize: 5, total: 17 });
 		expect(p1.items).toHaveLength(5);
-		expect(p4.items).toHaveLength(1);
+		expect(p4.items).toHaveLength(2);
 		const ids = new Set([...p1.items, ...p2.items].map((t) => t.id));
 		expect(ids.size).toBe(10);
 		expect((await listTx({ pageSize: 200 })).pageSize).toBe(200);
@@ -139,7 +140,7 @@ describe("pagination and sort", () => {
 	it("a page past the end is empty, not an error", async () => {
 		const r = await listTx({ page: 99, pageSize: 50 });
 		expect(r.items).toEqual([]);
-		expect(r.total).toBe(16);
+		expect(r.total).toBe(17);
 	});
 
 	it("default is page 1, pageSize 50, newest first", async () => {
@@ -167,7 +168,7 @@ describe("pagination and sort", () => {
 
 	it("sort=asset:asc orders by asset", async () => {
 		const items = (await listTx({ sort: "asset:asc" })).items;
-		expect(items.length).toBe(16);
+		expect(items.length).toBe(17);
 	});
 });
 

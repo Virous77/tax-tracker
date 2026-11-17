@@ -21,7 +21,7 @@ async function upload(
 	await page.goto("/import");
 	await fileInput(page).setInputFiles(file);
 	await page.getByRole("radio", { name: new RegExp(`^${source} `) }).check();
-	await page.getByRole("radio", { name: new RegExp(`^${tz} \\(`) }).check();
+	await page.getByRole("radio", { name: new RegExp(`^${tz} `) }).check();
 	await page.getByRole("button", { name: "Upload & import" }).click();
 }
 
@@ -44,7 +44,7 @@ test("Binance trade history (UTC) shows the import summary", async ({
 		}),
 	).toBeVisible();
 	await expect(
-		page.getByText("Source: Binance · File timezone: UTC"),
+		page.getByText("Source: Binance · Time zone: UTC (from the file name)"),
 	).toBeVisible();
 	await expect(stat(page, "Rows read")).toHaveText("8");
 	await expect(stat(page, "Inserted")).toHaveText("8");
@@ -94,11 +94,11 @@ test("CoinDCX workbook (IST) shows per-sheet summary and row errors", async ({
 		}),
 	).toBeVisible();
 	await expect(
-		page.getByText("Source: CoinDCX · File timezone: IST"),
+		page.getByText("Source: CoinDCX · Time zone: IST (your answer)"),
 	).toBeVisible();
 	await expect(stat(page, "Rows read")).toHaveText("10");
-	await expect(stat(page, "Inserted")).toHaveText("7");
-	await expect(stat(page, "Row errors")).toHaveText("3");
+	await expect(stat(page, "Inserted")).toHaveText("8");
+	await expect(stat(page, "Row errors")).toHaveText("2");
 
 	const sheetHeading = page.getByRole("heading", { name: "Per-sheet summary" });
 	await expect(sheetHeading).toBeVisible();
@@ -114,14 +114,14 @@ test("CoinDCX workbook (IST) shows per-sheet summary and row errors", async ({
 		).toContainText(`${rows} rows`);
 	}
 	await expect(
-		page.getByRole("heading", { name: "Row Errors (3)" }),
+		page.getByRole("heading", { name: "Row Errors (2)" }),
 	).toBeVisible();
 	const errorTable = page
-		.getByRole("heading", { name: "Row Errors (3)" })
+		.getByRole("heading", { name: "Row Errors (2)" })
 		.locator("xpath=following-sibling::div[1]")
 		.getByRole("table");
-	await expect(errorTable.locator("tbody tr")).toHaveCount(3);
-	await expect(page.getByText(/parse_warning/)).toBeVisible();
+	await expect(errorTable.locator("tbody tr")).toHaveCount(2);
+	await expect(page.getByText(/parse_warning/).first()).toBeVisible();
 	await snap(page, "import-coindcx-summary");
 });
 
@@ -205,7 +205,7 @@ test("upload works with the keyboard alone", async ({ page }) => {
 	await expect(page.getByRole("radio", { name: /^Binance / })).toBeChecked();
 	await page.keyboard.press("Tab");
 	// The file name contains "binance", so the app pre-selects UTC.
-	await expect(page.getByRole("radio", { name: /^UTC \(/ })).toBeFocused();
+	await expect(page.getByRole("radio", { name: /^UTC / })).toBeFocused();
 	await page.keyboard.press("Tab");
 	await expect(
 		page.getByRole("button", { name: "Upload & import" }),

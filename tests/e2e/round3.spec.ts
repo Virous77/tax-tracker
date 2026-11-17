@@ -39,7 +39,7 @@ test.describe("statement overlap rows are skips, not errors", () => {
 			.getByLabel(/Drop your exchange export here/)
 			.setInputFiles(STATEMENT);
 		await page.getByRole("radio", { name: /^Binance / }).check();
-		await page.getByRole("radio", { name: /^UTC \(/ }).check();
+		await page.getByRole("radio", { name: /^UTC / }).check();
 		await page.getByRole("button", { name: "Upload & import" }).click();
 		await expect(
 			page.getByRole("heading", {

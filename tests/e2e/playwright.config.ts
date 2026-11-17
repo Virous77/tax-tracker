@@ -44,7 +44,11 @@ export default defineConfig({
 		{
 			name: "main",
 			testMatch: /\.spec\.ts$/,
-			testIgnore: [/empty-states\.spec\.ts/, /password\.spec\.ts/],
+			testIgnore: [
+				/empty-states\.spec\.ts/,
+				/password\.spec\.ts/,
+				/phase2-.*\.spec\.ts/,
+			],
 			use: { baseURL: MAIN_URL },
 		},
 		{

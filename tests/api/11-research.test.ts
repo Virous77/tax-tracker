@@ -121,8 +121,18 @@ describe("Binance overlap and identical rows (export-formats.md A8)", () => {
 		);
 		const txs = await allTx();
 		expect(txs.length).toBe(11 + st.rowsInserted);
-		for (const t of txs.filter((x) => x.importId === st.id))
-			expect(["income"]).toContain(t.type);
+		// Phase 2 (catalogue §1.5): ambiguous/unknown statement operations are amount-free fee rows flagged
+		// unknown_type, and statement-only dust conversion stays; nothing duplicates the dedicated histories.
+		for (const t of txs.filter((x) => x.importId === st.id)) {
+			if (t.type === "fee")
+				expect(t.reviewFlags.map((f) => f.code)).toContain("unknown_type");
+			else if (t.type === "swap")
+				expect(t).toMatchObject({
+					timestamp: "2025-11-18T12:30:45.000Z",
+					assetIn: "BNB",
+				});
+			else expect(t.type).toBe("income");
+		}
 	});
 
 	it("both identical ETH sells become separate disposals in the report", async () => {

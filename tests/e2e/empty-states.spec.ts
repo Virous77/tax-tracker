@@ -33,7 +33,7 @@ test("import screen starts with an empty drop zone and disabled submit", async (
 		page.getByRole("radio", { name: /^Auto-detect / }),
 	).toBeChecked();
 	await expect(
-		page.getByRole("radio", { name: /IST \(Asia\/Kolkata/ }),
+		page.getByRole("radio", { name: /^IST \(\+05:30\) Asia\/Kolkata/ }),
 	).toBeChecked();
 	await snap(page, "empty-import");
 });

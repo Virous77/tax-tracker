@@ -8,13 +8,14 @@ import {
 	type TxType,
 	TxTypeSchema,
 } from "@tax/core";
-import { Save, Trash2 } from "lucide-react";
+import { ExternalLink, Save, Trash2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { api, getErrorMessage, ValidationError } from "@/lib/client/api";
+import { resolveTxExplorer } from "@/lib/client/chains";
 import {
 	formatIncomeKind,
 	formatInrNullable,
@@ -191,6 +192,37 @@ export function TransactionDrawer({
 									<dt className="text-[var(--text-muted)]">INR Rate Source</dt>
 									<dd className="mt-0.5 font-medium">
 										{formatInrRateSource(tx.inrRateSource)}
+									</dd>
+								</div>
+							) : null}
+							{tx.txHash ? (
+								<div className="col-span-2">
+									<dt className="text-[var(--text-muted)]">Transaction Hash</dt>
+									<dd className="mt-0.5 flex flex-wrap items-center gap-2">
+										<code className="font-mono-code break-all text-[11px] text-[var(--text-primary)]">
+											{tx.txHash}
+										</code>
+										{(() => {
+											const explorer = resolveTxExplorer(
+												tx.txHash,
+												tx.chain,
+												tx.source,
+											);
+											return explorer ? (
+												<a
+													href={explorer.url}
+													target="_blank"
+													rel="noopener noreferrer"
+													className="inline-flex items-center gap-1 font-medium text-[var(--accent-text)] hover:underline"
+												>
+													{explorer.label}
+													<ExternalLink
+														className="h-3 w-3"
+														aria-hidden="true"
+													/>
+												</a>
+											) : null;
+										})()}
 									</dd>
 								</div>
 							) : null}

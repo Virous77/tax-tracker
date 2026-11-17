@@ -10,14 +10,17 @@ import {
 	AlertTriangle,
 	Calculator,
 	CheckCircle2,
+	ChevronDown,
+	ChevronUp,
 	Download,
 	FileSpreadsheet,
 	Info,
+	RefreshCw,
 	Save,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TrailDrawer } from "@/components/report/TrailDrawer";
 import { Badge } from "@/components/ui/Badge";
 import { Drawer } from "@/components/ui/Drawer";
@@ -30,6 +33,9 @@ import {
 import {
 	api,
 	getErrorMessage,
+	type JobStatus,
+	type PriceFillSummary,
+	type PricesStatus,
 	type ReportMissingDetails,
 	type TaxYearInfo,
 } from "@/lib/client/api";
@@ -152,6 +158,28 @@ export function ReportClient() {
 		raw: unknown;
 	} | null>(null);
 
+	const [pricesStatus, setPricesStatus] = useState<PricesStatus | null>(null);
+	const [priceFillRunning, setPriceFillRunning] = useState(false);
+	const [priceFillJob, setPriceFillJob] = useState<JobStatus | null>(null);
+	const [priceFillResult, setPriceFillResult] =
+		useState<PriceFillSummary | null>(null);
+	const [priceFillError, setPriceFillError] = useState<string | null>(null);
+	const [missingExpanded, setMissingExpanded] = useState(false);
+
+	const mountedRef = useRef(true);
+	const pricePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+			if (pricePollRef.current) {
+				clearTimeout(pricePollRef.current);
+				pricePollRef.current = null;
+			}
+		};
+	}, []);
+
 	useEffect(() => {
 		let cancelled = false;
 		async function initMeta() {
@@ -180,17 +208,29 @@ export function ReportClient() {
 	}, [urlTaxYear]);
 
 	const loadReport = useCallback(async (year: string) => {
+		if (pricePollRef.current) {
+			clearTimeout(pricePollRef.current);
+			pricePollRef.current = null;
+		}
 		setLoading(true);
 		setError(null);
 		setBalanceSavedMsg(null);
+		setPriceFillRunning(false);
+		setPriceFillJob(null);
+		setPriceFillResult(null);
+		setPriceFillError(null);
+		setMissingExpanded(false);
 		try {
-			const [repState, savedActuals] = await Promise.all([
+			const [repState, savedActuals, pStatus] = await Promise.all([
 				api.getReportState(year),
 				api.getActualBalances(year).catch(() => []),
+				api.getPricesStatus(year).catch(() => null),
 			]);
+			if (!mountedRef.current) return;
 			const rep = repState.status === "ready" ? repState.report : null;
 			setReport(rep);
 			setReportMissing(repState.status === "missing" ? repState.missing : null);
+			setPricesStatus(pStatus);
 
 			const drafts: Record<string, string> = {};
 			if (rep) {
@@ -205,9 +245,10 @@ export function ReportClient() {
 			}
 			setActualDrafts(drafts);
 		} catch (err) {
+			if (!mountedRef.current) return;
 			setError(getErrorMessage(err));
 		} finally {
-			setLoading(false);
+			if (mountedRef.current) setLoading(false);
 		}
 	}, []);
 
@@ -227,13 +268,75 @@ export function ReportClient() {
 		setError(null);
 		setBalanceSavedMsg(null);
 		try {
-			const rep = await api.computeReport(taxYear);
+			const [rep, pStatus] = await Promise.all([
+				api.computeReport(taxYear),
+				api.getPricesStatus(taxYear).catch(() => null),
+			]);
+			if (!mountedRef.current) return;
 			setReport(rep);
 			setReportMissing(null);
+			if (pStatus) setPricesStatus(pStatus);
 		} catch (err) {
+			if (!mountedRef.current) return;
 			setError(getErrorMessage(err));
 		} finally {
-			setComputing(false);
+			if (mountedRef.current) setComputing(false);
+		}
+	}
+
+	function pollPriceJob(jobId: string, year: string) {
+		if (pricePollRef.current) clearTimeout(pricePollRef.current);
+
+		const tick = async () => {
+			if (!mountedRef.current) return;
+			try {
+				const job = await api.getJob(jobId);
+				if (!mountedRef.current) return;
+
+				if (job.status === "pending" || job.status === "running") {
+					setPriceFillJob(job);
+					pricePollRef.current = setTimeout(tick, 1000);
+					return;
+				}
+
+				pricePollRef.current = null;
+				setPriceFillRunning(false);
+				setPriceFillJob(null);
+
+				if (job.status === "completed") {
+					if (job.result && "requested" in job.result) {
+						setPriceFillResult(job.result);
+					}
+					const pStatus = await api.getPricesStatus(year).catch(() => null);
+					if (mountedRef.current && pStatus) setPricesStatus(pStatus);
+				} else if (job.status === "failed") {
+					setPriceFillError(job.error ?? "Failed to fetch missing prices.");
+				}
+			} catch (err) {
+				if (!mountedRef.current) return;
+				pricePollRef.current = null;
+				setPriceFillRunning(false);
+				setPriceFillJob(null);
+				setPriceFillError(getErrorMessage(err));
+			}
+		};
+
+		pricePollRef.current = setTimeout(tick, 1000);
+	}
+
+	async function handleFetchMissingPrices() {
+		setPriceFillRunning(true);
+		setPriceFillError(null);
+		setPriceFillResult(null);
+		setPriceFillJob(null);
+		try {
+			const { jobId } = await api.fillPrices(taxYear);
+			if (!mountedRef.current) return;
+			pollPriceJob(jobId, taxYear);
+		} catch (err) {
+			if (!mountedRef.current) return;
+			setPriceFillRunning(false);
+			setPriceFillError(getErrorMessage(err));
 		}
 	}
 
@@ -306,6 +409,143 @@ export function ReportClient() {
 
 			{error ? (
 				<ErrorBanner message={error} onRetry={() => loadReport(taxYear)} />
+			) : null}
+
+			{/* Prices status line */}
+			{pricesStatus ? (
+				<section className="space-y-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-xs">
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+							<span className="font-semibold text-[var(--text-primary)]">
+								Market prices ({taxYear})
+							</span>
+							<span className="num text-[var(--text-secondary)]">
+								Needed: <strong>{pricesStatus.needed}</strong>
+							</span>
+							<span className="num text-[var(--positive)]">
+								Cached: <strong>{pricesStatus.cached}</strong>
+							</span>
+							<span
+								className={`num ${
+									pricesStatus.missing.length > 0
+										? "text-[var(--warning)]"
+										: "text-[var(--text-secondary)]"
+								}`}
+							>
+								Missing: <strong>{pricesStatus.missing.length}</strong>
+							</span>
+							{pricesStatus.missing.length > 0 ? (
+								<button
+									type="button"
+									aria-expanded={missingExpanded}
+									onClick={() => setMissingExpanded((prev) => !prev)}
+									className="inline-flex items-center gap-1 font-medium text-[var(--accent-text)] hover:underline"
+								>
+									{missingExpanded ? (
+										<>
+											Hide missing
+											<ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+										</>
+									) : (
+										<>
+											Show missing ({pricesStatus.missing.length})
+											<ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+										</>
+									)}
+								</button>
+							) : null}
+						</div>
+
+						<div className="flex flex-wrap items-center gap-3">
+							{!pricesStatus.enabled ? (
+								<span className="text-[var(--text-secondary)]">
+									Price lookups are off —{" "}
+									<Link
+										href="/settings"
+										className="font-medium text-[var(--accent-text)] underline"
+									>
+										enable in Settings
+									</Link>
+								</span>
+							) : null}
+							<button
+								type="button"
+								disabled={
+									!pricesStatus.enabled ||
+									priceFillRunning ||
+									pricesStatus.missing.length === 0
+								}
+								title={
+									!pricesStatus.enabled
+										? "Price lookups are off in Settings."
+										: pricesStatus.missing.length === 0
+											? "No missing prices for this tax year."
+											: undefined
+								}
+								onClick={handleFetchMissingPrices}
+								className="inline-flex items-center gap-1.5 rounded border border-[var(--border-strong)] bg-[var(--bg-canvas)] px-3 py-1.5 font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								<RefreshCw
+									className={`h-3.5 w-3.5 ${priceFillRunning ? "animate-spin" : ""}`}
+									aria-hidden="true"
+								/>
+								{priceFillRunning ? "Fetching prices…" : "Fetch missing prices"}
+							</button>
+						</div>
+					</div>
+
+					{priceFillRunning ? (
+						<div
+							aria-live="polite"
+							className="rounded border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-3 py-1.5 text-[var(--accent-text)]"
+						>
+							{priceFillJob?.progress
+								? `Fetching prices (${priceFillJob.progress.stream}) · ${priceFillJob.progress.streamsDone}${
+										priceFillJob.progress.streamsTotal !== null
+											? `/${priceFillJob.progress.streamsTotal}`
+											: ""
+									}`
+								: "Fetching missing historical prices…"}
+						</div>
+					) : null}
+
+					{priceFillError ? <ErrorBanner message={priceFillError} /> : null}
+
+					{priceFillResult ? (
+						<p
+							aria-live="polite"
+							className="flex flex-wrap items-center gap-2 rounded border border-[var(--positive)]/35 bg-[var(--positive-soft)] px-3 py-1.5 text-[var(--positive)]"
+						>
+							<CheckCircle2
+								className="h-3.5 w-3.5 shrink-0"
+								aria-hidden="true"
+							/>
+							<span>
+								Price lookup complete: {priceFillResult.fetched} fetched,{" "}
+								{priceFillResult.fromCache} already cached
+								{priceFillResult.missing.length > 0
+									? `, ${priceFillResult.missing.length} still missing`
+									: ""}
+								. Recompute the report to apply updated valuations.
+							</span>
+						</p>
+					) : null}
+
+					{missingExpanded && pricesStatus.missing.length > 0 ? (
+						<div className="max-h-40 overflow-y-auto rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-2.5">
+							<ul className="flex flex-wrap gap-1.5">
+								{pricesStatus.missing.map((m) => (
+									<li
+										key={`${m.asset}:${m.date}`}
+										className="font-mono-code rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 text-[11px]"
+									>
+										{m.asset} · {formatIstDate(m.date)}
+									</li>
+								))}
+							</ul>
+						</div>
+					) : null}
+				</section>
 			) : null}
 
 			{loading ? (
@@ -521,6 +761,94 @@ export function ReportClient() {
 												</td>
 											</tr>
 										))}
+									</tbody>
+								</table>
+							</div>
+						</section>
+					) : null}
+
+					{/* Excluded rows (e.g. spam tokens) */}
+					{report.excluded.length > 0 ? (
+						<section
+							id="excluded"
+							className="space-y-3 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning-soft)] p-4"
+						>
+							<div className="flex flex-wrap items-center justify-between gap-2">
+								<div className="flex items-center gap-2">
+									<Info
+										className="h-4 w-4 text-[var(--warning)]"
+										aria-hidden="true"
+									/>
+									<h2 className="text-sm font-semibold text-[var(--text-primary)]">
+										Excluded Transactions ({report.excluded.length}) — Left Out
+										of Tax Calculation
+									</h2>
+								</div>
+								<Link
+									href={`/review?taxYear=${encodeURIComponent(taxYear)}`}
+									className="text-xs font-medium text-[var(--accent-text)] underline"
+								>
+									Inspect in Review Queue
+								</Link>
+							</div>
+							<div className="overflow-x-auto rounded border border-[var(--warning)]/25 bg-[var(--bg-surface)]">
+								<table className="w-full border-collapse text-left text-xs">
+									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
+										<tr>
+											<th className="px-3 py-2 font-medium">Transaction</th>
+											<th className="px-3 py-2 font-medium">Reason</th>
+											<th className="px-3 py-2 text-right font-medium">
+												Inspect
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										{report.excluded.map((ex) => {
+											const tx = report.ledger.find((t) => t.id === ex.txId);
+											const txHref = tx
+												? `/transactions?taxYear=${encodeURIComponent(taxYear)}&q=${encodeURIComponent(tx.sourceRef)}`
+												: `/transactions?taxYear=${encodeURIComponent(taxYear)}&flagged=true`;
+											return (
+												<tr
+													key={`${ex.txId}:${ex.reason}`}
+													className="border-b border-[var(--border)] last:border-b-0"
+												>
+													<td className="px-3 py-2">
+														{tx ? (
+															<div className="space-y-0.5">
+																<p className="font-medium text-[var(--text-primary)]">
+																	{formatTxType(tx.type)} ·{" "}
+																	{tx.assetIn
+																		? `${formatQty(tx.amountIn)} ${tx.assetIn}`
+																		: tx.assetOut
+																			? `${formatQty(tx.amountOut)} ${tx.assetOut}`
+																			: tx.sourceRef}
+																</p>
+																<p className="text-[11px] text-[var(--text-secondary)]">
+																	{formatIstDate(tx.timestamp)} ·{" "}
+																	{formatSourceLabel(tx.source)}
+																</p>
+															</div>
+														) : (
+															<code className="font-mono-code text-[11px]">
+																{ex.txId}
+															</code>
+														)}
+													</td>
+													<td className="px-3 py-2 text-[var(--text-secondary)]">
+														{ex.reason}
+													</td>
+													<td className="px-3 py-2 text-right whitespace-nowrap">
+														<Link
+															href={txHref}
+															className="font-medium text-[var(--accent-text)] hover:underline"
+														>
+															View transaction
+														</Link>
+													</td>
+												</tr>
+											);
+										})}
 									</tbody>
 								</table>
 							</div>

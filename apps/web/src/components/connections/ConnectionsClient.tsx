@@ -1,0 +1,947 @@
+"use client";
+
+import {
+	Check,
+	ChevronDown,
+	ChevronUp,
+	Coins,
+	Copy,
+	Key,
+	Pencil,
+	Plus,
+	RefreshCw,
+	ShieldCheck,
+	Trash2,
+	Wallet,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AddConnectionDialog } from "@/components/connections/AddConnectionDialog";
+import { KeyCheckBanner } from "@/components/connections/KeyCheckBanner";
+import { ProviderKeysCard } from "@/components/connections/ProviderKeysCard";
+import { SymbolTagInput } from "@/components/connections/SymbolTagInput";
+import { SyncSummaryPanel } from "@/components/connections/SyncSummaryPanel";
+import { VaultCard } from "@/components/connections/VaultCard";
+import { Badge } from "@/components/ui/Badge";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import {
+	api,
+	type Connection,
+	type ConnectionBalances,
+	getErrorMessage,
+	type JobStatus,
+	type KeyCheck,
+	type ProvidersMap,
+	type SyncSummary,
+	type VaultStatus,
+} from "@/lib/client/api";
+import { getEvmChainName, shortenAddress } from "@/lib/client/chains";
+import { formatIstDateTime } from "@/lib/client/format";
+
+interface ActiveSyncState {
+	jobId: string;
+	job: JobStatus | null;
+}
+
+function connectionKindLabel(conn: Connection): string {
+	if (conn.kind === "binance") return "Binance";
+	if (conn.kind === "coindcx") return "CoinDCX";
+	return getEvmChainName(conn.chainId);
+}
+
+function connectionSourceKey(conn: Connection): string {
+	if (conn.kind === "evm") return `evm:${conn.chainId ?? 1}`;
+	return `${conn.kind}-api`;
+}
+
+function syncStatusBadge(status: string | null, running: boolean) {
+	if (running || status === "running") {
+		return <Badge tone="accent">Syncing</Badge>;
+	}
+	if (status === "completed") {
+		return <Badge tone="positive">Synced</Badge>;
+	}
+	if (status === "incomplete") {
+		return <Badge tone="warning">Incomplete</Badge>;
+	}
+	if (status === "failed") {
+		return <Badge tone="loss">Failed</Badge>;
+	}
+	return <Badge tone="neutral">Not synced</Badge>;
+}
+
+export function ConnectionsClient() {
+	const [vault, setVault] = useState<VaultStatus | null>(null);
+	const [connections, setConnections] = useState<Connection[]>([]);
+	const [providers, setProviders] = useState<ProvidersMap>({});
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+
+	const [addOpen, setAddOpen] = useState(false);
+	const [deleteTarget, setDeleteTarget] = useState<Connection | null>(null);
+	const [deleting, setDeleting] = useState(false);
+
+	// Per-connection UI state
+	const [copiedId, setCopiedId] = useState<string | null>(null);
+	const [checkingId, setCheckingId] = useState<string | null>(null);
+	const [keyChecks, setKeyChecks] = useState<
+		Record<string, { result?: KeyCheck; error?: string }>
+	>({});
+
+	const [activeSyncs, setActiveSyncs] = useState<
+		Record<string, ActiveSyncState>
+	>({});
+	const [syncErrors, setSyncErrors] = useState<Record<string, string>>({});
+	const [syncSummaries, setSyncSummaries] = useState<
+		Record<string, SyncSummary>
+	>({});
+
+	const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>(
+		{},
+	);
+	const [balancesById, setBalancesById] = useState<
+		Record<string, ConnectionBalances>
+	>({});
+	const [balancesLoading, setBalancesLoading] = useState<
+		Record<string, boolean>
+	>({});
+	const [balancesErrors, setBalancesErrors] = useState<Record<string, string>>(
+		{},
+	);
+
+	// Edit label / Binance extra trading pairs
+	const [editingId, setEditingId] = useState<string | null>(null);
+	const [editLabel, setEditLabel] = useState("");
+	const [editSymbols, setEditSymbols] = useState<string[]>([]);
+	const [editBusy, setEditBusy] = useState(false);
+	const [editError, setEditError] = useState<string | null>(null);
+
+	// Replace keys
+	const [replaceKeysId, setReplaceKeysId] = useState<string | null>(null);
+	const [replaceKey, setReplaceKey] = useState("");
+	const [replaceSecret, setReplaceSecret] = useState("");
+	const [replaceBusy, setReplaceBusy] = useState(false);
+	const [replaceError, setReplaceError] = useState<string | null>(null);
+
+	const mountedRef = useRef(true);
+	const pollTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+		new Map(),
+	);
+
+	useEffect(() => {
+		mountedRef.current = true;
+		const timers = pollTimersRef.current;
+		return () => {
+			mountedRef.current = false;
+			for (const timer of timers.values()) clearTimeout(timer);
+			timers.clear();
+		};
+	}, []);
+
+	const loadAll = useCallback(async () => {
+		setLoading(true);
+		setError(null);
+		try {
+			const [v, conns, provs] = await Promise.all([
+				api.getVault(),
+				api.listConnections(),
+				api.getProviders(),
+			]);
+			if (!mountedRef.current) return;
+			setVault(v);
+			setConnections(conns);
+			setProviders(provs);
+		} catch (err) {
+			if (!mountedRef.current) return;
+			setError(getErrorMessage(err));
+		} finally {
+			if (mountedRef.current) setLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		loadAll();
+	}, [loadAll]);
+
+	const refreshConnectionsAndProviders = useCallback(async () => {
+		try {
+			const [conns, provs] = await Promise.all([
+				api.listConnections(),
+				api.getProviders(),
+			]);
+			if (!mountedRef.current) return;
+			setConnections(conns);
+			setProviders(provs);
+		} catch {
+			// keep existing state if background refresh fails
+		}
+	}, []);
+
+	// If a connection was already running on load (no jobId in memory), poll listConnections until it finishes
+	const hasExternalRunning = connections.some(
+		(c) => c.running && !activeSyncs[c.id],
+	);
+	useEffect(() => {
+		if (!hasExternalRunning) return;
+		const timer = setInterval(() => {
+			void refreshConnectionsAndProviders();
+		}, 2000);
+		return () => clearInterval(timer);
+	}, [hasExternalRunning, refreshConnectionsAndProviders]);
+
+	const fetchBalances = useCallback(async (connectionId: string) => {
+		setBalancesLoading((prev) => ({ ...prev, [connectionId]: true }));
+		setBalancesErrors((prev) => {
+			const next = { ...prev };
+			delete next[connectionId];
+			return next;
+		});
+		try {
+			const data = await api.getConnectionBalances(connectionId);
+			if (!mountedRef.current) return;
+			setBalancesById((prev) => ({ ...prev, [connectionId]: data }));
+		} catch (err) {
+			if (!mountedRef.current) return;
+			setBalancesErrors((prev) => ({
+				...prev,
+				[connectionId]: getErrorMessage(err),
+			}));
+		} finally {
+			if (mountedRef.current) {
+				setBalancesLoading((prev) => ({ ...prev, [connectionId]: false }));
+			}
+		}
+	}, []);
+
+	const pollSyncJob = useCallback(
+		(connectionId: string, jobId: string) => {
+			const existing = pollTimersRef.current.get(connectionId);
+			if (existing) clearTimeout(existing);
+
+			const tick = async () => {
+				if (!mountedRef.current) return;
+				try {
+					const job = await api.getJob(jobId);
+					if (!mountedRef.current) return;
+
+					if (job.status === "pending" || job.status === "running") {
+						setActiveSyncs((prev) => ({
+							...prev,
+							[connectionId]: { jobId, job },
+						}));
+						const nextTimer = setTimeout(tick, 1000);
+						pollTimersRef.current.set(connectionId, nextTimer);
+						return;
+					}
+
+					pollTimersRef.current.delete(connectionId);
+					setActiveSyncs((prev) => {
+						const next = { ...prev };
+						delete next[connectionId];
+						return next;
+					});
+
+					if (job.status === "completed") {
+						if (job.result && "streams" in job.result) {
+							setSyncSummaries((prev) => ({
+								...prev,
+								[connectionId]: job.result as SyncSummary,
+							}));
+						}
+						setExpandedPanels((prev) => ({ ...prev, [connectionId]: true }));
+						await Promise.all([
+							refreshConnectionsAndProviders(),
+							fetchBalances(connectionId),
+						]);
+					} else if (job.status === "failed") {
+						setSyncErrors((prev) => ({
+							...prev,
+							[connectionId]: job.error ?? "Sync failed.",
+						}));
+						await refreshConnectionsAndProviders();
+					}
+				} catch (err) {
+					if (!mountedRef.current) return;
+					pollTimersRef.current.delete(connectionId);
+					setActiveSyncs((prev) => {
+						const next = { ...prev };
+						delete next[connectionId];
+						return next;
+					});
+					setSyncErrors((prev) => ({
+						...prev,
+						[connectionId]: getErrorMessage(err),
+					}));
+					await refreshConnectionsAndProviders();
+				}
+			};
+
+			const timer = setTimeout(tick, 1000);
+			pollTimersRef.current.set(connectionId, timer);
+		},
+		[fetchBalances, refreshConnectionsAndProviders],
+	);
+
+	async function handleSyncNow(conn: Connection) {
+		setSyncErrors((prev) => {
+			const next = { ...prev };
+			delete next[conn.id];
+			return next;
+		});
+		try {
+			const { jobId } = await api.syncConnection(conn.id);
+			if (!mountedRef.current) return;
+			setActiveSyncs((prev) => ({
+				...prev,
+				[conn.id]: { jobId, job: null },
+			}));
+			setConnections((prev) =>
+				prev.map((c) => (c.id === conn.id ? { ...c, running: true } : c)),
+			);
+			pollSyncJob(conn.id, jobId);
+		} catch (err) {
+			if (!mountedRef.current) return;
+			setSyncErrors((prev) => ({
+				...prev,
+				[conn.id]: getErrorMessage(err),
+			}));
+		}
+	}
+
+	async function handleCheckKey(conn: Connection) {
+		setCheckingId(conn.id);
+		setKeyChecks((prev) => {
+			const next = { ...prev };
+			delete next[conn.id];
+			return next;
+		});
+		try {
+			const result = await api.checkConnection(conn.id);
+			if (!mountedRef.current) return;
+			setKeyChecks((prev) => ({ ...prev, [conn.id]: { result } }));
+		} catch (err) {
+			if (!mountedRef.current) return;
+			setKeyChecks((prev) => ({
+				...prev,
+				[conn.id]: { error: getErrorMessage(err) },
+			}));
+		} finally {
+			if (mountedRef.current) setCheckingId(null);
+		}
+	}
+
+	async function handleCopyAddress(conn: Connection) {
+		if (!conn.address) return;
+		try {
+			await navigator.clipboard.writeText(conn.address);
+			setCopiedId(conn.id);
+			setTimeout(() => {
+				if (mountedRef.current) {
+					setCopiedId((cur) => (cur === conn.id ? null : cur));
+				}
+			}, 1500);
+		} catch {
+			// clipboard unavailable
+		}
+	}
+
+	function openEdit(conn: Connection) {
+		setReplaceKeysId(null);
+		setEditingId(conn.id);
+		setEditLabel(conn.label);
+		setEditSymbols(conn.options.extraSymbols ?? []);
+		setEditError(null);
+	}
+
+	async function handleSaveEdit(conn: Connection, e: React.FormEvent) {
+		e.preventDefault();
+		const trimmed = editLabel.trim();
+		if (!trimmed) {
+			setEditError("Label is required.");
+			return;
+		}
+		setEditBusy(true);
+		setEditError(null);
+		try {
+			const updated = await api.patchConnection(conn.id, {
+				label: trimmed,
+				...(conn.kind === "binance"
+					? {
+							options: {
+								...conn.options,
+								extraSymbols: editSymbols,
+							},
+						}
+					: {}),
+			});
+			setConnections((prev) =>
+				prev.map((c) => (c.id === updated.id ? updated : c)),
+			);
+			setEditingId(null);
+		} catch (err) {
+			setEditError(getErrorMessage(err));
+		} finally {
+			setEditBusy(false);
+		}
+	}
+
+	function openReplaceKeys(conn: Connection) {
+		setEditingId(null);
+		setReplaceKeysId(conn.id);
+		setReplaceKey("");
+		setReplaceSecret("");
+		setReplaceError(null);
+	}
+
+	async function handleSaveReplacedKeys(conn: Connection, e: React.FormEvent) {
+		e.preventDefault();
+		const k = replaceKey.trim();
+		const s = replaceSecret.trim();
+		if (!k || !s) {
+			setReplaceError("Both API key and API secret are required.");
+			return;
+		}
+		setReplaceKey("");
+		setReplaceSecret("");
+		setReplaceBusy(true);
+		setReplaceError(null);
+		try {
+			const updated = await api.patchConnection(conn.id, {
+				apiKey: k,
+				apiSecret: s,
+			});
+			setConnections((prev) =>
+				prev.map((c) => (c.id === updated.id ? updated : c)),
+			);
+			setReplaceKeysId(null);
+			// Automatically check replaced exchange keys
+			void handleCheckKey(updated);
+		} catch (err) {
+			setReplaceError(getErrorMessage(err));
+		} finally {
+			setReplaceBusy(false);
+		}
+	}
+
+	async function confirmDeleteConnection() {
+		if (!deleteTarget) return;
+		setDeleting(true);
+		setError(null);
+		try {
+			await api.deleteConnection(deleteTarget.id);
+			const timer = pollTimersRef.current.get(deleteTarget.id);
+			if (timer) {
+				clearTimeout(timer);
+				pollTimersRef.current.delete(deleteTarget.id);
+			}
+			setConnections((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+			setDeleteTarget(null);
+		} catch (err) {
+			setError(getErrorMessage(err));
+		} finally {
+			setDeleting(false);
+		}
+	}
+
+	function toggleSummaryPanel(conn: Connection) {
+		const nextOpen = !expandedPanels[conn.id];
+		setExpandedPanels((prev) => ({ ...prev, [conn.id]: nextOpen }));
+		if (nextOpen && !balancesById[conn.id] && !balancesLoading[conn.id]) {
+			void fetchBalances(conn.id);
+		}
+	}
+
+	return (
+		<div className="space-y-6">
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<div>
+					<h1 className="text-xl font-semibold tracking-tight">Connections</h1>
+					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
+						Encrypted vault, read-only exchange API syncs, EVM wallet tracking,
+						and block explorer provider keys.
+					</p>
+				</div>
+				<button
+					type="button"
+					onClick={() => setAddOpen(true)}
+					disabled={!vault}
+					className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+				>
+					<Plus className="h-4 w-4" aria-hidden="true" />
+					Add connection
+				</button>
+			</div>
+
+			{error ? <ErrorBanner message={error} onRetry={loadAll} /> : null}
+
+			{loading ? (
+				<div className="space-y-4">
+					<div className="h-36 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]" />
+					<div className="h-48 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]" />
+				</div>
+			) : (
+				<>
+					{vault ? (
+						<VaultCard
+							vault={vault}
+							onChanged={(next, event) => {
+								setVault(next);
+								if (event === "reset" || event === "unlock") {
+									void refreshConnectionsAndProviders();
+								}
+							}}
+						/>
+					) : null}
+
+					{/* Connections List */}
+					<section className="space-y-3">
+						<div className="flex flex-wrap items-center justify-between gap-2">
+							<h2 className="text-base font-semibold tracking-tight">
+								Accounts &amp; Wallets ({connections.length})
+							</h2>
+						</div>
+
+						{connections.length === 0 ? (
+							<EmptyState
+								icon={<Wallet className="h-8 w-8" />}
+								title="No connections configured"
+								description="Add a read-only Binance or CoinDCX API key, or track an EVM wallet address across Ethereum, Base, Arbitrum, Polygon, or BNB Chain."
+								action={
+									<button
+										type="button"
+										onClick={() => setAddOpen(true)}
+										className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+									>
+										<Plus className="h-4 w-4" aria-hidden="true" />
+										Add connection
+									</button>
+								}
+							/>
+						) : (
+							<div className="space-y-3">
+								{connections.map((conn) => {
+									const activeSync = activeSyncs[conn.id];
+									const isRunning = Boolean(activeSync) || conn.running;
+									const syncErr = syncErrors[conn.id];
+									const checkState = keyChecks[conn.id];
+									const summary = syncSummaries[conn.id];
+									const isPanelOpen = Boolean(expandedPanels[conn.id]);
+									const KindIcon = conn.kind === "evm" ? Wallet : Coins;
+									const canViewSummary =
+										Boolean(summary) || Boolean(conn.lastSyncAt);
+
+									return (
+										<article
+											key={conn.id}
+											className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4"
+										>
+											<div className="flex flex-wrap items-start justify-between gap-3">
+												<div className="min-w-0 space-y-1.5">
+													<div className="flex flex-wrap items-center gap-2">
+														<KindIcon
+															className="h-4 w-4 shrink-0 text-[var(--accent)]"
+															aria-hidden="true"
+														/>
+														<h3 className="text-sm font-semibold">
+															{conn.label}
+														</h3>
+														<Badge tone="neutral">
+															{connectionKindLabel(conn)}
+														</Badge>
+														<Badge tone={conn.keySet ? "positive" : "warning"}>
+															{conn.kind === "evm"
+																? conn.keySet
+																	? "Provider key set"
+																	: "No provider key"
+																: conn.keySet
+																	? "Key set"
+																	: "Key missing"}
+														</Badge>
+														{syncStatusBadge(conn.lastSyncStatus, isRunning)}
+													</div>
+
+													<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--text-secondary)]">
+														{conn.kind === "evm" && conn.address ? (
+															<span className="inline-flex items-center gap-1.5">
+																<code
+																	title={conn.address}
+																	className="font-mono-code rounded bg-[var(--bg-subtle)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)]"
+																>
+																	{shortenAddress(conn.address)}
+																</code>
+																<button
+																	type="button"
+																	onClick={() => handleCopyAddress(conn)}
+																	aria-label={`Copy address ${conn.address}`}
+																	className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+																>
+																	{copiedId === conn.id ? (
+																		<>
+																			<Check
+																				className="h-3 w-3 text-[var(--positive)]"
+																				aria-hidden="true"
+																			/>
+																			Copied
+																		</>
+																	) : (
+																		<>
+																			<Copy
+																				className="h-3 w-3"
+																				aria-hidden="true"
+																			/>
+																			Copy
+																		</>
+																	)}
+																</button>
+															</span>
+														) : null}
+
+														<span>
+															Last sync:{" "}
+															{conn.lastSyncAt
+																? formatIstDateTime(conn.lastSyncAt)
+																: "Never"}
+														</span>
+
+														{conn.kind === "binance" &&
+														conn.options.extraSymbols &&
+														conn.options.extraSymbols.length > 0 ? (
+															<span>
+																Extra pairs:{" "}
+																<span className="font-mono-code text-[var(--text-primary)]">
+																	{conn.options.extraSymbols.join(", ")}
+																</span>
+															</span>
+														) : null}
+													</div>
+
+													{conn.lastSyncError ? (
+														<p className="text-xs text-[var(--loss)]">
+															Last sync error: {conn.lastSyncError}
+														</p>
+													) : null}
+												</div>
+
+												{/* Actions */}
+												<div className="flex flex-wrap items-center gap-1.5">
+													<button
+														type="button"
+														disabled={isRunning}
+														onClick={() => handleSyncNow(conn)}
+														className="inline-flex items-center gap-1 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+													>
+														<RefreshCw
+															className={`h-3.5 w-3.5 ${isRunning ? "animate-spin" : ""}`}
+															aria-hidden="true"
+														/>
+														{isRunning ? "Syncing…" : "Sync now"}
+													</button>
+
+													<button
+														type="button"
+														disabled={checkingId === conn.id || isRunning}
+														onClick={() => handleCheckKey(conn)}
+														className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+													>
+														<ShieldCheck
+															className="h-3.5 w-3.5"
+															aria-hidden="true"
+														/>
+														{checkingId === conn.id ? "Checking…" : "Check key"}
+													</button>
+
+													<button
+														type="button"
+														disabled={isRunning}
+														onClick={() =>
+															editingId === conn.id
+																? setEditingId(null)
+																: openEdit(conn)
+														}
+														className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+													>
+														<Pencil className="h-3 w-3" aria-hidden="true" />
+														Edit
+													</button>
+
+													{conn.kind !== "evm" ? (
+														<button
+															type="button"
+															disabled={isRunning}
+															onClick={() =>
+																replaceKeysId === conn.id
+																	? setReplaceKeysId(null)
+																	: openReplaceKeys(conn)
+															}
+															className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+														>
+															<Key className="h-3 w-3" aria-hidden="true" />
+															Replace keys
+														</button>
+													) : null}
+
+													{canViewSummary ? (
+														<button
+															type="button"
+															aria-expanded={isPanelOpen}
+															onClick={() => toggleSummaryPanel(conn)}
+															className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-xs font-medium hover:bg-[var(--bg-hover)]"
+														>
+															{isPanelOpen ? (
+																<ChevronUp
+																	className="h-3.5 w-3.5"
+																	aria-hidden="true"
+																/>
+															) : (
+																<ChevronDown
+																	className="h-3.5 w-3.5"
+																	aria-hidden="true"
+																/>
+															)}
+															Summary &amp; balances
+														</button>
+													) : null}
+
+													<button
+														type="button"
+														disabled={isRunning}
+														onClick={() => setDeleteTarget(conn)}
+														aria-label={`Delete ${conn.label}`}
+														className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--loss)] hover:bg-[var(--loss-soft)] disabled:opacity-50"
+													>
+														<Trash2
+															className="h-3.5 w-3.5"
+															aria-hidden="true"
+														/>
+														Delete
+													</button>
+												</div>
+											</div>
+
+											{/* Live sync progress */}
+											{isRunning ? (
+												<div
+													aria-live="polite"
+													className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-3 py-2 text-xs text-[var(--accent-text)]"
+												>
+													{activeSync?.job?.progress ? (
+														<>
+															<span>
+																Syncing stream{" "}
+																<code className="font-mono-code font-semibold">
+																	{activeSync.job.progress.stream}
+																</code>
+															</span>
+															<span className="num font-medium">
+																Streams: {activeSync.job.progress.streamsDone}
+																{activeSync.job.progress.streamsTotal !== null
+																	? `/${activeSync.job.progress.streamsTotal}`
+																	: ""}{" "}
+																· {activeSync.job.progress.rowsFetched} rows
+																fetched
+															</span>
+														</>
+													) : (
+														<span>
+															Sync in progress… polling status every second.
+														</span>
+													)}
+												</div>
+											) : null}
+
+											{syncErr ? <ErrorBanner message={syncErr} /> : null}
+
+											{checkState ? (
+												<KeyCheckBanner
+													result={checkState.result}
+													error={checkState.error}
+												/>
+											) : null}
+
+											{/* Inline edit form */}
+											{editingId === conn.id ? (
+												<form
+													onSubmit={(e) => handleSaveEdit(conn, e)}
+													className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3"
+												>
+													{editError ? (
+														<ErrorBanner message={editError} />
+													) : null}
+													<div>
+														<label
+															htmlFor={`edit-label-${conn.id}`}
+															className="block text-xs font-medium"
+														>
+															Connection label
+														</label>
+														<input
+															id={`edit-label-${conn.id}`}
+															type="text"
+															required
+															value={editLabel}
+															onChange={(e) => setEditLabel(e.target.value)}
+															className="mt-1 w-full max-w-sm rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-sm"
+														/>
+													</div>
+													{conn.kind === "binance" ? (
+														<SymbolTagInput
+															symbols={editSymbols}
+															onChange={setEditSymbols}
+															disabled={editBusy}
+														/>
+													) : null}
+													<div className="flex justify-end gap-2">
+														<button
+															type="button"
+															disabled={editBusy}
+															onClick={() => setEditingId(null)}
+															className="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-medium hover:bg-[var(--bg-hover)]"
+														>
+															Cancel
+														</button>
+														<button
+															type="submit"
+															disabled={editBusy}
+															className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+														>
+															{editBusy ? "Saving…" : "Save"}
+														</button>
+													</div>
+												</form>
+											) : null}
+
+											{/* Inline replace keys form */}
+											{replaceKeysId === conn.id ? (
+												<form
+													onSubmit={(e) => handleSaveReplacedKeys(conn, e)}
+													className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3"
+												>
+													{replaceError ? (
+														<ErrorBanner message={replaceError} />
+													) : null}
+													{!vault?.unlocked ? (
+														<p className="text-xs text-[var(--warning)]">
+															Unlock the vault first before replacing keys.
+														</p>
+													) : null}
+													<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+														<div>
+															<label
+																htmlFor={`replace-key-${conn.id}`}
+																className="block text-xs font-medium"
+															>
+																New API key
+															</label>
+															<input
+																id={`replace-key-${conn.id}`}
+																type="password"
+																autoComplete="new-password"
+																required
+																value={replaceKey}
+																onChange={(e) => setReplaceKey(e.target.value)}
+																className="font-mono-code mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-sm"
+															/>
+														</div>
+														<div>
+															<label
+																htmlFor={`replace-secret-${conn.id}`}
+																className="block text-xs font-medium"
+															>
+																New API secret
+															</label>
+															<input
+																id={`replace-secret-${conn.id}`}
+																type="password"
+																autoComplete="new-password"
+																required
+																value={replaceSecret}
+																onChange={(e) =>
+																	setReplaceSecret(e.target.value)
+																}
+																className="font-mono-code mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-sm"
+															/>
+														</div>
+													</div>
+													<div className="flex justify-end gap-2">
+														<button
+															type="button"
+															disabled={replaceBusy}
+															onClick={() => {
+																setReplaceKey("");
+																setReplaceSecret("");
+																setReplaceKeysId(null);
+															}}
+															className="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-medium hover:bg-[var(--bg-hover)]"
+														>
+															Cancel
+														</button>
+														<button
+															type="submit"
+															disabled={replaceBusy || !vault?.unlocked}
+															className="rounded bg-[var(--accent)] px-3 py-1 text-xs font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+														>
+															{replaceBusy ? "Saving…" : "Save new keys"}
+														</button>
+													</div>
+												</form>
+											) : null}
+
+											{/* Sync summary + balance check panel */}
+											{isPanelOpen ? (
+												<SyncSummaryPanel
+													summary={summary}
+													balances={balancesById[conn.id]}
+													balancesLoading={Boolean(balancesLoading[conn.id])}
+													balancesError={balancesErrors[conn.id]}
+													connectionSource={connectionSourceKey(conn)}
+												/>
+											) : null}
+										</article>
+									);
+								})}
+							</div>
+						)}
+					</section>
+
+					{/* Provider Keys Card */}
+					<ProviderKeysCard
+						providers={providers}
+						vaultUnlocked={Boolean(vault?.unlocked)}
+						onUpdated={(next) => {
+							setProviders(next);
+							void refreshConnectionsAndProviders();
+						}}
+					/>
+				</>
+			)}
+
+			<AddConnectionDialog
+				open={addOpen}
+				vaultUnlocked={Boolean(vault?.unlocked)}
+				onClose={() => setAddOpen(false)}
+				onCreated={(conn, check) => {
+					setConnections((prev) => [...prev, conn]);
+					if (check) {
+						setKeyChecks((prev) => ({ ...prev, [conn.id]: check }));
+					}
+				}}
+			/>
+
+			<ConfirmDialog
+				open={Boolean(deleteTarget)}
+				title="Delete connection?"
+				description={
+					deleteTarget
+						? `Delete "${deleteTarget.label}"? This removes its stored keys, sync cursors, and fetched balances. Synced transactions stay in your ledger until you delete the sync imports on the Imports page.`
+						: ""
+				}
+				confirmLabel="Delete connection"
+				destructive
+				busy={deleting}
+				onConfirm={confirmDeleteConnection}
+				onCancel={() => setDeleteTarget(null)}
+			/>
+		</div>
+	);
+}

@@ -150,12 +150,18 @@ export function ImportsClient() {
 							>
 								<div className="flex items-start justify-between gap-2">
 									<div className="min-w-0">
-										<p className="truncate text-sm font-medium">
-											{imp.fileName}
-										</p>
+										<div className="flex flex-wrap items-center gap-1.5">
+											<p className="truncate text-sm font-medium">
+												{imp.fileName}
+											</p>
+											{imp.kind === "api_sync" ? (
+												<Badge tone="accent">Synced</Badge>
+											) : null}
+										</div>
 										<p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-											{formatSourceLabel(imp.source)} · {imp.timezone} ·{" "}
-											{formatIstDateTime(imp.createdAt)}
+											{formatSourceLabel(imp.source)}
+											{imp.connectionLabel ? ` · ${imp.connectionLabel}` : ""} ·{" "}
+											{imp.timezone} · {formatIstDateTime(imp.createdAt)}
 										</p>
 									</div>
 									<Badge
@@ -273,8 +279,18 @@ export function ImportsClient() {
 											key={imp.id}
 											className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
 										>
-											<td className="max-w-52 truncate px-4 py-2.5 font-medium">
-												<span>{imp.fileName}</span>
+											<td className="max-w-60 px-4 py-2.5 font-medium">
+												<div className="flex flex-wrap items-center gap-1.5">
+													<span className="truncate">{imp.fileName}</span>
+													{imp.kind === "api_sync" ? (
+														<Badge tone="accent">Synced</Badge>
+													) : null}
+												</div>
+												{imp.connectionLabel ? (
+													<span className="block text-[11px] font-normal text-[var(--text-secondary)]">
+														{imp.connectionLabel}
+													</span>
+												) : null}
 												{imp.rowsSkipped > 0 ? (
 													<span className="num block text-[11px] font-normal text-[var(--text-muted)]">
 														{imp.rowsSkipped} skipped (overlap)
@@ -427,14 +443,25 @@ export function ImportsClient() {
 						<dl className="grid grid-cols-2 gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs">
 							<div>
 								<dt className="text-[var(--text-muted)]">Source</dt>
-								<dd className="mt-0.5 font-medium">
-									{formatSourceLabel(detail.source)}
+								<dd className="mt-0.5 flex flex-wrap items-center gap-1.5 font-medium">
+									<span>{formatSourceLabel(detail.source)}</span>
+									{detail.kind === "api_sync" ? (
+										<Badge tone="accent">Synced</Badge>
+									) : null}
 								</dd>
 							</div>
 							<div>
 								<dt className="text-[var(--text-muted)]">Timezone</dt>
 								<dd className="mt-0.5 font-medium">{detail.timezone}</dd>
 							</div>
+							{detail.connectionLabel ? (
+								<div className="col-span-2">
+									<dt className="text-[var(--text-muted)]">Connection</dt>
+									<dd className="mt-0.5 font-medium">
+										{detail.connectionLabel}
+									</dd>
+								</div>
+							) : null}
 							<div className="col-span-2">
 								<dt className="text-[var(--text-muted)]">File SHA-256</dt>
 								<dd className="font-mono-code mt-0.5 break-all text-[11px]">
@@ -592,10 +619,16 @@ export function ImportsClient() {
 
 			<ConfirmDialog
 				open={Boolean(deleteTarget)}
-				title="Delete import?"
+				title={
+					deleteTarget?.kind === "api_sync"
+						? "Delete sync import?"
+						: "Delete import?"
+				}
 				description={
 					deleteTarget
-						? `This will permanently delete "${deleteTarget.fileName}" along with all ${deleteTarget.rowsInserted} imported transactions and raw source rows.`
+						? deleteTarget.kind === "api_sync"
+							? `This will permanently delete "${deleteTarget.fileName}" along with all ${deleteTarget.rowsInserted} synced transactions and raw source rows. Sync cursors will be reset, so the next sync for this connection will fetch those rows again.`
+							: `This will permanently delete "${deleteTarget.fileName}" along with all ${deleteTarget.rowsInserted} imported transactions and raw source rows.`
 						: ""
 				}
 				confirmLabel="Delete import"

@@ -147,6 +147,57 @@ export function TrailDrawer({
 											</span>
 										) : null}
 									</div>
+									{val.marketPrice ? (
+										<div className="mt-2 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-2.5 py-2 text-[11px] text-[var(--text-secondary)]">
+											<span className="font-semibold text-[var(--text-primary)]">
+												Market price:
+											</span>{" "}
+											<span className="num">
+												{val.marketPrice.price} {val.marketPrice.quote}
+											</span>{" "}
+											· Source:{" "}
+											<span className="font-medium text-[var(--text-primary)]">
+												{val.marketPrice.source}
+											</span>{" "}
+											(
+											<code className="font-mono-code">
+												{val.marketPrice.sourceId}
+											</code>
+											) · Date: {formatIstDate(val.marketPrice.date)} · Basis:{" "}
+											<span className="font-medium">
+												{val.marketPrice.kind}
+												{val.marketPrice.dayBasis
+													? ` (${val.marketPrice.dayBasis})`
+													: ""}
+											</span>
+										</div>
+									) : null}
+									{val.fee?.marketPrice ? (
+										<div className="mt-1.5 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-2.5 py-2 text-[11px] text-[var(--text-secondary)]">
+											<span className="font-semibold text-[var(--text-primary)]">
+												Fee market price:
+											</span>{" "}
+											<span className="num">
+												{val.fee.marketPrice.price} {val.fee.marketPrice.quote}
+											</span>{" "}
+											· Source:{" "}
+											<span className="font-medium text-[var(--text-primary)]">
+												{val.fee.marketPrice.source}
+											</span>{" "}
+											(
+											<code className="font-mono-code">
+												{val.fee.marketPrice.sourceId}
+											</code>
+											) · Date: {formatIstDate(val.fee.marketPrice.date)} ·
+											Basis:{" "}
+											<span className="font-medium">
+												{val.fee.marketPrice.kind}
+												{val.fee.marketPrice.dayBasis
+													? ` (${val.fee.marketPrice.dayBasis})`
+													: ""}
+											</span>
+										</div>
+									) : null}
 								</div>
 							))}
 						</div>

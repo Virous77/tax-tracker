@@ -9,9 +9,16 @@ import type {
 import {
 	ActualBalancesResponseSchema,
 	type AppSettings,
+	type BalanceCheckRow,
+	ChangePassphraseRequestSchema,
 	ComputeReportResponseSchema,
 	ConfirmImportRequestSchema,
 	ConfirmImportResponseSchema,
+	type Connection,
+	ConnectionBalancesSchema,
+	type ConnectionOptions,
+	ConnectionSchema,
+	CreateConnectionRequestSchema,
 	CreateImportResponseSchema,
 	CreateTransactionRequestSchema,
 	CreateTransactionResponseSchema,
@@ -21,26 +28,40 @@ import {
 	HealthResponseSchema,
 	type ImportDetail,
 	type ImportSummary,
+	JobSchema,
+	JobStartedSchema,
+	KeyCheckSchema,
 	ListImportsResponseSchema,
 	ListRecipesResponseSchema,
 	ListTransactionsResponseSchema,
 	LoginResponseSchema,
+	PatchConnectionRequestSchema,
 	PatchTransactionRequestSchema,
 	PatchTransactionResponseSchema,
 	PreviewPayloadResponseSchema,
 	PreviewRecipeResponseSchema,
+	type PriceFillSummary,
+	PricesQuerySchema,
+	PricesStatusSchema,
+	ProvidersResponseSchema,
 	PutActualBalancesResponseSchema,
+	PutProviderRequestSchema,
 	PutSettingsRequestSchema,
 	PutSettingsResponseSchema,
 	type ReportMissingDetails,
 	ReportMissingDetailsSchema,
+	ResetVaultRequestSchema,
 	ReviewResponseSchema,
 	type SentPayload,
 	SettingsResponseSchema,
 	type SettingsUpdate,
+	SetupVaultRequestSchema,
 	SuggestRecipeResponseSchema,
+	type SyncSummary,
 	TaxYearsResponseSchema,
 	type TransactionsQuery,
+	UnlockVaultRequestSchema,
+	VaultStatusSchema,
 } from "@tax/core/api";
 import { z } from "zod";
 
@@ -91,6 +112,14 @@ const FIELD_LABELS: Record<string, string> = {
 	recipeName: "Recipe name",
 	"recipe.name": "Recipe name",
 	"recipe.dateFormat": "Date format",
+	passphrase: "Passphrase",
+	current: "Current passphrase",
+	next: "New passphrase",
+	confirm: "Confirmation",
+	apiKey: "API key",
+	apiSecret: "API secret",
+	label: "Connection label",
+	address: "EVM address",
 };
 
 const DECIMAL_FIELDS = new Set([
@@ -132,6 +161,22 @@ function humanizeIssue(issue: z.core.$ZodIssue): {
 			return {
 				field,
 				message: `${label} must start with a letter or digit (A–Z, 0–9).`,
+			};
+		}
+	}
+
+	if (field === "passphrase" || field === "next") {
+		if (issue.code === "too_small") {
+			return { field, message: `${label} must be at least 12 characters.` };
+		}
+	}
+
+	if (field === "address") {
+		if (issue.code === "invalid_format") {
+			return {
+				field,
+				message:
+					"EVM address must start with 0x followed by 40 hex characters.",
 			};
 		}
 	}
@@ -203,10 +248,27 @@ export function formatZodError(err: z.ZodError): ValidationError {
 	return new ValidationError(summary, fieldErrors);
 }
 
+const FRIENDLY_ERROR_CODES: Record<string, string> = {
+	wrong_passphrase: "Incorrect vault passphrase. Please try again.",
+	vault_locked:
+		"The vault is locked. Unlock it in the Vault card before accessing or saving keys.",
+	vault_not_initialized:
+		"The vault is not set up yet. Set a vault passphrase first.",
+	sync_running:
+		"A sync is already running for this connection. Wait for it to finish.",
+	prices_disabled:
+		"Price lookups are turned off. Enable them in Settings to fetch missing prices.",
+	provider_key_required:
+		"Add an API key in the Provider Keys card for this chain first.",
+	connection_key_required: "Enter this connection's API key and secret first.",
+};
+
 export function getErrorMessage(err: unknown): string {
 	if (err instanceof ValidationError) return err.message;
 	if (err instanceof z.ZodError) return formatZodError(err).message;
-	if (err instanceof ApiError) return err.message;
+	if (err instanceof ApiError) {
+		return FRIENDLY_ERROR_CODES[err.code] ?? err.message;
+	}
 	if (err instanceof Error) return err.message;
 	return "Something went wrong";
 }
@@ -246,16 +308,24 @@ async function requestJson<T>(
 	});
 
 	if (res.status === 401) {
-		if (!skipAuthRedirect) redirectToLogin();
+		let code = "UNAUTHORIZED";
 		let message = "Authentication required";
+		let details: unknown;
 		try {
 			const body = await res.json();
 			const parsed = ErrorEnvelopeSchema.safeParse(body);
-			if (parsed.success) message = parsed.data.error.message;
+			if (parsed.success) {
+				code = parsed.data.error.code;
+				message = parsed.data.error.message;
+				details = parsed.data.error.details;
+			}
 		} catch {
 			// ignore non-json 401
 		}
-		throw new ApiError(401, "UNAUTHORIZED", message);
+		if (!skipAuthRedirect && code !== "wrong_passphrase") {
+			redirectToLogin();
+		}
+		throw new ApiError(401, code, message, details);
 	}
 
 	if (res.status === 204) {
@@ -575,12 +645,196 @@ export const api = {
 			skipAuthRedirect: true,
 		});
 	},
+
+	// Phase 2: Vault
+	getVault(): Promise<VaultStatus> {
+		return requestJson("/api/vault", { schema: VaultStatusSchema });
+	},
+
+	setupVault(passphrase: string): Promise<VaultStatus> {
+		const body = parseRequest(SetupVaultRequestSchema, { passphrase });
+		return requestJson("/api/vault/setup", {
+			method: "POST",
+			body: JSON.stringify(body),
+			schema: VaultStatusSchema,
+		});
+	},
+
+	unlockVault(passphrase: string): Promise<VaultStatus> {
+		const body = parseRequest(UnlockVaultRequestSchema, { passphrase });
+		return requestJson("/api/vault/unlock", {
+			method: "POST",
+			body: JSON.stringify(body),
+			schema: VaultStatusSchema,
+		});
+	},
+
+	lockVault(): Promise<VaultStatus> {
+		return requestJson("/api/vault/lock", {
+			method: "POST",
+			body: JSON.stringify({}),
+			schema: VaultStatusSchema,
+		});
+	},
+
+	changeVaultPassphrase(current: string, next: string): Promise<VaultStatus> {
+		const body = parseRequest(ChangePassphraseRequestSchema, { current, next });
+		return requestJson("/api/vault/change-passphrase", {
+			method: "POST",
+			body: JSON.stringify(body),
+			schema: VaultStatusSchema,
+		});
+	},
+
+	resetVault(confirm: "RESET"): Promise<VaultStatus> {
+		const body = parseRequest(ResetVaultRequestSchema, { confirm });
+		return requestJson("/api/vault/reset", {
+			method: "POST",
+			body: JSON.stringify(body),
+			schema: VaultStatusSchema,
+		});
+	},
+
+	// Phase 2: Providers (preserves extra providers like alchemy/nodereal if returned)
+	getProviders(): Promise<ProvidersMap> {
+		return requestJson("/api/providers", { schema: ProvidersMapSchema });
+	},
+
+	putProvider(name: string, apiKey: string): Promise<ProvidersMap> {
+		const body = parseRequest(PutProviderRequestSchema, { apiKey });
+		return requestJson(`/api/providers/${encodeURIComponent(name)}`, {
+			method: "PUT",
+			body: JSON.stringify(body),
+			schema: ProvidersMapSchema,
+		});
+	},
+
+	deleteProvider(name: string): Promise<ProvidersMap> {
+		return requestJson(`/api/providers/${encodeURIComponent(name)}`, {
+			method: "DELETE",
+			schema: ProvidersMapSchema,
+		});
+	},
+
+	// Phase 2: Connections
+	listConnections(): Promise<Connection[]> {
+		return requestJson("/api/connections", {
+			schema: z.array(ConnectionSchema),
+		});
+	},
+
+	createConnection(input: {
+		kind: Connection["kind"];
+		label: string;
+		apiKey?: string;
+		apiSecret?: string;
+		address?: string;
+		chainId?: number;
+		options?: ConnectionOptions;
+	}): Promise<Connection> {
+		const payload =
+			input.kind === "evm" && input.chainId !== undefined && input.chainId !== 1
+				? {
+						...input,
+						label: input.label.trim(),
+						address: input.address?.trim().toLowerCase(),
+					}
+				: parseRequest(
+						CreateConnectionRequestSchema,
+						input as z.input<typeof CreateConnectionRequestSchema>,
+					);
+		return requestJson("/api/connections", {
+			method: "POST",
+			body: JSON.stringify(payload),
+			schema: ConnectionSchema,
+		});
+	},
+
+	patchConnection(
+		id: string,
+		patch: z.input<typeof PatchConnectionRequestSchema>,
+	): Promise<Connection> {
+		const body = parseRequest(PatchConnectionRequestSchema, patch);
+		return requestJson(`/api/connections/${encodeURIComponent(id)}`, {
+			method: "PATCH",
+			body: JSON.stringify(body),
+			schema: ConnectionSchema,
+		});
+	},
+
+	deleteConnection(id: string): Promise<void> {
+		return requestJson(`/api/connections/${encodeURIComponent(id)}`, {
+			method: "DELETE",
+		});
+	},
+
+	checkConnection(id: string): Promise<KeyCheck> {
+		return requestJson(`/api/connections/${encodeURIComponent(id)}/check`, {
+			method: "POST",
+			body: JSON.stringify({}),
+			schema: KeyCheckSchema,
+		});
+	},
+
+	syncConnection(id: string): Promise<{ jobId: string }> {
+		return requestJson(`/api/connections/${encodeURIComponent(id)}/sync`, {
+			method: "POST",
+			body: JSON.stringify({}),
+			schema: JobStartedSchema,
+		});
+	},
+
+	getConnectionBalances(id: string): Promise<ConnectionBalances> {
+		return requestJson(`/api/connections/${encodeURIComponent(id)}/balances`, {
+			schema: ConnectionBalancesSchema,
+		});
+	},
+
+	// Phase 2: Jobs
+	getJob(id: string): Promise<JobStatus> {
+		return requestJson(`/api/jobs/${encodeURIComponent(id)}`, {
+			schema: JobSchema,
+		});
+	},
+
+	// Phase 2: Prices
+	getPricesStatus(taxYear: string): Promise<PricesStatus> {
+		const qs = new URLSearchParams({ taxYear }).toString();
+		return requestJson(`/api/prices/status?${qs}`, {
+			schema: PricesStatusSchema,
+		});
+	},
+
+	fillPrices(taxYear: string): Promise<{ jobId: string }> {
+		const body = parseRequest(PricesQuerySchema, { taxYear });
+		return requestJson("/api/prices/fill", {
+			method: "POST",
+			body: JSON.stringify(body),
+			schema: JobStartedSchema,
+		});
+	},
 };
+
+const ProvidersMapSchema = ProvidersResponseSchema.catchall(
+	ProvidersResponseSchema.shape.etherscan,
+);
+
+export type VaultStatus = z.infer<typeof VaultStatusSchema>;
+export type ProvidersMap = Record<string, { keySet: boolean }>;
+export type KeyCheck = z.infer<typeof KeyCheckSchema>;
+export type ConnectionBalances = z.infer<typeof ConnectionBalancesSchema>;
+export type JobStatus = z.infer<typeof JobSchema>;
+export type PricesStatus = z.infer<typeof PricesStatusSchema>;
 
 export type {
 	AppSettings,
+	BalanceCheckRow,
+	Connection,
+	ConnectionOptions,
 	ImportDetail,
 	ImportSummary,
+	PriceFillSummary,
 	ReportMissingDetails,
 	SentPayload,
+	SyncSummary,
 };

@@ -26,6 +26,7 @@ import {
 	type ReviewData,
 	type TaxYearInfo,
 } from "@/lib/client/api";
+import { getEvmChainName } from "@/lib/client/chains";
 import {
 	formatInrNullable,
 	formatIstDateTime,
@@ -301,6 +302,7 @@ export function ReviewClient() {
 	}
 
 	const totalItems = data?.groups.reduce((sum, g) => sum + g.count, 0) ?? 0;
+	const connectionIssues = data?.connections ?? [];
 	const reportMissing = data && data.reportStatus === "missing";
 	const missingListText =
 		missingYears.length > 0
@@ -334,7 +336,9 @@ export function ReviewClient() {
 
 			{error ? <ErrorBanner message={error} onRetry={loadReview} /> : null}
 
-			{!loading && reportMissing && totalItems > 0 ? (
+			{!loading &&
+			reportMissing &&
+			(totalItems > 0 || connectionIssues.length > 0) ? (
 				<div
 					role="status"
 					className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning-soft)] px-4 py-3 text-sm"
@@ -372,7 +376,7 @@ export function ReviewClient() {
 
 			{loading ? (
 				<div className="h-48 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]" />
-			) : !data ? null : totalItems === 0 ? (
+			) : !data ? null : totalItems === 0 && connectionIssues.length === 0 ? (
 				data.reportStatus === "current" ? (
 					<EmptyState
 						icon={<CheckCircle2 className="h-8 w-8 text-[var(--positive)]" />}
@@ -420,6 +424,100 @@ export function ReviewClient() {
 				)
 			) : (
 				<div className="space-y-5">
+					{connectionIssues.length > 0 ? (
+						<section className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+							<div className="border-b border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-3">
+								<div className="flex flex-wrap items-center justify-between gap-2">
+									<div className="flex items-center gap-2">
+										<h2 className="text-sm font-semibold">
+											Failed or incomplete connection syncs
+										</h2>
+										<Badge tone="warning">
+											<span className="num">{connectionIssues.length}</span>{" "}
+											{pluralise(connectionIssues.length, "connection")}
+										</Badge>
+									</div>
+									<code className="font-mono-code text-xs text-[var(--text-muted)]">
+										connections
+									</code>
+								</div>
+								<p className="mt-1.5 text-xs leading-relaxed text-[var(--text-secondary)]">
+									One or more API or wallet connections reported a failed or
+									incomplete last sync. Re-sync or check the connection settings
+									so no transactions are missed.
+								</p>
+							</div>
+
+							<div className="overflow-x-auto">
+								<table className="w-full border-collapse text-left text-xs">
+									<thead className="border-b border-[var(--border)] text-[var(--text-muted)]">
+										<tr>
+											<th className="px-4 py-2 font-medium">Connection</th>
+											<th className="px-4 py-2 font-medium">Type</th>
+											<th className="px-4 py-2 font-medium">Sync Status</th>
+											<th className="px-4 py-2 font-medium">Last Sync</th>
+											<th className="px-4 py-2 font-medium">Details</th>
+											<th className="px-4 py-2 text-right font-medium">
+												Fix Action
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										{connectionIssues.map((conn) => (
+											<tr
+												key={conn.id}
+												className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
+											>
+												<td className="px-4 py-2.5 font-medium">
+													{conn.label}
+												</td>
+												<td className="px-4 py-2.5 whitespace-nowrap">
+													<Badge tone="neutral">
+														{conn.kind === "binance"
+															? "Binance"
+															: conn.kind === "coindcx"
+																? "CoinDCX"
+																: getEvmChainName(conn.chainId)}
+													</Badge>
+												</td>
+												<td className="px-4 py-2.5 whitespace-nowrap">
+													<Badge
+														tone={
+															conn.lastSyncStatus === "failed"
+																? "loss"
+																: "warning"
+														}
+													>
+														{conn.lastSyncStatus ?? "Unknown"}
+													</Badge>
+												</td>
+												<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
+													{conn.lastSyncAt
+														? formatIstDateTime(conn.lastSyncAt)
+														: "Never"}
+												</td>
+												<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
+													{conn.lastSyncError ?? "Last sync did not complete."}
+												</td>
+												<td className="px-4 py-2.5 text-right whitespace-nowrap">
+													<Link
+														href="/connections"
+														className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
+													>
+														Fix in Connections
+														<ArrowRight
+															className="h-3 w-3"
+															aria-hidden="true"
+														/>
+													</Link>
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
+						</section>
+					) : null}
 					{data.groups.map((group) => {
 						const info = REVIEW_CODE_INFO[group.code];
 						const tone =

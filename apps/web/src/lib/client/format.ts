@@ -1,5 +1,6 @@
 import { D, formatDecimal, formatInr, istDate, type TxType } from "@tax/core";
 import type { ReportMissingDetails } from "@tax/core/api";
+import { getEvmChain } from "@/lib/client/chains";
 
 export { formatInr };
 
@@ -139,11 +140,17 @@ export function isZeroDecimal(value: string | null | undefined): boolean {
 
 export function formatSourceLabel(source: string): string {
 	if (source === "binance") return "Binance";
+	if (source === "binance-api") return "Binance (API)";
 	if (source === "coindcx") return "CoinDCX";
+	if (source === "coindcx-api") return "CoinDCX (API)";
 	if (source === "manual") return "Manual";
 	if (source === "generic") return "Generic CSV";
 	if (source.startsWith("csv:")) return `Generic CSV (${source.slice(4)})`;
-	if (source.startsWith("evm:")) return `EVM (${source.slice(4)})`;
+	if (source.startsWith("evm:")) {
+		const rawId = Number(source.slice(4));
+		const chain = Number.isInteger(rawId) ? getEvmChain(rawId) : undefined;
+		return chain ? chain.name : `EVM (${source.slice(4)})`;
+	}
 	return source;
 }
 
@@ -181,6 +188,7 @@ export function formatSectionLabel(key: string): string {
 }
 
 const ENGINE_SETTING_LABELS: Record<string, string> = {
+	marketPriceBasis: "Market price basis",
 	feeTreatment: "Fee & GST treatment",
 	lotMethod: "Lot matching method",
 	lotPool: "Lot pool scope",
@@ -204,6 +212,10 @@ export function formatEngineSettingLabel(key: string): string {
 export function formatEngineSettingValue(key: string, value: unknown): string {
 	const str = String(value);
 	switch (key) {
+		case "marketPriceBasis":
+			return str === "vwap"
+				? "IST-day VWAP"
+				: "IST-day close (pending CA verification)";
 		case "feeTreatment":
 			return str === "include" ? "Include fees" : "Exclude fees";
 		case "lotMethod":

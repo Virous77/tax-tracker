@@ -45,6 +45,9 @@ export function SettingsClient() {
 	const aiModelId = useId();
 	const aiKeyId = useId();
 	const cloudAckId = useId();
+	const pricesEnabledId = useId();
+	const coingeckoFallbackId = useId();
+	const marketBasisId = useId();
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -85,6 +88,7 @@ export function SettingsClient() {
 		try {
 			const updated = await api.putSettings({
 				defaultTaxYear: settings.defaultTaxYear,
+				marketPriceBasis: settings.marketPriceBasis,
 				feeTreatment: settings.feeTreatment,
 				lotMethod: settings.lotMethod,
 				lotPool: settings.lotPool,
@@ -95,6 +99,10 @@ export function SettingsClient() {
 				specifiedPerson: settings.specifiedPerson,
 				transferMatchWindowHours: Number(settings.transferMatchWindowHours),
 				transferAmountTolerance: settings.transferAmountTolerance,
+				prices: {
+					enabled: settings.prices.enabled,
+					coingeckoFallback: settings.prices.coingeckoFallback,
+				},
 				ai: {
 					baseUrl: trimmedBaseUrl,
 					model: settings.ai.model.trim(),
@@ -469,6 +477,131 @@ export function SettingsClient() {
 								</span>
 							</label>
 						</div>
+					</div>
+				</section>
+
+				{/* Price Lookups */}
+				<section className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+					<div className="flex flex-wrap items-center justify-between gap-2">
+						<div>
+							<h2 className="text-base font-semibold tracking-tight">
+								Price lookups
+							</h2>
+							<p className="text-xs text-[var(--text-secondary)]">
+								Optional historical daily prices for valuing swaps, gas fees, or
+								on-chain transfers without an exchange INR leg.
+							</p>
+						</div>
+						<Badge tone={settings.prices.enabled ? "accent" : "neutral"}>
+							{settings.prices.enabled ? "Enabled" : "Off by default"}
+						</Badge>
+					</div>
+
+					<div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+						<div className="md:col-span-2">
+							<label
+								htmlFor={pricesEnabledId}
+								className="flex items-start gap-2.5 text-sm font-medium"
+							>
+								<input
+									id={pricesEnabledId}
+									type="checkbox"
+									checked={settings.prices.enabled}
+									onChange={(e) =>
+										setSettings({
+											...settings,
+											prices: {
+												...settings.prices,
+												enabled: e.target.checked,
+											},
+										})
+									}
+									className="mt-1"
+								/>
+								<span>
+									Enable historical market price lookups
+									<span className="mt-0.5 block text-xs font-normal text-[var(--text-muted)]">
+										Used only when you click &ldquo;Fetch missing prices&rdquo;
+										on a report or after an API sync finishes, so missing INR
+										valuations can be cached locally.
+									</span>
+								</span>
+							</label>
+						</div>
+
+						<div>
+							<label
+								htmlFor={coingeckoFallbackId}
+								className="flex items-start gap-2.5 text-sm font-medium"
+							>
+								<input
+									id={coingeckoFallbackId}
+									type="checkbox"
+									checked={settings.prices.coingeckoFallback}
+									onChange={(e) =>
+										setSettings({
+											...settings,
+											prices: {
+												...settings.prices,
+												coingeckoFallback: e.target.checked,
+											},
+										})
+									}
+									className="mt-1"
+								/>
+								<span>
+									Use CoinGecko fallback
+									<span className="mt-0.5 block text-xs font-normal text-[var(--text-muted)]">
+										Looks up assets or dates not found in Binance daily klines
+										(requires a free CoinGecko API key in Connections).
+									</span>
+								</span>
+							</label>
+						</div>
+
+						<div>
+							<label
+								htmlFor={marketBasisId}
+								className="block text-sm font-medium"
+							>
+								Market price basis
+							</label>
+							<select
+								id={marketBasisId}
+								value={settings.marketPriceBasis}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										marketPriceBasis: e.target
+											.value as AppSettings["marketPriceBasis"],
+									})
+								}
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+							>
+								<option value="close">IST-day close</option>
+								<option value="vwap">IST-day VWAP</option>
+							</select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Which daily rate from the local price cache is used when valuing
+								unpriced swaps, fees, or receipts.
+							</p>
+						</div>
+					</div>
+
+					<div className="space-y-1 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs text-[var(--text-secondary)]">
+						<p>
+							<strong className="text-[var(--text-primary)]">
+								Hosts contacted when enabled:
+							</strong>{" "}
+							<code className="font-mono-code">data-api.binance.vision</code>{" "}
+							(daily prices, no key) and{" "}
+							<code className="font-mono-code">api.coingecko.com</code> (only if
+							the fallback is on and a key is set).
+						</p>
+						<p>
+							Computing a report never goes online — it reads only from your
+							local transaction ledger and locally cached prices.
+						</p>
 					</div>
 				</section>
 

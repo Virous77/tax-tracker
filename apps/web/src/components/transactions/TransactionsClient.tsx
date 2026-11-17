@@ -24,6 +24,7 @@ import {
 	type TaxYearInfo,
 	type TransactionsPage,
 } from "@/lib/client/api";
+import { EVM_CHAINS } from "@/lib/client/chains";
 import {
 	formatInrNullable,
 	formatIstDateTime,
@@ -31,6 +32,16 @@ import {
 	formatSourceLabel,
 	formatTxType,
 } from "@/lib/client/format";
+import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
+
+const SOURCE_FILTER_OPTIONS: readonly string[] = [
+	"binance",
+	"binance-api",
+	"coindcx",
+	"coindcx-api",
+	...EVM_CHAINS.map((chain) => `evm:${chain.chainId}`),
+	"manual",
+];
 
 export function TransactionsClient() {
 	const router = useRouter();
@@ -61,7 +72,6 @@ export function TransactionsClient() {
 
 	const [searchDraft, setSearchDraft] = useState(q);
 	const [assetDraft, setAssetDraft] = useState(asset);
-	const [sourceDraft, setSourceDraft] = useState(source);
 
 	const assetFilterId = useId();
 	const typeFilterId = useId();
@@ -73,8 +83,7 @@ export function TransactionsClient() {
 	useEffect(() => {
 		setSearchDraft(q);
 		setAssetDraft(asset);
-		setSourceDraft(source);
-	}, [q, asset, source]);
+	}, [q, asset]);
 
 	useEffect(() => {
 		if (
@@ -143,7 +152,6 @@ export function TransactionsClient() {
 		updateParams({
 			q: searchDraft.trim() || null,
 			asset: assetDraft.trim().toUpperCase() || null,
-			source: sourceDraft.trim() || null,
 		});
 	}
 
@@ -234,14 +242,22 @@ export function TransactionsClient() {
 					>
 						Source
 					</label>
-					<input
+					<select
 						id={sourceFilterId}
-						type="text"
-						placeholder="binance, coindcx…"
-						value={sourceDraft}
-						onChange={(e) => setSourceDraft(e.target.value)}
+						value={source}
+						onChange={(e) => updateParams({ source: e.target.value || null })}
 						className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
-					/>
+					>
+						<option value="">All sources</option>
+						{SOURCE_FILTER_OPTIONS.map((opt) => (
+							<option key={opt} value={opt}>
+								{formatSourceLabel(opt)}
+							</option>
+						))}
+						{source && !SOURCE_FILTER_OPTIONS.includes(source) ? (
+							<option value={source}>{formatSourceLabel(source)}</option>
+						) : null}
+					</select>
 				</div>
 
 				<div>
@@ -421,11 +437,20 @@ export function TransactionsClient() {
 											<div className="flex flex-wrap gap-1">
 												{[
 													...new Set(tx.reviewFlags.map((flag) => flag.code)),
-												].map((code) => (
-													<Badge key={code} tone="warning">
-														{code}
-													</Badge>
-												))}
+												].map((code) => {
+													const info = REVIEW_CODE_INFO[code];
+													const tone =
+														info?.severity === "error"
+															? "loss"
+															: info?.severity === "info"
+																? "accent"
+																: "warning";
+													return (
+														<span key={code} title={info?.title ?? code}>
+															<Badge tone={tone}>{code}</Badge>
+														</span>
+													);
+												})}
 											</div>
 										</td>
 									</tr>

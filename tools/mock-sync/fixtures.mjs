@@ -11,8 +11,15 @@ export const FY = { start: "2025-04-01", end: "2026-03-31" };
 export const CREDENTIALS = {
 	binance: { apiKey: "mock-binance-key", secret: "mock-binance-secret" },
 	coindcx: { apiKey: "mock-dcx-key", secret: "mock-dcx-secret" },
-	etherscan: { apiKey: "mock-etherscan-key" },
+	// The free Etherscan V2 key covers chains 1, 137 and 42161 only; the paid key covers all five
+	// chains this repo supports (research multichain §1.1, §1.3).
+	etherscan: {
+		apiKey: "mock-etherscan-key",
+		paidApiKey: "mock-etherscan-paid-key",
+	},
 	blockscout: { apiKey: "mock-blockscout-key" },
+	alchemy: { apiKey: "mock-alchemy-key" },
+	nodereal: { apiKey: "mock-nodereal-key" },
 	coingecko: { apiKey: "mock-coingecko-key" },
 };
 
@@ -28,6 +35,22 @@ export const ADDRESSES = {
 	usdtContract: "0xdac17f958d2ee523a2206206994597c13d831ec7",
 	spamToken: "0xdeadbeefcafebabe00112233445566778899aabb",
 	bigSpamToken: "0xfacade000000000000000000000000000000c0de",
+	// Chain-specific fixtures. Every one is invented except the token, bridge and predeploy
+	// contracts, which are the real published addresses from research multichain §1.6 and §1.7.
+	baseRouter: "0x2f9b6d3e8a1c74052e6b9d3f8a2c71e5b6049d3a",
+	binanceBaseHotWallet: "0xc1a7f4e9b2d6805317c4a9e6b3d85027a1c6f9e4",
+	baseStandardBridge: "0x4200000000000000000000000000000000000010",
+	baseUsdc: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+	arbFunder: "0x8f2c5b7e1a9d3406c8e2f5b7a1d9c3e60482f7b1",
+	arbRecipient: "0x4a8e1c7d2f9b53064e1a8c5d7f2b9e3064c8a1d5",
+	arbRouter: "0x6c3d9f1e7a2b5408163c9d7e2a5b8f1064c2e9d3",
+	arbUsdc: "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+	arbUsdce: "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8",
+	polyFunder: "0x7d3b9e5c1a8f24067b4d9e2c6a1f85037c2e9b4d",
+	polyRecipient: "0xb2e6f9d4c1a85037e2b6d9f4a1c87036e5b2d9c4",
+	binanceBscHotWallet: "0xe4a1c9d7b3f2608419d5c7e2a9b4f60318d2c5e7",
+	bscRecipient: "0x1f7a3c9e5b2d84061a7c9e3f5b8d2046a1c7e9b3",
+	bscUsdt: "0x55d398326f99059ff775485246999027b3197955",
 };
 
 export const OWN_ADDRESSES = [ADDRESSES.walletA, ADDRESSES.walletB];
@@ -50,6 +73,26 @@ export const HASHES = {
 	walletBToBinance: hashOf("wallet-b-usdc-to-binance-deposit"),
 	xrpDeposit: hashOf("xrp-deposit-to-binance"),
 	pendingUsdcDeposit: hashOf("pending-usdc-deposit"),
+	// Base
+	binanceToWalletABase: hashOf("binance-withdraw-eth-to-wallet-a-base"),
+	baseSwap: hashOf("wallet-a-base-eth-usdc-swap"),
+	baseBridge: hashOf("wallet-a-base-bridge-out"),
+	// Arbitrum One
+	arbFundEth: hashOf("arbitrum-fund-eth-to-wallet-a"),
+	arbFundUsdce: hashOf("arbitrum-fund-usdc-e-to-wallet-a"),
+	arbFundUsdc: hashOf("arbitrum-fund-usdc-to-wallet-a"),
+	arbSendUsdce: hashOf("wallet-a-arbitrum-usdc-e-out"),
+	arbSendUsdc: hashOf("wallet-a-arbitrum-usdc-out"),
+	arbSwap: hashOf("wallet-a-arbitrum-usdc-e-to-eth-swap"),
+	// Polygon PoS
+	polyMaticIn: hashOf("polygon-matic-to-wallet-b"),
+	polyMaticOut: hashOf("wallet-b-polygon-matic-out"),
+	polyPolIn: hashOf("polygon-pol-to-wallet-b"),
+	polyPolOut: hashOf("wallet-b-polygon-pol-out"),
+	// BNB Smart Chain
+	binanceToWalletABscUsdt: hashOf("binance-withdraw-usdt-to-wallet-a-bsc"),
+	binanceToWalletABscBnb: hashOf("binance-withdraw-bnb-to-wallet-a-bsc"),
+	bscUsdtOut: hashOf("wallet-a-bsc-usdt-out"),
 };
 
 export const TOKENS = {
@@ -78,6 +121,155 @@ export const TOKENS = {
 		decimals: 6,
 	},
 };
+
+// --- Chains ----------------------------------------------------------------
+// The five chains in SPEC-phase2 §1, with the native asset per research §1.4 and the free-tier
+// coverage per research §1.1. `headBlock` is the chain head at the pinned data clock; the mock
+// reports `headBlock` and derives confirmations from it.
+
+export const CHAINS = {
+	1: {
+		chainId: 1,
+		name: "Ethereum",
+		native: "ETH",
+		headBlock: 24_700_000,
+		alchemyNetwork: "eth-mainnet",
+		blockscoutPrefix: "eth",
+		freeEtherscan: true,
+		freeBlockscout: true,
+		nodereal: false,
+		arbitrumInternals: true,
+		l1Fee: false,
+	},
+	8453: {
+		chainId: 8453,
+		name: "Base",
+		native: "ETH",
+		headBlock: 40_100_000,
+		alchemyNetwork: "base-mainnet",
+		blockscoutPrefix: "base",
+		freeEtherscan: false,
+		freeBlockscout: false,
+		nodereal: false,
+		arbitrumInternals: true,
+		// OP-stack chains charge an L1 data fee on top of gasUsed × effectiveGasPrice (§1.8).
+		l1Fee: true,
+	},
+	42161: {
+		chainId: 42161,
+		name: "Arbitrum One",
+		native: "ETH",
+		headBlock: 420_000_000,
+		alchemyNetwork: "arb-mainnet",
+		blockscoutPrefix: "arbitrum",
+		freeEtherscan: true,
+		freeBlockscout: true,
+		nodereal: false,
+		// Alchemy does not serve the internal category on Arbitrum (§1.3).
+		arbitrumInternals: false,
+		l1Fee: false,
+	},
+	137: {
+		chainId: 137,
+		name: "Polygon PoS",
+		native: "POL",
+		headBlock: 78_000_000,
+		alchemyNetwork: "polygon-mainnet",
+		blockscoutPrefix: "polygon",
+		freeEtherscan: true,
+		freeBlockscout: true,
+		nodereal: false,
+		arbitrumInternals: true,
+		l1Fee: false,
+		// POL replaced MATIC 1:1 on 2024-09-04T12:00:00Z with no transaction (§1.4).
+		nativeRename: { from: "MATIC", to: "POL", at: "2024-09-04T12:00:00Z" },
+	},
+	56: {
+		chainId: 56,
+		name: "BNB Smart Chain",
+		native: "BNB",
+		headBlock: 75_400_000,
+		alchemyNetwork: null,
+		blockscoutPrefix: null,
+		freeEtherscan: false,
+		freeBlockscout: false,
+		nodereal: true,
+		arbitrumInternals: true,
+		l1Fee: false,
+	},
+};
+
+export function chainNativeAsset(chainId, timeIso) {
+	const chain = CHAINS[chainId];
+	if (!chain) return null;
+	const rename = chain.nativeRename;
+	if (rename && timeIso && Date.parse(timeIso) < Date.parse(rename.at))
+		return rename.from;
+	return chain.native;
+}
+
+// Contracts per chain, from research §1.6. Decimals always come from here, never from a guess:
+// BSC USDT and USDC are 18 dp, everywhere else 6.
+export const CHAIN_TOKENS = {
+	1: {
+		[ADDRESSES.usdcContract]: TOKENS.USDC,
+		[ADDRESSES.usdtContract]: TOKENS.USDT,
+	},
+	8453: {
+		[ADDRESSES.baseUsdc]: {
+			contract: ADDRESSES.baseUsdc,
+			name: "USD Coin",
+			symbol: "USDC",
+			decimals: 6,
+		},
+	},
+	42161: {
+		[ADDRESSES.arbUsdc]: {
+			contract: ADDRESSES.arbUsdc,
+			name: "USD Coin",
+			symbol: "USDC",
+			decimals: 6,
+		},
+		[ADDRESSES.arbUsdce]: {
+			contract: ADDRESSES.arbUsdce,
+			name: "USD Coin (Arb1)",
+			symbol: "USDC.e",
+			decimals: 6,
+		},
+	},
+	137: {},
+	56: {
+		[ADDRESSES.bscUsdt]: {
+			contract: ADDRESSES.bscUsdt,
+			name: "Binance-Peg BSC-USD",
+			symbol: "USDT",
+			decimals: 18,
+		},
+	},
+};
+
+export function tokenLeg(
+	chainId,
+	contract,
+	from,
+	to,
+	valueUnits,
+	statusRep = "1",
+) {
+	const token = CHAIN_TOKENS[chainId]?.[contract];
+	if (!token)
+		throw new Error(`No fixture token ${contract} on chain ${chainId}`);
+	return {
+		contract: token.contract,
+		name: token.name,
+		symbol: token.symbol,
+		decimals: token.decimals,
+		from,
+		to,
+		valueUnits,
+		statusRep,
+	};
+}
 
 export function toUnits(amount) {
 	const text = String(amount).trim();
@@ -131,13 +323,14 @@ export const BINANCE_SYMBOLS = [
 
 export const EVM_TRANSACTIONS = [
 	{
-		label: "binance withdrawal: 0.4982 ETH into wallet A",
+		label: "binance withdrawal: 0.5 ETH into wallet A",
 		hash: HASHES.binanceToWalletA,
 		blockNumber: 22310000,
 		time: "2025-05-02T08:14:23Z",
 		from: ADDRESSES.binanceHotWallet,
 		to: ADDRESSES.walletA,
-		valueWei: "498200000000000000",
+		// Binance's `amount` is what arrives here; `transactionFee` is charged on top of it.
+		valueWei: "500000000000000000",
 		gasUsed: 21000,
 		gasPriceWei: "12000000000",
 		isError: false,
@@ -339,6 +532,403 @@ export function bigHistoryTransactions() {
 	return rows;
 }
 
+// --- Base (8453) -----------------------------------------------------------
+// OP-stack receipts carry `l1Fee` on top of gasUsed × effectiveGasPrice. Every Base tx here has
+// one, and the replay charges it to the sender, so a client that ignores l1Fee fails the balance
+// check exactly as the research §1.8 says it would on a real wallet.
+
+export const BASE_TRANSACTIONS = [
+	{
+		label: "binance withdrawal: 0.02 ETH into wallet A on Base",
+		hash: HASHES.binanceToWalletABase,
+		blockNumber: 32_450_000,
+		time: "2025-05-20T09:12:44Z",
+		from: ADDRESSES.binanceBaseHotWallet,
+		to: ADDRESSES.walletA,
+		valueWei: "20000000000000000",
+		gasUsed: 21000,
+		gasPriceWei: "8000000",
+		l1FeeWei: "1180000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0x",
+		functionName: "",
+		contractAddress: "",
+		tokenTransfers: [],
+	},
+	{
+		label: "wallet A swaps 0.005 ETH for 12.5 USDC on Base",
+		hash: HASHES.baseSwap,
+		blockNumber: 33_100_000,
+		time: "2025-06-18T11:20:03Z",
+		from: ADDRESSES.walletA,
+		to: ADDRESSES.baseRouter,
+		valueWei: "5000000000000000",
+		gasUsed: 152_304,
+		gasPriceWei: "7000000",
+		l1FeeWei: "1248000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0x7ff36ab5",
+		functionName: "swapExactETHForTokens(uint256,address[],address,uint256)",
+		contractAddress: "",
+		tokenTransfers: [
+			tokenLeg(
+				8453,
+				ADDRESSES.baseUsdc,
+				ADDRESSES.baseRouter,
+				ADDRESSES.walletA,
+				"12500000",
+			),
+		],
+	},
+	{
+		label: "wallet A bridges 0.002 ETH from Base to Ethereum",
+		hash: HASHES.baseBridge,
+		blockNumber: 33_880_000,
+		time: "2025-08-25T06:40:12Z",
+		from: ADDRESSES.walletA,
+		to: ADDRESSES.baseStandardBridge,
+		valueWei: "2000000000000000",
+		gasUsed: 61_002,
+		gasPriceWei: "6000000",
+		l1FeeWei: "1102500000",
+		type: "0x2",
+		isError: false,
+		methodId: "0x32b7006d",
+		functionName: "bridgeETH(uint32,bytes)",
+		contractAddress: "",
+		tokenTransfers: [],
+	},
+];
+
+// --- Arbitrum One (42161) --------------------------------------------------
+// Wallet A holds both the bridged USDC.e and Circle's native USDC (research §1.6) and moves each
+// once. `gasUsed × effectiveGasPrice` already contains the L1 poster fee (§1.8), so no extra field
+// exists here. The one swap pays ETH out of a router through an internal call: Alchemy does not
+// serve the internal category on Arbitrum (§1.3), which is the documented limitation this fixture
+// reproduces.
+
+export const ARBITRUM_TRANSACTIONS = [
+	{
+		label: "arbitrum gas money: 0.01 ETH into wallet A",
+		hash: HASHES.arbFundEth,
+		blockNumber: 350_000_000,
+		time: "2025-07-08T04:30:00Z",
+		from: ADDRESSES.arbFunder,
+		to: ADDRESSES.walletA,
+		valueWei: "10000000000000000",
+		gasUsed: 21000,
+		gasPriceWei: "10000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0x",
+		functionName: "",
+		contractAddress: "",
+		tokenTransfers: [],
+	},
+	{
+		label: "100 USDC.e into wallet A on Arbitrum",
+		hash: HASHES.arbFundUsdce,
+		blockNumber: 352_100_000,
+		time: "2025-07-09T08:00:00Z",
+		from: ADDRESSES.arbFunder,
+		to: ADDRESSES.walletA,
+		valueWei: "0",
+		gasUsed: 42000,
+		gasPriceWei: "10000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0xa9059cbb",
+		functionName: "transfer(address,uint256)",
+		contractAddress: "",
+		tokenTransfers: [
+			tokenLeg(
+				42161,
+				ADDRESSES.arbUsdce,
+				ADDRESSES.arbFunder,
+				ADDRESSES.walletA,
+				"100000000",
+			),
+		],
+	},
+	{
+		label: "50 native USDC into wallet A on Arbitrum",
+		hash: HASHES.arbFundUsdc,
+		blockNumber: 352_100_500,
+		time: "2025-07-09T08:05:00Z",
+		from: ADDRESSES.arbFunder,
+		to: ADDRESSES.walletA,
+		valueWei: "0",
+		gasUsed: 42000,
+		gasPriceWei: "10000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0xa9059cbb",
+		functionName: "transfer(address,uint256)",
+		contractAddress: "",
+		tokenTransfers: [
+			tokenLeg(
+				42161,
+				ADDRESSES.arbUsdc,
+				ADDRESSES.arbFunder,
+				ADDRESSES.walletA,
+				"50000000",
+			),
+		],
+	},
+	{
+		label: "wallet A sends 40 USDC.e on Arbitrum",
+		hash: HASHES.arbSendUsdce,
+		blockNumber: 360_400_000,
+		time: "2025-08-20T10:15:00Z",
+		from: ADDRESSES.walletA,
+		to: ADDRESSES.arbRecipient,
+		valueWei: "0",
+		gasUsed: 51000,
+		gasPriceWei: "10000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0xa9059cbb",
+		functionName: "transfer(address,uint256)",
+		contractAddress: "",
+		tokenTransfers: [
+			tokenLeg(
+				42161,
+				ADDRESSES.arbUsdce,
+				ADDRESSES.walletA,
+				ADDRESSES.arbRecipient,
+				"40000000",
+			),
+		],
+	},
+	{
+		label: "wallet A sends 20 native USDC on Arbitrum",
+		hash: HASHES.arbSendUsdc,
+		blockNumber: 361_000_000,
+		time: "2025-08-28T12:00:00Z",
+		from: ADDRESSES.walletA,
+		to: ADDRESSES.arbRecipient,
+		valueWei: "0",
+		gasUsed: 51000,
+		gasPriceWei: "10000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0xa9059cbb",
+		functionName: "transfer(address,uint256)",
+		contractAddress: "",
+		tokenTransfers: [
+			tokenLeg(
+				42161,
+				ADDRESSES.arbUsdc,
+				ADDRESSES.walletA,
+				ADDRESSES.arbRecipient,
+				"20000000",
+			),
+		],
+	},
+	{
+		label: "wallet A swaps 10 USDC.e for 0.0035 ETH on Arbitrum",
+		hash: HASHES.arbSwap,
+		blockNumber: 365_200_000,
+		time: "2025-09-15T05:20:00Z",
+		from: ADDRESSES.walletA,
+		to: ADDRESSES.arbRouter,
+		valueWei: "0",
+		gasUsed: 148_000,
+		gasPriceWei: "10000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0x38ed1739",
+		functionName:
+			"swapExactTokensForETH(uint256,uint256,address[],address,uint256)",
+		contractAddress: "",
+		tokenTransfers: [
+			tokenLeg(
+				42161,
+				ADDRESSES.arbUsdce,
+				ADDRESSES.walletA,
+				ADDRESSES.arbRouter,
+				"10000000",
+			),
+		],
+		internalCalls: [
+			{
+				from: ADDRESSES.arbRouter,
+				to: ADDRESSES.walletA,
+				valueWei: "3500000000000000",
+				type: "call",
+				traceId: "0",
+				isError: false,
+			},
+		],
+	},
+];
+
+// --- Polygon PoS (137) -----------------------------------------------------
+// Wallet B holds POL. Two transfers predate the MATIC → POL redenomination of 2024-09-04T12:00:00Z
+// (research §1.4) and two follow it; both eras are native 18-dp units of the same chain balance.
+
+export const POLYGON_TRANSACTIONS = [
+	{
+		label: "MATIC era: 5 MATIC into wallet B",
+		hash: HASHES.polyMaticIn,
+		blockNumber: 58_200_000,
+		time: "2024-07-15T09:00:00Z",
+		from: ADDRESSES.polyFunder,
+		to: ADDRESSES.walletB,
+		valueWei: "5000000000000000000",
+		gasUsed: 21000,
+		gasPriceWei: "30000000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0x",
+		functionName: "",
+		contractAddress: "",
+		tokenTransfers: [],
+	},
+	{
+		label: "MATIC era: wallet B sends 2 MATIC",
+		hash: HASHES.polyMaticOut,
+		blockNumber: 59_400_000,
+		time: "2024-08-01T07:30:00Z",
+		from: ADDRESSES.walletB,
+		to: ADDRESSES.polyRecipient,
+		valueWei: "2000000000000000000",
+		gasUsed: 21000,
+		gasPriceWei: "30000000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0x",
+		functionName: "",
+		contractAddress: "",
+		tokenTransfers: [],
+	},
+	{
+		label: "POL era: 14 POL into wallet B",
+		hash: HASHES.polyPolIn,
+		blockNumber: 71_500_000,
+		time: "2025-05-20T13:10:00Z",
+		from: ADDRESSES.polyFunder,
+		to: ADDRESSES.walletB,
+		valueWei: "14000000000000000000",
+		gasUsed: 21000,
+		gasPriceWei: "30000000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0x",
+		functionName: "",
+		contractAddress: "",
+		tokenTransfers: [],
+	},
+	{
+		label: "POL era: wallet B sends 4 POL",
+		hash: HASHES.polyPolOut,
+		blockNumber: 72_600_000,
+		time: "2025-06-02T09:45:00Z",
+		from: ADDRESSES.walletB,
+		to: ADDRESSES.polyRecipient,
+		valueWei: "4000000000000000000",
+		gasUsed: 21000,
+		gasPriceWei: "30000000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0x",
+		functionName: "",
+		contractAddress: "",
+		tokenTransfers: [],
+	},
+];
+
+// --- BNB Smart Chain (56) -------------------------------------------------
+// Both receipts are Binance withdrawals on network BSC, so their txIds must equal the on-chain
+// hashes. BSC USDT is the 18-decimal Binance-Peg contract (research §1.5, §1.6).
+
+export const BSC_TRANSACTIONS = [
+	{
+		label: "binance withdrawal: 250 USDT into wallet A on BSC",
+		hash: HASHES.binanceToWalletABscUsdt,
+		blockNumber: 46_800_000,
+		time: "2025-05-20T09:40:00Z",
+		from: ADDRESSES.binanceBscHotWallet,
+		to: ADDRESSES.walletA,
+		valueWei: "0",
+		gasUsed: 51000,
+		gasPriceWei: "3000000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0xa9059cbb",
+		functionName: "transfer(address,uint256)",
+		contractAddress: "",
+		tokenTransfers: [
+			tokenLeg(
+				56,
+				ADDRESSES.bscUsdt,
+				ADDRESSES.binanceBscHotWallet,
+				ADDRESSES.walletA,
+				"250000000000000000000",
+			),
+		],
+	},
+	{
+		label: "binance withdrawal: 0.05 BNB into wallet A on BSC",
+		hash: HASHES.binanceToWalletABscBnb,
+		blockNumber: 46_800_100,
+		time: "2025-05-20T09:42:00Z",
+		from: ADDRESSES.binanceBscHotWallet,
+		to: ADDRESSES.walletA,
+		valueWei: "50000000000000000",
+		gasUsed: 21000,
+		gasPriceWei: "3000000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0x",
+		functionName: "",
+		contractAddress: "",
+		tokenTransfers: [],
+	},
+	{
+		label: "wallet A sends 25 USDT on BSC",
+		hash: HASHES.bscUsdtOut,
+		blockNumber: 52_100_000,
+		time: "2025-10-02T08:30:00Z",
+		from: ADDRESSES.walletA,
+		to: ADDRESSES.bscRecipient,
+		valueWei: "0",
+		gasUsed: 51000,
+		gasPriceWei: "3000000000",
+		type: "0x2",
+		isError: false,
+		methodId: "0xa9059cbb",
+		functionName: "transfer(address,uint256)",
+		contractAddress: "",
+		tokenTransfers: [
+			tokenLeg(
+				56,
+				ADDRESSES.bscUsdt,
+				ADDRESSES.walletA,
+				ADDRESSES.bscRecipient,
+				"25000000000000000000",
+			),
+		],
+	},
+];
+
+export const CHAIN_TRANSACTIONS = {
+	1: EVM_TRANSACTIONS,
+	8453: BASE_TRANSACTIONS,
+	42161: ARBITRUM_TRANSACTIONS,
+	137: POLYGON_TRANSACTIONS,
+	56: BSC_TRANSACTIONS,
+};
+
+export function chainTransactions(chainId, { bigHistory = false } = {}) {
+	const base = CHAIN_TRANSACTIONS[chainId] ?? [];
+	if (bigHistory && chainId === 1)
+		return [...base, ...bigHistoryTransactions()];
+	return base;
+}
+
 // --- Binance ---------------------------------------------------------------
 // The P2P buy lands in the funding wallet. The user then moves most of it to spot with an
 // internal transfer, which has no read endpoint (research §1.7), so the fixture records it here
@@ -474,6 +1064,9 @@ export const BINANCE_TRADES = [
 	},
 ];
 
+// `amount` is the quantity that ARRIVES at `address`; `transactionFee` is charged on top of it, so
+// the spot balance drops by amount + transactionFee and the on-chain transfer carries exactly
+// `amount` (research §1.3 leaves this unverified; the fixture pins it as the lead decision).
 export const BINANCE_WITHDRAWALS = [
 	{
 		id: "5d1c7a9e3b2468f0a1c5e7d9b3f24680",
@@ -492,6 +1085,60 @@ export const BINANCE_WITHDRAWALS = [
 		walletType: 0,
 		txKey: "",
 		completeTime: "2025-05-02 08:14:23",
+	},
+	{
+		id: "b4e8d2a6c1f73950e8b4d2a6c1f73950",
+		amount: "0.02000000",
+		transactionFee: "0.00050000",
+		coin: "ETH",
+		status: 6,
+		address: ADDRESSES.walletA,
+		txId: HASHES.binanceToWalletABase,
+		applyTime: "2025-05-20 09:10:12",
+		network: "BASE",
+		transferType: 0,
+		withdrawOrderId: "mock-withdraw-2",
+		info: '{"withdrawOrderId":"mock-withdraw-2"}',
+		confirmNo: 12,
+		walletType: 0,
+		txKey: "",
+		completeTime: "2025-05-20 09:12:44",
+	},
+	{
+		id: "a7c2f9e4b8d13570a2c7f9e4b8d13570",
+		amount: "250.00000000",
+		transactionFee: "1.00000000",
+		coin: "USDT",
+		status: 6,
+		address: ADDRESSES.walletA,
+		txId: HASHES.binanceToWalletABscUsdt,
+		applyTime: "2025-05-20 09:38:02",
+		network: "BSC",
+		transferType: 0,
+		withdrawOrderId: "mock-withdraw-3",
+		info: '{"withdrawOrderId":"mock-withdraw-3"}',
+		confirmNo: 15,
+		walletType: 0,
+		txKey: "",
+		completeTime: "2025-05-20 09:40:00",
+	},
+	{
+		id: "c9d4a1f7e3b62580c9d4a1f7e3b62580",
+		amount: "0.05000000",
+		transactionFee: "0.00050000",
+		coin: "BNB",
+		status: 6,
+		address: ADDRESSES.walletA,
+		txId: HASHES.binanceToWalletABscBnb,
+		applyTime: "2025-05-20 09:40:31",
+		network: "BSC",
+		transferType: 0,
+		withdrawOrderId: "mock-withdraw-4",
+		info: '{"withdrawOrderId":"mock-withdraw-4"}',
+		confirmNo: 15,
+		walletType: 0,
+		txKey: "",
+		completeTime: "2025-05-20 09:42:00",
 	},
 	{
 		id: "7f3b8c1d5e2a4b6c8d0e2f4a6b8c0d2e",
@@ -564,6 +1211,8 @@ export const BINANCE_DEPOSITS = [
 	},
 ];
 
+// The single income feed: every reward that moves a balance appears here, including the Simple
+// Earn interest that the rewards endpoint also lists for audit (research §1.3 overlap warning).
 export const BINANCE_DIVIDENDS = [
 	{
 		id: 1637366104,
@@ -574,7 +1223,89 @@ export const BINANCE_DIVIDENDS = [
 		tranId: 2968885920,
 		direction: 1,
 	},
+	{
+		id: 1637366105,
+		amount: "0.42000000",
+		asset: "USDT",
+		divTime: ms("2025-12-01T00:00:00Z"),
+		enInfo: "Simple Earn Flexible Interest",
+		tranId: 2968885921,
+		direction: 1,
+	},
 ];
+
+// The Simple Earn rewards feed repeats the USDT interest above for audit. It is not a second
+// receipt: the dividend row is the income, and `binanceBalances()` credits it once.
+export const BINANCE_EARN_REWARDS = [
+	{
+		asset: "USDT",
+		rewards: "0.42000000",
+		projectId: "USDT001",
+		type: "REWARDS",
+		time: ms("2025-12-01T00:00:00Z"),
+		dividendId: 1637366105,
+	},
+];
+
+// Earn positions count toward the total-wallet balance check (research §1.7). Subscriptions have no
+// read endpoint, so the fixture records the spot → earn move the same way it records internal
+// transfers: the position list and the subscription list must agree, and check-fixture.mjs asserts
+// that they do.
+export const EARN_SUBSCRIPTIONS = [
+	{
+		wallet: "spot",
+		to: "earn",
+		asset: "USDT",
+		amount: "100.00000000",
+		time: ms("2025-09-15T06:00:00Z"),
+	},
+	{
+		wallet: "spot",
+		to: "earn",
+		asset: "ETH",
+		amount: "0.02000000",
+		time: ms("2026-02-01T07:30:00Z"),
+	},
+];
+
+export const BINANCE_EARN_POSITIONS = {
+	flexible: [
+		{
+			asset: "USDT",
+			productId: "USDT001",
+			productName: "USDT Flexible",
+			totalAmount: "100.00000000",
+			tierAnnualPercentageRate: { "0-1000": "0.04120000" },
+			latestAnnualPercentageRate: "0.04120000",
+			dailyPercentageRate: "0.00011288",
+			cumulativeBonusRewards: "0.00000000",
+			cumulativeRealTimeRewards: "0.00000000",
+			cumulativeTotalRewards: "0.42000000",
+			canRedeem: true,
+			collateralAmount: "0.00000000",
+			automaticSubscribe: false,
+		},
+	],
+	locked: [
+		{
+			positionId: 9001,
+			projectId: "ETH120",
+			asset: "ETH",
+			amount: "0.02000000",
+			purchaseTime: ms("2026-02-01T07:30:00Z"),
+			duration: 120,
+			accrualDays: 59,
+			rewardAmt: "0.00000000",
+			rewardsAsset: "ETH",
+			extraRewards: "0.00000000",
+			extraRewardsAsset: "ETH",
+			status: "HOLDING",
+			subscriptionStartTime: ms("2026-02-01T07:30:00Z"),
+			type: "AUTO",
+			autoSubscribe: false,
+		},
+	],
+};
 
 export const BINANCE_DUST = [
 	{
@@ -620,16 +1351,6 @@ export const BINANCE_CONVERTS = [
 		ratio: "0.00166000",
 		inverseRatio: "602.40963855",
 		createTime: ms("2026-01-05T11:02:00Z"),
-	},
-];
-
-export const BINANCE_EARN_REWARDS = [
-	{
-		asset: "USDT",
-		rewards: "0.42000000",
-		projectId: "USDT001",
-		type: "REWARDS",
-		time: ms("2025-12-01T00:00:00Z"),
 	},
 ];
 
@@ -702,6 +1423,17 @@ export const BINANCE_COIN_CONFIG = [
 				withdrawFee: "0.00180000",
 				withdrawMin: "0.00500000",
 			},
+			{
+				network: "BASE",
+				coin: "ETH",
+				withdrawIntegerMultiple: "0.00000001",
+				isDefault: false,
+				depositEnable: true,
+				withdrawEnable: true,
+				contractAddress: "",
+				withdrawFee: "0.00050000",
+				withdrawMin: "0.00050000",
+			},
 		],
 	},
 	{
@@ -723,6 +1455,17 @@ export const BINANCE_COIN_CONFIG = [
 				withdrawFee: "1.00000000",
 				withdrawMin: "5.00000000",
 			},
+			{
+				network: "BASE",
+				coin: "USDC",
+				withdrawIntegerMultiple: "0.00000100",
+				isDefault: false,
+				depositEnable: true,
+				withdrawEnable: true,
+				contractAddress: ADDRESSES.baseUsdc,
+				withdrawFee: "1.00000000",
+				withdrawMin: "5.00000000",
+			},
 		],
 	},
 	{
@@ -741,6 +1484,17 @@ export const BINANCE_COIN_CONFIG = [
 				depositEnable: true,
 				withdrawEnable: true,
 				contractAddress: ADDRESSES.usdtContract,
+				withdrawFee: "1.00000000",
+				withdrawMin: "5.00000000",
+			},
+			{
+				network: "BSC",
+				coin: "USDT",
+				withdrawIntegerMultiple: "0.00000100",
+				isDefault: false,
+				depositEnable: true,
+				withdrawEnable: true,
+				contractAddress: ADDRESSES.bscUsdt,
 				withdrawFee: "1.00000000",
 				withdrawMin: "5.00000000",
 			},
@@ -780,6 +1534,8 @@ export const ASSET_DECIMALS = {
 	USDT: 6,
 	USDC: 6,
 	XRP: 6,
+	POL: 18,
+	MATIC: 18,
 	INR: 2,
 };
 
@@ -796,6 +1552,7 @@ function bumpNested(map, address, asset, units) {
 export function binanceBalances() {
 	const spot = new Map();
 	const funding = new Map();
+	const earn = new Map();
 
 	bump(funding, "USDT", toUnits(P2P_BUY.amount));
 	for (const move of INTERNAL_TRANSFERS) {
@@ -816,11 +1573,23 @@ export function binanceBalances() {
 			bump(spot, deposit.coin, toUnits(deposit.amount));
 	}
 
+	// `amount` arrives on chain, `transactionFee` is charged on top, so both leave the spot wallet.
 	for (const withdrawal of BINANCE_WITHDRAWALS) {
-		if (withdrawal.status === 6)
-			bump(spot, withdrawal.coin, -toUnits(withdrawal.amount));
+		if (withdrawal.status !== 6) continue;
+		bump(
+			spot,
+			withdrawal.coin,
+			-(toUnits(withdrawal.amount) + toUnits(withdrawal.transactionFee)),
+		);
 	}
 
+	for (const subscription of EARN_SUBSCRIPTIONS) {
+		bump(spot, subscription.asset, -toUnits(subscription.amount));
+		bump(earn, subscription.asset, toUnits(subscription.amount));
+	}
+
+	// The dividend feed is the only income source: the Simple Earn reward appears here once and is
+	// deliberately not added again from BINANCE_EARN_REWARDS.
 	for (const dividend of BINANCE_DIVIDENDS)
 		bump(spot, dividend.asset, toUnits(dividend.amount));
 
@@ -837,12 +1606,19 @@ export function binanceBalances() {
 		bump(spot, convert.toAsset, toUnits(convert.toAmount));
 	}
 
-	for (const reward of BINANCE_EARN_REWARDS)
-		bump(spot, reward.asset, toUnits(reward.rewards));
+	for (const reward of BINANCE_EARN_REWARDS) {
+		// Audit-only: the matching dividend row above already credited the balance.
+		if (!BINANCE_DIVIDENDS.some((row) => row.id === reward.dividendId))
+			throw new Error(
+				`Earn reward ${reward.asset} ${reward.time} has no matching dividend`,
+			);
+	}
 
-	return { spot, funding };
+	return { spot, funding, earn };
 }
 
+// Replays one chain's events. Gas is charged to the sender, plus the OP-stack `l1Fee` where the
+// receipt carries one (Base). Internal call value moves native currency like an external transfer.
 export function evmBalances(transactions = EVM_TRANSACTIONS) {
 	const native = new Map();
 	const tokens = new Map();
@@ -857,9 +1633,16 @@ export function evmBalances(transactions = EVM_TRANSACTIONS) {
 		if (!tx.isError) {
 			if (own.has(tx.from)) bump(native, tx.from, -value);
 			if (own.has(tx.to)) bump(native, tx.to, value);
+			for (const call of tx.internalCalls ?? []) {
+				const callValue = BigInt(call.valueWei);
+				if (own.has(call.from)) bump(native, call.from, -callValue);
+				if (own.has(call.to)) bump(native, call.to, callValue);
+			}
 		}
-		if (own.has(tx.from))
-			bump(native, tx.from, -(BigInt(tx.gasUsed) * BigInt(tx.gasPriceWei)));
+		if (own.has(tx.from)) {
+			const gas = BigInt(tx.gasUsed) * BigInt(tx.gasPriceWei);
+			bump(native, tx.from, -(gas + BigInt(tx.l1FeeWei ?? "0")));
+		}
 		for (const transfer of tx.tokenTransfers) {
 			if (own.has(transfer.from))
 				bumpNested(
@@ -892,9 +1675,12 @@ export function coindcxBalances() {
 }
 
 export function allFixtures() {
+	const evm = {};
+	for (const chainId of Object.keys(CHAINS))
+		evm[chainId] = evmBalances(chainTransactions(Number(chainId)));
 	return {
 		binance: binanceBalances(),
-		evm: evmBalances(),
+		evm,
 		coindcx: coindcxBalances(),
 	};
 }

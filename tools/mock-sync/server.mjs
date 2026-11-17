@@ -16,21 +16,23 @@ import {
 	BINANCE_DEPOSITS,
 	BINANCE_DIVIDENDS,
 	BINANCE_DUST,
+	BINANCE_EARN_POSITIONS,
 	BINANCE_EARN_REWARDS,
 	BINANCE_FIAT_ORDERS,
 	BINANCE_SYMBOLS,
 	BINANCE_TRADES,
 	BINANCE_WITHDRAWALS,
-	bigHistoryTransactions,
 	binanceBalances,
+	CHAINS,
 	COINDCX_MARKETS,
 	COINDCX_TRADES,
 	COINGECKO_IDS,
 	COINGECKO_USD_INR,
 	CREDENTIALS,
+	chainNativeAsset,
+	chainTransactions,
 	coindcxBalances,
 	DATA_NOW,
-	EVM_TRANSACTIONS,
 	eachDay,
 	evmBalances,
 	formatAsset,
@@ -58,7 +60,6 @@ const BLOCKSCOUT_CREDITS_PER_CALL = 20;
 const BLOCKSCOUT_CREDITS_PER_DAY = 100_000;
 const COINGECKO_CALLS_PER_MINUTE = 100;
 const COINGECKO_HISTORY_DAYS = 365;
-const _BIG_HISTORY_ROWS = 3050;
 
 const SCENARIOS = new Set([
 	"normal",
@@ -105,6 +106,7 @@ const state = {
 	coingeckoCalls: [],
 	etherscanCalls: [],
 	blockscout: { day: null, credits: BLOCKSCOUT_CREDITS_PER_DAY },
+	rpcPages: new Map(),
 };
 
 function resetState() {
@@ -120,6 +122,7 @@ function resetState() {
 	state.coingeckoCalls = [];
 	state.etherscanCalls = [];
 	state.blockscout = { day: null, credits: BLOCKSCOUT_CREDITS_PER_DAY };
+	state.rpcPages = new Map();
 }
 
 // The HTTP clock stays real so a client that signs with its own clock keeps working;
@@ -464,6 +467,10 @@ function handleBinance(ctx, rest, publicOnly) {
 		rest === "/sapi/v1/simple-earn/locked/history/rewardsRecord"
 	)
 		return binanceEarn(ctx, false);
+	if (ctx.method === "GET" && rest === "/sapi/v1/simple-earn/flexible/position")
+		return binanceEarnPosition(ctx, "flexible");
+	if (ctx.method === "GET" && rest === "/sapi/v1/simple-earn/locked/position")
+		return binanceEarnPosition(ctx, "locked");
 	if (ctx.method === "GET" && rest === "/sapi/v1/account/apiRestrictions")
 		return binanceApiRestrictions(ctx);
 	if (ctx.method === "GET" && rest === "/sapi/v1/spot/delist-schedule")
@@ -490,13 +497,21 @@ function send(ctx, status, body, headers = {}) {
 	record(ctx);
 }
 
+// Vendor keys travel in the path for the two JSON-RPC providers, so the log redacts that segment
+// the same way it redacts query-string secrets.
+function redactedPath(pathname) {
+	return pathname
+		.replace(/(\/alchemy\/[^/]+\/v2\/)[^/]+/, "$1***")
+		.replace(/(\/nodereal\/)[^/]+/, "$1***");
+}
+
 function record(ctx) {
 	const params = {};
 	for (const [key, value] of ctx.url.searchParams)
 		params[key] = SECRET_PARAMS.has(key.toLowerCase()) ? "***" : value;
 	state.requests.push({
 		method: ctx.method,
-		path: ctx.url.pathname,
+		path: redactedPath(ctx.url.pathname),
 		params,
 		status: ctx.status,
 	});
@@ -591,6 +606,7 @@ async function handleControl(ctx) {
 			state.coingeckoCalls = [];
 			state.etherscanCalls = [];
 			state.blockscout = { day: null, credits: BLOCKSCOUT_CREDITS_PER_DAY };
+			state.rpcPages = new Map();
 		}
 		if (body.now !== undefined) {
 			const value =
@@ -633,6 +649,8 @@ function vendorOf(path) {
 		return "etherscan";
 	if (path === "/blockscout" || path.startsWith("/blockscout/"))
 		return "blockscout";
+	if (path.startsWith("/alchemy/")) return "alchemy";
+	if (path.startsWith("/nodereal/")) return "nodereal";
 	if (path.startsWith("/coingecko/")) return "coingecko";
 	return null;
 }
@@ -643,6 +661,8 @@ function onceLimit(ctx, vendor) {
 	state.pending.rateLimitVendor = vendor;
 	state.scenario = "normal";
 	const retryAfter = { "Retry-After": "1" };
+	// GUESSED: the JSON-RPC vendors' 429/500 envelopes; the codes follow the documented
+	// rate-limit convention, the bodies are invented.
 	if (vendor === "binance")
 		send(
 			ctx,
@@ -669,6 +689,32 @@ function onceLimit(ctx, vendor) {
 					error_code: 429,
 					error_message: "You've exceeded the Rate Limit.",
 				},
+			},
+			retryAfter,
+		);
+	else if (vendor === "alchemy")
+		send(
+			ctx,
+			429,
+			{
+				jsonrpc: "2.0",
+				id: 1,
+				error: {
+					code: 429,
+					message:
+						"Your app has exceeded its compute units per second capacity. If you have retries enabled, you can safely ignore this message.",
+				},
+			},
+			retryAfter,
+		);
+	else if (vendor === "nodereal")
+		send(
+			ctx,
+			429,
+			{
+				jsonrpc: "2.0",
+				id: 1,
+				error: { code: -32005, message: "limit exceeded, please retry later" },
 			},
 			retryAfter,
 		);
@@ -705,6 +751,18 @@ function onceUpstream500(ctx, vendor) {
 	else if (vendor === "coingecko")
 		send(ctx, 500, {
 			status: { error_code: 500, error_message: "Internal server error" },
+		});
+	else if (vendor === "alchemy")
+		send(ctx, 500, {
+			jsonrpc: "2.0",
+			id: 1,
+			error: { code: -32603, message: "Internal error" },
+		});
+	else if (vendor === "nodereal")
+		send(ctx, 500, {
+			jsonrpc: "2.0",
+			id: 1,
+			error: { code: -32603, message: "Internal error" },
 		});
 	else
 		send(ctx, 500, {
@@ -762,6 +820,19 @@ async function handle(request, response) {
 		return handleEvm(ctx, "etherscan");
 	if (url.pathname === "/blockscout" || url.pathname.startsWith("/blockscout/"))
 		return handleEvm(ctx, "blockscout");
+	if (url.pathname.startsWith("/alchemy/")) {
+		const target = alchemyNetworkOf(url.pathname);
+		const chainId = target ? ALCHEMY_NETWORKS[target.network] : null;
+		if (!target || !chainId)
+			return rpcError(ctx, null, -32602, "Unsupported Alchemy network");
+		return handleRpc(ctx, "alchemy", chainId, target.key);
+	}
+	if (url.pathname.startsWith("/nodereal/")) {
+		const key = noderealKeyOf(url.pathname);
+		if (key === null)
+			return rpcError(ctx, null, -32602, "Invalid NodeReal URL");
+		return handleRpc(ctx, "nodereal", 56, key);
+	}
 	return handleCoinGecko(ctx, url.pathname.slice("/coingecko".length));
 }
 
@@ -947,10 +1018,11 @@ function binanceFundingAsset(ctx) {
 
 function binanceUserAsset(ctx) {
 	const wanted = (param(ctx, "asset") ?? "").toUpperCase();
-	const { spot, funding } = binanceBalances();
+	const { spot, funding, earn } = binanceBalances();
 	const totals = new Map(spot);
-	for (const [asset, units] of funding)
-		totals.set(asset, (totals.get(asset) ?? 0n) + units);
+	for (const wallet of [funding, earn])
+		for (const [asset, units] of wallet)
+			totals.set(asset, (totals.get(asset) ?? 0n) + units);
 	const rows = [];
 	for (const [asset, units] of totals) {
 		if (wanted && wanted !== asset) continue;
@@ -1279,6 +1351,50 @@ function binanceEarn(ctx, flexible) {
 	);
 }
 
+function binanceEarnPosition(ctx, kind) {
+	const type = param(ctx, "type");
+	if (
+		kind === "flexible" &&
+		type &&
+		!["BONUS", "REALTIME", "REWARDS", "ALL"].includes(type)
+	)
+		return binanceError(
+			ctx,
+			400,
+			-1130,
+			"Data sent for parameter 'type' is not valid.",
+		);
+	const size = integerParam(ctx, "size") ?? 10;
+	if (size < 1 || size > 100)
+		return binanceError(
+			ctx,
+			400,
+			-1130,
+			"Data sent for parameter 'size' is not valid.",
+		);
+	const current = integerParam(ctx, "current") ?? 1;
+	if (current < 1)
+		return binanceError(
+			ctx,
+			400,
+			-1130,
+			"Data sent for parameter 'current' is not valid.",
+		);
+	const asset = param(ctx, "asset");
+	const all = emptyScenario()
+		? []
+		: BINANCE_EARN_POSITIONS[kind].filter(
+				(row) => asset === null || row.asset === asset.toUpperCase(),
+			);
+	const start = (current - 1) * size;
+	return send(
+		ctx,
+		200,
+		{ rows: all.slice(start, start + size), total: all.length },
+		binanceWeights(150),
+	);
+}
+
 function binanceApiRestrictions(ctx) {
 	const trading = state.scenario === "trading_key";
 	return send(
@@ -1438,21 +1554,192 @@ function bumpCallWindow(list, limit) {
 	return list.length <= limit;
 }
 
-function hexBlock(block) {
-	return `0x${block.toString(16)}`;
+function chainRecord(chainId) {
+	return CHAINS[chainId] ?? null;
 }
 
-function allEvmTransactions() {
-	return isBigHistory()
-		? [...EVM_TRANSACTIONS, ...bigHistoryTransactions()]
-		: EVM_TRANSACTIONS;
+function chainTransactionsFor(chainId) {
+	if (!chainRecord(chainId)) return [];
+	return chainTransactions(chainId, { bigHistory: isBigHistory() });
 }
 
-function renderTxList(tx) {
+function blockHashOf(chainId, blockNumber) {
+	return `0x${createHash("sha256")
+		.update(`mock-block:${chainId}:${blockNumber}`)
+		.digest("hex")}`;
+}
+
+function chainBalances(chainId) {
+	return evmBalances(chainTransactionsFor(chainId));
+}
+
+function hexQuantity(value) {
+	return `0x${BigInt(value).toString(16)}`;
+}
+
+function parseBlockNumber(value, chainId) {
+	if (value === null || value === undefined || value === "") return null;
+	if (/^0x[0-9a-f]+$/i.test(value)) return Number(BigInt(value));
+	if (value === "latest" || value === "pending" || value === "safe")
+		return CHAINS[chainId].headBlock;
+	if (value === "earliest") return 0;
+	if (value === "indexed") return CHAINS[chainId].headBlock - 64;
+	if (/^\d+$/.test(value)) return Number(value);
+	return null;
+}
+
+// Token inventory: every contract this address has a leg in, on this chain. Alchemy's token
+// balance call answers for the contracts it was asked about, so the mock lists the same set.
+function tokenContractsFor(chainId, address) {
+	const contracts = new Set();
+	for (const tx of chainTransactionsFor(chainId))
+		for (const transfer of tx.tokenTransfers)
+			if (transfer.from === address || transfer.to === address)
+				contracts.add(transfer.contract);
+	return contracts;
+}
+
+function tokenBalanceOf(chainId, address, contract) {
+	const { tokens } = chainBalances(chainId);
+	return tokens.get(address)?.get(contract) ?? 0n;
+}
+
+// Every Base receipt carries the OP-stack L1 fee fields the research §1.8 lists; Arbitrum receipts
+// carry `gasUsedForL1` as a component of gasUsed, never as an addition.
+function renderReceipt(chainId, tx) {
+	const chain = CHAINS[chainId];
+	const receipt = {
+		blockHash: blockHashOf(chainId, tx.blockNumber),
+		blockNumber: hexQuantity(tx.blockNumber),
+		contractAddress: null,
+		cumulativeGasUsed: hexQuantity(BigInt(tx.gasUsed) * BigInt(tx.gasPriceWei)),
+		effectiveGasPrice: hexQuantity(tx.gasPriceWei),
+		from: tx.from,
+		gasUsed: hexQuantity(tx.gasUsed),
+		logs: [],
+		logsBloom: `0x${"0".repeat(512)}`,
+		status: tx.isError ? "0x0" : "0x1",
+		to: tx.to,
+		transactionHash: tx.hash,
+		transactionIndex: hexQuantity(tx.blockNumber % 200),
+		type: tx.type ?? "0x2",
+	};
+	if (chainId === 42161) receipt.gasUsedForL1 = hexQuantity(4_200);
+	if (chain.l1Fee) {
+		const l1Fee = BigInt(tx.l1FeeWei ?? "0");
+		receipt.l1Fee = hexQuantity(l1Fee);
+		receipt.l1GasUsed = hexQuantity(1_600);
+		receipt.l1GasPrice = hexQuantity(l1Fee / 1_600n || 1n);
+		receipt.l1BaseFeeScalar = hexQuantity(0x8b3);
+		receipt.l1BlobBaseFee = hexQuantity(1);
+		receipt.l1BlobBaseFeeScalar = hexQuantity(0xc51);
+		receipt.daFootprintGasScalar = hexQuantity(0);
+	}
+	const logs = [];
+	tx.tokenTransfers.forEach((transfer, index) => {
+		logs.push({
+			address: transfer.contract,
+			topics: [
+				`0x${createHash("sha256").update("erc20-transfer-topic").digest("hex")}`,
+				`0x000000000000000000000000${transfer.from.slice(2)}`,
+				`0x000000000000000000000000${transfer.to.slice(2)}`,
+			],
+			data: `0x${BigInt(transfer.valueUnits).toString(16).padStart(64, "0")}`,
+			logIndex: hexQuantity(index),
+			transactionIndex: hexQuantity(tx.blockNumber % 200),
+			transactionHash: tx.hash,
+			blockNumber: hexQuantity(tx.blockNumber),
+			blockHash: blockHashOf(chainId, tx.blockNumber),
+			removed: false,
+		});
+	});
+	receipt.logs = logs;
+	return receipt;
+}
+
+function findTransaction(chainId, hash) {
+	const wanted = String(hash ?? "").toLowerCase();
+	return (
+		chainTransactionsFor(chainId).find(
+			(tx) => tx.hash.toLowerCase() === wanted,
+		) ?? null
+	);
+}
+
+// Native legs of a chain as transfer-shaped rows, used by the two JSON-RPC transfer providers.
+// `external` covers the transaction value, `internal` the trace value, `erc20` the token logs.
+function chainTransferLegs(chainId, category) {
+	const legs = [];
+	for (const tx of chainTransactionsFor(chainId)) {
+		const nativeAsset = chainNativeAsset(chainId, tx.time);
+		if (category === "external") {
+			legs.push({
+				category: "external",
+				hash: tx.hash,
+				blockNumber: tx.blockNumber,
+				time: tx.time,
+				from: tx.from,
+				to: tx.to,
+				valueUnits: BigInt(tx.valueWei),
+				asset: nativeAsset,
+				decimals: 18,
+				contract: null,
+				gasUsed: tx.gasUsed,
+				gasPriceWei: tx.gasPriceWei,
+				receiptsStatus: tx.isError ? 0 : 1,
+				transactionIndex: tx.blockNumber % 200,
+			});
+		}
+		if (category === "internal") {
+			for (const call of tx.internalCalls ?? [])
+				legs.push({
+					category: "internal",
+					hash: tx.hash,
+					blockNumber: tx.blockNumber,
+					time: tx.time,
+					from: call.from,
+					to: call.to,
+					valueUnits: BigInt(call.valueWei),
+					asset: nativeAsset,
+					decimals: 18,
+					contract: null,
+					traceId: call.traceId,
+					transactionIndex: tx.blockNumber % 200,
+				});
+		}
+		if (category === "erc20") {
+			tx.tokenTransfers.forEach((transfer, index) => {
+				legs.push({
+					category: "erc20",
+					hash: tx.hash,
+					blockNumber: tx.blockNumber,
+					time: tx.time,
+					from: transfer.from,
+					to: transfer.to,
+					valueUnits: BigInt(transfer.valueUnits),
+					asset: transfer.symbol,
+					decimals: transfer.decimals,
+					contract: transfer.contract,
+					logIndex: index,
+					transactionIndex: tx.blockNumber % 200,
+				});
+			});
+		}
+	}
+	legs.sort(
+		(left, right) =>
+			left.blockNumber - right.blockNumber ||
+			left.transactionIndex - right.transactionIndex ||
+			(left.logIndex ?? 0) - (right.logIndex ?? 0),
+	);
+	return legs;
+}
+
+function renderTxList(chainId, tx) {
 	const gas = BigInt(tx.gasUsed) * BigInt(tx.gasPriceWei);
 	return {
 		blockNumber: String(tx.blockNumber),
-		blockHash: `0x${createHash("sha256").update(`mock-block:${tx.blockNumber}`).digest("hex")}`,
+		blockHash: blockHashOf(chainId, tx.blockNumber),
 		timeStamp: String(Math.floor(Date.parse(tx.time) / 1000)),
 		hash: tx.hash,
 		nonce: String(tx.blockNumber % 5000),
@@ -1469,18 +1756,20 @@ function renderTxList(tx) {
 		cumulativeGasUsed: String(gas + BigInt(tx.blockNumber % 1_000_000)),
 		txreceipt_status: tx.isError ? "0" : "1",
 		gasUsed: String(tx.gasUsed),
-		confirmations: String(Math.max(0, 24_700_000 - tx.blockNumber)),
+		confirmations: String(
+			Math.max(0, CHAINS[chainId].headBlock - tx.blockNumber),
+		),
 		isError: tx.isError ? "1" : "0",
 	};
 }
 
-function renderTokenTx(tx, transfer) {
+function renderTokenTx(chainId, tx, transfer) {
 	return {
 		blockNumber: String(tx.blockNumber),
 		timeStamp: String(Math.floor(Date.parse(tx.time) / 1000)),
 		hash: tx.hash,
 		nonce: String(tx.blockNumber % 5000),
-		blockHash: `0x${createHash("sha256").update(`mock-block:${tx.blockNumber}`).digest("hex")}`,
+		blockHash: blockHashOf(chainId, tx.blockNumber),
 		from: transfer.from,
 		contractAddress: transfer.contract,
 		to: transfer.to,
@@ -1497,7 +1786,9 @@ function renderTokenTx(tx, transfer) {
 		input: "deprecated",
 		methodId: tx.methodId,
 		functionName: tx.functionName,
-		confirmations: String(Math.max(0, 24_700_000 - tx.blockNumber)),
+		confirmations: String(
+			Math.max(0, CHAINS[chainId].headBlock - tx.blockNumber),
+		),
 	};
 }
 
@@ -1520,34 +1811,69 @@ function renderInternalTx(tx, call) {
 	};
 }
 
+function blockscoutPathChain(pathname) {
+	const match = pathname.match(/^\/blockscout\/(\d+)(?:\/api)?\/?$/);
+	return match ? match[1] : null;
+}
+
+function invalidKeyResult() {
+	const bucket = state.invalidKeys ?? { count: 0, first: Date.now() };
+	if (Date.now() - bucket.first > 30_000) {
+		bucket.count = 0;
+		bucket.first = Date.now();
+	}
+	bucket.count += 1;
+	state.invalidKeys = bucket;
+	if (bucket.count > 5)
+		return "Too many invalid api key attempts, please try again later";
+	return "Invalid API Key";
+}
+
+// Resolves the chain, the credential and the free-tier coverage for one explorer call. Returns
+// `{chainId}` on success and `{result}` with Etherscan's documented `status:"0"` text otherwise.
 function validateEvmRequest(ctx, provider) {
-	const chainParam = provider === "blockscout" ? "chain_id" : "chainid";
+	const pathChain =
+		provider === "blockscout" ? blockscoutPathChain(ctx.url.pathname) : null;
 	const chain =
-		param(ctx, chainParam) ??
-		(provider === "blockscout" ? param(ctx, "chainid") : null);
-	if (!chain)
-		return `Missing or unsupported chainid parameter (required for v2 api), please refer to https://api.etherscan.io/v2/chainid`;
-	if (chain !== "1") {
-		if (["8453", "56", "10", "43114"].includes(chain))
-			return `Free API access is not supported for this chain. Please upgrade your plan to access this chain.`;
-		return `Missing or unsupported chainid parameter (required for v2 api), please refer to https://api.etherscan.io/v2/chainid`;
+		pathChain ??
+		param(ctx, provider === "blockscout" ? "chain_id" : "chainid") ??
+		param(ctx, "chainid") ??
+		param(ctx, "chain_id");
+	const unsupported =
+		"Missing or unsupported chainid parameter (required for v2 api), please refer to https://api.etherscan.io/v2/chainid";
+	if (!chain) return { result: unsupported };
+	const chainId = Number(chain);
+	if (!chainRecord(chainId)) return { result: unsupported };
+
+	const settings = chainRecord(chainId);
+	const key =
+		provider === "blockscout"
+			? (param(ctx, "apikey") ??
+				(typeof ctx.request?.headers?.authorization === "string"
+					? ctx.request.headers.authorization
+					: null))
+			: param(ctx, "apikey");
+	if (!key) return { result: "Missing/Invalid API Key" };
+
+	const expected = CREDENTIALS[provider];
+	const paidKey = provider === "etherscan" ? expected.paidApiKey : null;
+	if (key !== expected.apiKey && key !== paidKey)
+		return { result: invalidKeyResult() };
+	const paid = paidKey !== null && key === paidKey;
+
+	if (provider === "etherscan" && !settings.freeEtherscan && !paid)
+		return {
+			result:
+				"Free API access is not supported for this chain. Please upgrade your plan to access this chain.",
+		};
+	if (provider === "blockscout") {
+		// GUESSED: both texts are invented; the chain coverage itself is from research §1.1.
+		if (chainId === 56)
+			return { result: "Chain is not indexed by Blockscout." };
+		if (!settings.freeBlockscout)
+			return { result: "Base API access requires a paid plan." };
 	}
-	const key = param(ctx, "apikey");
-	const expected = CREDENTIALS[provider].apiKey;
-	if (!key) return "Missing/Invalid API Key";
-	if (key !== expected) {
-		const bucket = state.invalidKeys ?? { count: 0, first: Date.now() };
-		if (Date.now() - bucket.first > 30_000) {
-			bucket.count = 0;
-			bucket.first = Date.now();
-		}
-		bucket.count += 1;
-		state.invalidKeys = bucket;
-		if (bucket.count > 5)
-			return "Too many invalid api key attempts, please try again later";
-		return "Invalid API Key";
-	}
-	return null;
+	return { chainId };
 }
 
 function handleEvm(ctx, provider) {
@@ -1560,8 +1886,9 @@ function handleEvm(ctx, provider) {
 		);
 	}
 
-	const failure = validateEvmRequest(ctx, provider);
-	if (failure) return etherscanNotOk(ctx, failure);
+	const validation = validateEvmRequest(ctx, provider);
+	if (validation.result) return etherscanNotOk(ctx, validation.result);
+	const chainId = validation.chainId;
 
 	const limit =
 		provider === "blockscout"
@@ -1596,9 +1923,24 @@ function handleEvm(ctx, provider) {
 			return send(
 				ctx,
 				200,
-				{ jsonrpc: "2.0", id: 1, result: hexBlock(24_700_000) },
+				{
+					jsonrpc: "2.0",
+					id: 1,
+					result: hexQuantity(CHAINS[chainId].headBlock),
+				},
 				headers,
 			);
+		if (action === "eth_getTransactionReceipt") {
+			const tx = findTransaction(chainId, param(ctx, "txhash"));
+			if (emptyScenario() || !tx)
+				return send(ctx, 200, { jsonrpc: "2.0", id: 1, result: null }, headers);
+			return send(
+				ctx,
+				200,
+				{ jsonrpc: "2.0", id: 1, result: renderReceipt(chainId, tx) },
+				headers,
+			);
+		}
 		return send(ctx, 200, { jsonrpc: "2.0", id: 1, result: null }, headers);
 	}
 
@@ -1610,7 +1952,7 @@ function handleEvm(ctx, provider) {
 		return etherscanNotOk(ctx, "Error! Invalid address format");
 
 	if (action === "balance") {
-		const { native } = evmBalances(allEvmTransactions());
+		const { native } = chainBalances(chainId);
 		const units = emptyScenario() ? 0n : (native.get(address) ?? 0n);
 		return send(
 			ctx,
@@ -1627,7 +1969,7 @@ function handleEvm(ctx, provider) {
 			.filter((entry) => /^0x[0-9a-f]{40}$/.test(entry));
 		if (addresses.length > 20)
 			return etherscanNotOk(ctx, "Error! Invalid address format");
-		const { native } = evmBalances(allEvmTransactions());
+		const { native } = chainBalances(chainId);
 		const result = addresses.map((entry) => ({
 			account: entry,
 			balance: (emptyScenario() ? 0n : (native.get(entry) ?? 0n)).toString(),
@@ -1637,12 +1979,13 @@ function handleEvm(ctx, provider) {
 
 	if (action === "tokenbalance") {
 		const contract = (param(ctx, "contractaddress") ?? "").toLowerCase();
-		const { tokens } = evmBalances(allEvmTransactions());
 		const units = emptyScenario()
 			? 0n
-			: (tokens.get(address)?.get(contract) ?? 0n);
+			: tokenBalanceOf(chainId, address, contract);
+		// The drift scenario stays on mainnet wallet B's USDC, as it always has.
 		const drift =
 			state.scenario === "drift" &&
+			chainId === 1 &&
 			address === ADDRESSES.walletB &&
 			contract === TOKENS.USDC.contract
 				? 500000n
@@ -1669,11 +2012,13 @@ function handleEvm(ctx, provider) {
 			"Result window is too large, PageNo x Offset size must be less than or equal to 10000",
 		);
 	const startblock = integerParam(ctx, "startblock") ?? 0;
-	const endblock = integerParam(ctx, "endblock") ?? 99_999_999;
+	// No ENDBLOCK means "latest", exactly as Etherscan reads it: every supported chain's head is
+	// above 100M blocks, so a fixed default would silently hide L2 history.
+	const endblock = integerParam(ctx, "endblock") ?? CHAINS[chainId].headBlock;
 	const sort = param(ctx, "sort") === "desc" ? "desc" : "asc";
 	const contractFilter = param(ctx, "contractaddress");
 
-	const transactions = allEvmTransactions().filter(
+	const transactions = chainTransactionsFor(chainId).filter(
 		(tx) =>
 			tx.blockNumber >= startblock &&
 			tx.blockNumber <= endblock &&
@@ -1681,7 +2026,8 @@ function handleEvm(ctx, provider) {
 	);
 
 	let rows;
-	if (action === "txlist") rows = transactions.map((tx) => renderTxList(tx));
+	if (action === "txlist")
+		rows = transactions.map((tx) => renderTxList(chainId, tx));
 	else if (action === "tokentx")
 		rows = transactions.flatMap((tx) =>
 			tx.tokenTransfers
@@ -1693,7 +2039,7 @@ function handleEvm(ctx, provider) {
 						!contractFilter ||
 						transfer.contract === contractFilter.toLowerCase(),
 				)
-				.map((transfer) => renderTokenTx(tx, transfer)),
+				.map((transfer) => renderTokenTx(chainId, tx, transfer)),
 		);
 	else
 		rows = transactions.flatMap((tx) =>
@@ -1722,6 +2068,403 @@ function handleEvm(ctx, provider) {
 		},
 		headers,
 	);
+}
+
+// --- Alchemy / NodeReal (JSON-RPC transfer providers) ----------------------
+// Both are POST JSON-RPC. One direction per call (fromAddress or toAddress), `pageKey` paging,
+// results grouped later by hash on the client side. Shapes follow research §1.3.
+
+const ALCHEMY_NETWORKS = {
+	"eth-mainnet": 1,
+	"base-mainnet": 8453,
+	"arb-mainnet": 42161,
+	"polygon-mainnet": 137,
+};
+const ALCHEMY_MAX_PAGE = 1000;
+const NODEREAL_MAX_BLOCK_WINDOW = 100_000;
+const NODEREAL_TRANSACTION_WINDOW = 1_000;
+const RPC_PAGE_TTL_MS = 10 * 60_000;
+
+function rpcSend(ctx, id, result) {
+	return send(ctx, 200, { jsonrpc: "2.0", id: id ?? 1, result });
+}
+
+function rpcError(ctx, id, code, message, status = 200) {
+	return send(ctx, status, {
+		jsonrpc: "2.0",
+		id: id ?? 1,
+		error: { code, message },
+	});
+}
+
+function alchemyNetworkOf(pathname) {
+	const match = pathname.match(/^\/alchemy\/([^/]+)\/v2\/([^/]+)\/?$/);
+	if (!match) return null;
+	return { network: match[1], key: decodeURIComponent(match[2]) };
+}
+
+function noderealKeyOf(pathname) {
+	const match = pathname.match(/^\/nodereal\/([^/]+)\/?$/);
+	return match ? decodeURIComponent(match[1]) : null;
+}
+
+function pageKeyFor(vendor, seed, offset) {
+	// GUESSED: real page keys are opaque and their TTL is undocumented; this is a UUID-shaped
+	// digest with a ten-minute life so a stale key fails the way a real one does.
+	const digest = createHash("sha256")
+		.update(`${vendor}:${seed}:${offset}`)
+		.digest("hex");
+	const key = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-a${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+	state.rpcPages.set(key, { offset, expires: Date.now() + RPC_PAGE_TTL_MS });
+	return key;
+}
+
+function pageOffsetFor(vendor, seed, pageKey) {
+	const page = state.rpcPages.get(pageKey);
+	if (!page || page.expires < Date.now()) return null;
+	const expected = pageKeyFor(vendor, seed, page.offset);
+	if (expected !== pageKey) return null;
+	return page.offset;
+}
+
+function rpcPageSize(value, fallback, maximum) {
+	const parsed = parseBlockNumber(value, 1);
+	const size = parsed === null ? fallback : parsed;
+	if (size < 1) return null;
+	// GUESSED: the research does not say what an over-large maxCount does; clamping is the
+	// friendlier contract and keeps paging total.
+	return Math.min(size, maximum);
+}
+
+// Returns the transfers for one vendor in the vendor's own shape, plus a pageKey when the page is
+// full and more legs remain. `seed` keeps page keys tied to the exact query that produced them.
+function rpcTransfers(chainId, params, vendor) {
+	const categoryMap =
+		vendor === "nodereal"
+			? { external: "external", internal: "internal", 20: "erc20" }
+			: { external: "external", internal: "internal", erc20: "erc20" };
+	const requested = Array.isArray(params.category)
+		? params.category.map((value) => categoryMap[value])
+		: ["external", "internal", "erc20"];
+	const categories = requested.filter(Boolean);
+	if (categories.length === 0)
+		return { error: "Unsupported transfer category" };
+
+	if (
+		vendor === "alchemy" &&
+		chainId === 42161 &&
+		categories.includes("internal")
+	) {
+		// Alchemy does not serve the internal category on Arbitrum (research §1.3). The legs exist
+		// on chain, so they are deliberately omitted: that is the documented limitation.
+		categories.splice(categories.indexOf("internal"), 1);
+	}
+	if (vendor === "nodereal" && chainId !== 56 && chainId !== 1)
+		return { error: "NodeReal Transfers serves BSC and Ethereum only" };
+
+	const fromBlock = parseBlockNumber(params.fromBlock ?? "0x0", chainId);
+	const toBlock = parseBlockNumber(params.toBlock ?? "latest", chainId);
+	if (fromBlock === null || toBlock === null)
+		return { error: "Invalid block range" };
+	if (toBlock < fromBlock) return { error: "Invalid block range" };
+
+	const fromAddress =
+		typeof params.fromAddress === "string"
+			? params.fromAddress.toLowerCase()
+			: null;
+	const toAddress =
+		typeof params.toAddress === "string"
+			? params.toAddress.toLowerCase()
+			: null;
+	if (!fromAddress && !toAddress)
+		return { error: "fromAddress or toAddress is required" };
+	if (fromAddress && toAddress && fromAddress !== toAddress)
+		return { error: "Use fromAddress or toAddress, not both" };
+
+	const maxCount = rpcPageSize(
+		params.maxCount,
+		ALCHEMY_MAX_PAGE,
+		ALCHEMY_MAX_PAGE,
+	);
+	if (maxCount === null) return { error: "Invalid maxCount" };
+	const excludeZeroValue = params.excludeZeroValue !== false;
+	const order = params.order === "desc" ? "desc" : "asc";
+
+	let legs = [];
+	for (const category of categories)
+		legs.push(...chainTransferLegs(chainId, category));
+	legs = legs.filter(
+		(leg) =>
+			leg.blockNumber >= fromBlock &&
+			leg.blockNumber <= toBlock &&
+			(excludeZeroValue ? leg.valueUnits !== 0n : true) &&
+			(fromAddress ? leg.from === fromAddress : leg.to === toAddress),
+	);
+	if (order === "desc") legs.reverse();
+
+	const seed = JSON.stringify({
+		chainId,
+		categories,
+		fromBlock,
+		toBlock,
+		fromAddress,
+		toAddress,
+		order,
+		excludeZeroValue,
+		maxCount,
+	});
+	const offset =
+		typeof params.pageKey === "string" && params.pageKey
+			? pageOffsetFor(vendor, seed, params.pageKey)
+			: 0;
+	if (offset === null) return { error: "Invalid or expired pageKey" };
+
+	const page = legs.slice(offset, offset + maxCount);
+	const nextOffset = offset + page.length;
+	return {
+		transfers: page,
+		total: legs.length,
+		pageKey:
+			nextOffset < legs.length
+				? pageKeyFor(vendor, seed, nextOffset)
+				: undefined,
+	};
+}
+
+function alchemyTransfer(leg, withMetadata) {
+	const value =
+		leg.category === "erc20"
+			? Number(leg.valueUnits) / 10 ** leg.decimals
+			: Number(leg.valueUnits) / 1e18;
+	const transfer = {
+		blockNum: hexQuantity(leg.blockNumber),
+		uniqueId:
+			leg.category === "erc20"
+				? `${leg.hash}:log:${leg.logIndex}`
+				: `${leg.hash}:${leg.category}`,
+		hash: leg.hash,
+		from: leg.from,
+		to: leg.to,
+		value,
+		asset: leg.asset,
+		category: leg.category,
+		rawContract: {
+			value: hexQuantity(leg.valueUnits),
+			address: leg.contract,
+			decimal: leg.contract ? hexQuantity(leg.decimals) : null,
+		},
+	};
+	if (withMetadata)
+		transfer.metadata = { blockTimestamp: new Date(leg.time).toISOString() };
+	return transfer;
+}
+
+function noderealTransfer(leg) {
+	const transfer = {
+		category: leg.category === "erc20" ? "20" : leg.category,
+		blockNum: hexQuantity(leg.blockNumber),
+		from: leg.from,
+		to: leg.to,
+		// NodeReal sends native values as hex strings, unlike Alchemy's float.
+		value: hexQuantity(leg.valueUnits),
+		asset: leg.asset,
+		hash: leg.hash,
+		contractAddress: leg.contract,
+		decimal: leg.contract ? hexQuantity(leg.decimals) : null,
+		uniqueId:
+			leg.category === "erc20"
+				? `${leg.hash}:log:${leg.logIndex}`
+				: `${leg.hash}:${leg.category}`,
+		blockTimeStamp: hexQuantity(Math.floor(Date.parse(leg.time) / 1000)),
+		blockTimestamp: hexQuantity(Math.floor(Date.parse(leg.time) / 1000)),
+	};
+	if (leg.category === "external") {
+		transfer.gasPrice = hexQuantity(leg.gasPriceWei);
+		transfer.gasUsed = hexQuantity(leg.gasUsed);
+		transfer.receiptsStatus = leg.receiptsStatus;
+	}
+	return transfer;
+}
+
+function nativeBalanceHex(chainId, address) {
+	if (emptyScenario()) return "0x0";
+	const { native } = chainBalances(chainId);
+	return hexQuantity(native.get(address) ?? 0n);
+}
+
+function transactionCountHex(chainId, address) {
+	if (emptyScenario()) return "0x0";
+	const count = chainTransactionsFor(chainId).filter(
+		(tx) => tx.from === address,
+	).length;
+	return hexQuantity(count);
+}
+
+function balanceOfCall(chainId, call) {
+	const data = typeof call?.data === "string" ? call.data.toLowerCase() : "";
+	const to = typeof call?.to === "string" ? call.to.toLowerCase() : "";
+	if (!data.startsWith("0x70a08231") || data.length < 74 || !to)
+		return { error: "Only balanceOf(address) is mocked" };
+	const address = `0x${data.slice(10 + 24, 10 + 64)}`;
+	const units = emptyScenario() ? 0n : tokenBalanceOf(chainId, address, to);
+	return { result: `0x${units.toString(16).padStart(64, "0")}` };
+}
+
+async function handleRpc(ctx, vendor, chainId, key) {
+	if (key !== CREDENTIALS[vendor].apiKey)
+		return rpcError(ctx, null, 401, "Invalid API key", 401);
+
+	let body;
+	try {
+		body = ctx.rawBody ? JSON.parse(ctx.rawBody) : {};
+	} catch {
+		return rpcError(ctx, null, -32700, "Parse error");
+	}
+	const id = body.id ?? 1;
+	const method = body.method;
+	const params = Array.isArray(body.params) ? body.params : [];
+	const first = params[0] ?? {};
+
+	if (method === "eth_blockNumber")
+		return rpcSend(ctx, id, hexQuantity(CHAINS[chainId].headBlock));
+
+	if (method === "eth_getBalance") {
+		const address = String(first).toLowerCase();
+		if (!/^0x[0-9a-f]{40}$/.test(address))
+			return rpcError(ctx, id, -32602, "Invalid address");
+		return rpcSend(ctx, id, nativeBalanceHex(chainId, address));
+	}
+
+	if (method === "eth_getTransactionCount") {
+		const address = String(first).toLowerCase();
+		if (!/^0x[0-9a-f]{40}$/.test(address))
+			return rpcError(ctx, id, -32602, "Invalid address");
+		return rpcSend(ctx, id, transactionCountHex(chainId, address));
+	}
+
+	if (method === "eth_call") {
+		const answer = balanceOfCall(chainId, first);
+		if (answer.error) return rpcError(ctx, id, -32602, answer.error);
+		return rpcSend(ctx, id, answer.result);
+	}
+
+	if (method === "eth_getTransactionReceipt") {
+		const tx = findTransaction(chainId, params[0]);
+		if (emptyScenario() || !tx) return rpcSend(ctx, id, null);
+		return rpcSend(ctx, id, renderReceipt(chainId, tx));
+	}
+
+	if (method === "alchemy_getTokenBalances") {
+		const address = String(first).toLowerCase();
+		if (!/^0x[0-9a-f]{40}$/.test(address))
+			return rpcError(ctx, id, -32602, "Invalid address");
+		const requested = Array.isArray(first?.[1])
+			? first[1].map((value) => String(value).toLowerCase())
+			: [...tokenContractsFor(chainId, address)];
+		const tokenBalances = [];
+		for (const contract of requested) {
+			const units = emptyScenario()
+				? 0n
+				: tokenBalanceOf(chainId, address, contract);
+			// GUESSED: the inventory form drops zero balances; an explicit contract list keeps them.
+			if (units === 0n && !Array.isArray(params[0]?.[1])) continue;
+			tokenBalances.push({
+				contractAddress: contract,
+				tokenBalance: hexQuantity(units),
+				error: null,
+			});
+		}
+		return rpcSend(ctx, id, { address, tokenBalances });
+	}
+
+	if (method === "alchemy_getAssetTransfers") {
+		if (emptyScenario()) return rpcSend(ctx, id, { transfers: [] });
+		const page = rpcTransfers(chainId, first, "alchemy");
+		if (page.error) return rpcError(ctx, id, -32602, page.error);
+		const result = {
+			transfers: page.transfers.map((leg) =>
+				alchemyTransfer(leg, first.withMetadata === true),
+			),
+		};
+		if (page.pageKey) result.pageKey = page.pageKey;
+		return rpcSend(ctx, id, result);
+	}
+
+	if (vendor === "nodereal" && method === "nr_getAssetTransfers") {
+		if (emptyScenario()) return rpcSend(ctx, id, { transfers: [] });
+		const fromBlock = parseBlockNumber(first.fromBlock ?? "0x0", chainId);
+		const toBlock = parseBlockNumber(first.toBlock ?? "latest", chainId);
+		if (
+			fromBlock !== null &&
+			toBlock !== null &&
+			first.fromBlock !== undefined &&
+			String(first.toBlock ?? "").toLowerCase() !== "latest" &&
+			toBlock - fromBlock > NODEREAL_MAX_BLOCK_WINDOW
+		)
+			return rpcError(
+				ctx,
+				id,
+				-32602,
+				`block range is too large: ${toBlock - fromBlock} blocks; the maximum is ${NODEREAL_MAX_BLOCK_WINDOW}`,
+			);
+		const page = rpcTransfers(chainId, first, "nodereal");
+		if (page.error) return rpcError(ctx, id, -32602, page.error);
+		const result = { transfers: page.transfers.map(noderealTransfer) };
+		if (page.pageKey) result.pageKey = page.pageKey;
+		return rpcSend(ctx, id, result);
+	}
+
+	if (vendor === "nodereal" && method === "nr_getAssetTransfersCount") {
+		// GUESSED: the count envelope and the transactions envelope below are shaped from the
+		// research's field names; the exact wrappers are not published in a fetchable sample.
+		const page = rpcTransfers(
+			chainId,
+			{ ...first, maxCount: "0x3e8" },
+			"nodereal",
+		);
+		if (page.error) return rpcError(ctx, id, -32602, page.error);
+		return rpcSend(ctx, id, { count: hexQuantity(page.total) });
+	}
+
+	if (vendor === "nodereal" && method === "nr_getTransactionByAddress") {
+		const fromBlock = parseBlockNumber(first.fromBlock ?? "0x0", chainId);
+		const toBlock = parseBlockNumber(first.toBlock ?? "latest", chainId);
+		if (fromBlock === null || toBlock === null)
+			return rpcError(ctx, id, -32602, "Invalid block range");
+		if (toBlock - fromBlock > NODEREAL_TRANSACTION_WINDOW)
+			return rpcError(
+				ctx,
+				id,
+				-32602,
+				`block range is too large: ${toBlock - fromBlock} blocks; the maximum is ${NODEREAL_TRANSACTION_WINDOW}`,
+			);
+		const address = String(
+			first.address ?? first.fromAddress ?? "",
+		).toLowerCase();
+		if (!/^0x[0-9a-f]{40}$/.test(address))
+			return rpcError(ctx, id, -32602, "Invalid address");
+		const transactions = chainTransactionsFor(chainId)
+			.filter(
+				(tx) =>
+					tx.blockNumber >= fromBlock &&
+					tx.blockNumber <= toBlock &&
+					(tx.from === address || tx.to === address),
+			)
+			.map((tx) => ({
+				hash: tx.hash,
+				blockNum: hexQuantity(tx.blockNumber),
+				blockTimeStamp: hexQuantity(Math.floor(Date.parse(tx.time) / 1000)),
+				from: tx.from,
+				to: tx.to,
+				value: hexQuantity(tx.valueWei),
+				gasPrice: hexQuantity(tx.gasPriceWei),
+				gasUsed: hexQuantity(tx.gasUsed),
+				receiptsStatus: tx.isError ? 0 : 1,
+			}));
+		return rpcSend(ctx, id, { transactions });
+	}
+
+	return rpcError(ctx, id, -32601, `Unsupported method ${method}`);
 }
 
 // --- CoinGecko -------------------------------------------------------------
@@ -1948,6 +2691,8 @@ async function main() {
 		COINDCX_API_BASE: `${running.url}/coindcx`,
 		ETHERSCAN_API_BASE: `${running.url}/etherscan`,
 		BLOCKSCOUT_API_BASE: `${running.url}/blockscout`,
+		ALCHEMY_API_BASE: `${running.url}/alchemy/{network}/v2`,
+		NODEREAL_API_BASE: `${running.url}/nodereal`,
 		COINGECKO_API_BASE: `${running.url}/coingecko/api/v3`,
 	}))
 		console.log(`  ${name.padEnd(20)}${value}`);

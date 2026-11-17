@@ -1,0 +1,2 @@
+Order ID,Market,Pair,Total Quantity,Remaining Quantity,Price Per Unit,Avg Price,Fee Amount,Total Tds INR,Side,Order Type,Status,Exchange Code,Created At,Updated At
+20000001,USDTINR,I-USDT_INR,100.0,0,90.0,90.0,45.0,89.55,sell,limit_order,filled,I,2026-01-02 04:30:00 UTC,2026-01-02 04:30:05 UTC

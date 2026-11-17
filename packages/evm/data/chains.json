@@ -1,0 +1,52 @@
+[
+	{
+		"chainId": 1,
+		"name": "Ethereum",
+		"nativeAsset": "ETH",
+		"nativeDecimals": 18,
+		"explorerTxUrl": "https://etherscan.io/tx/{hash}",
+		"defaultProviders": ["etherscan", "blockscout"],
+		"tokenListFile": "tokens-1.json",
+		"l1DataFees": false
+	},
+	{
+		"chainId": 8453,
+		"name": "Base",
+		"nativeAsset": "ETH",
+		"nativeDecimals": 18,
+		"explorerTxUrl": "https://basescan.org/tx/{hash}",
+		"defaultProviders": [],
+		"tokenListFile": "tokens-8453.json",
+		"l1DataFees": true
+	},
+	{
+		"chainId": 42161,
+		"name": "Arbitrum One",
+		"nativeAsset": "ETH",
+		"nativeDecimals": 18,
+		"explorerTxUrl": "https://arbiscan.io/tx/{hash}",
+		"defaultProviders": ["etherscan", "blockscout"],
+		"tokenListFile": "tokens-42161.json",
+		"l1DataFees": true
+	},
+	{
+		"chainId": 137,
+		"name": "Polygon PoS",
+		"nativeAsset": "POL",
+		"nativeDecimals": 18,
+		"explorerTxUrl": "https://polygonscan.com/tx/{hash}",
+		"defaultProviders": ["etherscan", "blockscout"],
+		"tokenListFile": "tokens-137.json",
+		"l1DataFees": false
+	},
+	{
+		"chainId": 56,
+		"name": "BNB Smart Chain",
+		"nativeAsset": "BNB",
+		"nativeDecimals": 18,
+		"explorerTxUrl": "https://bscscan.com/tx/{hash}",
+		"defaultProviders": [],
+		"tokenListFile": "tokens-56.json",
+		"l1DataFees": false
+	}
+]

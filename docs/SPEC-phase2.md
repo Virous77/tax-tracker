@@ -11,14 +11,28 @@ File import stays the main path. Sync is optional, read-only, and off until the 
 
 ## 1. Scope
 
-| In                                                                                                    | Out (later)                                                          |
-| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Binance read-only sync (trades, deposits, withdrawals, convert, dust, dividends, fiat, P2P, balances) | Ed25519 Binance keys (HMAC only for now)                             |
-| CoinDCX sync: trades + balances only (the API has nothing else; Excel export stays required)          | Margin, futures, options, Earn product positions                     |
-| EVM: Ethereum mainnet (`chainId 1`) via Etherscan V2, Blockscout as second provider                   | Other chains (adapter takes `chainId`, only 1 is enabled and tested) |
-| Own-wallet transfer matching (exact tx hash first)                                                    | DeFi decoding beyond "one token out, one token in"                   |
-| Historical price cache (Binance public klines, CoinGecko Demo)                                        | Paid price sources                                                   |
-| Encrypted secret vault                                                                                |                                                                      |
+| In                                                                                                                                                         | Out (later)                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Binance read-only sync (trades, deposits, withdrawals, convert, dust, dividends, fiat, P2P, balances)                                                      | Ed25519 Binance keys (HMAC only for now)           |
+| CoinDCX sync: trades + balances only (the API has nothing else; Excel export stays required)                                                               | Margin, futures, options, Earn product positions   |
+| EVM: Ethereum (1), Base (8453), Arbitrum (42161), Polygon (137), BNB Chain (56); chain config in data; providers per `docs/research/multichain-and-pdf.md` | Non-EVM chains                                     |
+| Own-wallet transfer matching (exact tx hash first)                                                                                                         | DeFi decoding beyond "one token out, one token in" |
+| Historical price cache (Binance public klines, CoinGecko Demo)                                                                                             | Paid price sources                                 |
+| Encrypted secret vault                                                                                                                                     |                                                    |
+
+## 1.1 Scope added 2026-11-17 (user request)
+
+- **All core EVM chains** listed above. Mainnet ships first; the other chains follow once the provider research
+  lands (`docs/research/multichain-and-pdf.md`). Native coins and known tokens share one asset id across chains
+  (ETH on Base = ETH). This is a CA question.
+- **Every export type** from Binance and CoinDCX (order history, trade history, statements, deposits/withdrawals,
+  convert, P2P, earn, …), in CSV, XLSX and PDF where the venue offers them. Each type is one "report kind" in
+  `packages/importers`. The catalogue is in `docs/research/export-catalogue.md`. Futures and margin are imported
+  and flagged, never taxed.
+- **Exports in other time zones.** Binance exports can be in any UTC offset (shown in the file name), so imports
+  accept fixed offsets as well as IST and UTC.
+- **Real files.** The user's real exports live in `data/real-exports/` (gitignored). Never copy their values
+  anywhere.
 
 ## 2. Decisions on the research open questions
 
@@ -139,6 +153,10 @@ Errors are typed:
 3. **Near match.** Same venue, asset and side, and within 2 s or with amounts within 1e-8: insert the row and
    flag it `possible_duplicate` with the other row's id in the message. Never delete automatically.
 4. **File after API** goes through the same rules in reverse, inside the existing file-import path.
+   **Implementation clarification:** an exact-matching CoinDCX file row may supply an explicit `tdsInr`
+   missing from the earlier API-owned ledger row. Preserve its id/source/raw, link the file original,
+   add a `parse_warning` naming the import supplying the credit, and never overwrite user edits or an
+   existing deduction. Otherwise API-first dedupe would discard the only available TDS credit.
 
 ## 5. Engine changes (stay pure)
 

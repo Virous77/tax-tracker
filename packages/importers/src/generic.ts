@@ -5,6 +5,7 @@ import {
 	type Recipe,
 	RecipeSchema,
 } from "@tax/core";
+import { headerWarnings } from "./reports.js";
 import { readSheets } from "./spreadsheet.js";
 import type {
 	Importer,
@@ -162,7 +163,8 @@ export function applyRecipe(
 	return {
 		transactions,
 		rowsRead: sheet.rows.length,
-		warnings: [],
+		warnings: headerWarnings(sheet),
+		timezoneSource: "user",
 		sheets: [{ name: sheet.name, rowsRead: sheet.rows.length }],
 		rowErrors,
 	};
@@ -173,6 +175,10 @@ export const generic: Importer = {
 	parse: (file, opts) => {
 		if (!opts.recipe)
 			throw new Error("A recipe is required for a generic file.");
-		return applyRecipe(readSheets(file), opts.recipe, opts);
+		return applyRecipe(
+			readSheets(file, { allowDuplicateHeaders: true }),
+			opts.recipe,
+			opts,
+		);
 	},
 };

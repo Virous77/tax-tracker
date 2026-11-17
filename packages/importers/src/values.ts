@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { D, type LedgerTx, parseDecimal } from "@tax/core";
 import { normaliseHeader } from "./spreadsheet.js";
+import { timezoneOffsetMinutes } from "./timezone.js";
+import type { ImportTimezone } from "./types.js";
 export class RowParseError extends Error {
 	constructor(
 		message: string,
@@ -73,14 +75,18 @@ export function splitPair(
 			return [value.slice(0, -quote.length), quote];
 	throw new RowParseError("Pair cannot be split; supply known quote assets.");
 }
-export function amountAsset(
+export function parseAmountWithAsset(
 	value: string,
 	expected?: string,
 ): { amount: string; asset: string } {
 	const compact = value.trim().replaceAll(",", "").replace(/\s+/g, "");
+	// Digit-leading symbols cannot be separated unambiguously without a known suffix.
+	expected ??= ["1000SATS", "1INCH"].find((asset) =>
+		compact.toUpperCase().endsWith(asset),
+	);
 	if (expected && compact.toUpperCase().endsWith(expected.toUpperCase()))
 		return {
-			amount: numberString(compact.slice(0, -expected.length), true),
+			amount: numberString(compact.slice(0, -expected.length)),
 			asset: expected.toUpperCase(),
 		};
 	if (expected)
@@ -88,6 +94,8 @@ export function amountAsset(
 			"Amount asset does not match the trade pair.",
 			"number",
 		);
+	if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(compact))
+		throw new RowParseError("Amount is missing an asset suffix.", "number");
 	const match = compact.match(
 		/^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)([A-Za-z][A-Za-z0-9._:-]*)$/,
 	);
@@ -97,17 +105,26 @@ export function amountAsset(
 			"number",
 		);
 	return {
-		amount: numberString(match[1], true),
+		amount: numberString(match[1]),
 		asset: match[2].toUpperCase(),
 	};
+}
+export function amountAsset(
+	value: string,
+	expected?: string,
+): { amount: string; asset: string } {
+	const parsed = parseAmountWithAsset(value, expected);
+	return { ...parsed, amount: D(parsed.amount).abs().toFixed() };
 }
 export function parseTimestamp(
 	value: string,
 	format: string,
-	timezone: "IST" | "UTC",
+	timezone: ImportTimezone,
 	date1904?: boolean,
 ): string {
-	const input = value.trim();
+	const explicitUtc = / UTC$/i.test(value.trim());
+	const input = value.trim().replace(/ UTC$/i, "");
+	const offsetMinutes = timezoneOffsetMinutes(explicitUtc ? "UTC" : timezone);
 	try {
 		if (
 			/^\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d{1,3})?)?(?:Z|[+-]\d\d:\d\d)$/.test(
@@ -134,7 +151,11 @@ export function parseTimestamp(
 			const epoch = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30);
 			const ms = Number(serial.mul("86400000").round().toFixed());
 			const local = new Date(epoch + ms).toISOString().replace("Z", "");
-			return parseTimestamp(local, "yyyy-MM-dd'T'HH:mm:ss.SSS", timezone);
+			return parseTimestamp(
+				local,
+				"yyyy-MM-dd'T'HH:mm:ss.SSS",
+				explicitUtc ? "UTC" : timezone,
+			);
 		}
 		let pattern = format;
 		if (pattern === "ISO" || pattern === "ISO8601")
@@ -184,9 +205,7 @@ export function parseTimestamp(
 			date.getUTCSeconds() !== second
 		)
 			throw new Error();
-		return new Date(
-			date.getTime() - (timezone === "IST" ? 330 * 60000 : 0),
-		).toISOString();
+		return new Date(date.getTime() - offsetMinutes * 60000).toISOString();
 	} catch {
 		throw new RowParseError(
 			"Date does not match the recipe format or is not a valid calendar date.",

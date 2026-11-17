@@ -8,9 +8,11 @@ export interface TableSheet {
 	headers: string[];
 	rows: Record<string, string>[];
 	excelDate1904?: boolean;
+	duplicateHeaders?: string[];
 }
+export type ImportTimezone = "IST" | "UTC" | `${"+" | "-"}${string}`;
 export interface ImportOptions {
-	timezone: "IST" | "UTC";
+	timezone: ImportTimezone;
 	recipe?: Recipe;
 }
 export interface RowError {
@@ -21,10 +23,13 @@ export interface RowError {
 	field?: "date" | "number" | "other";
 }
 export interface ImportResult {
+	reportKind?: string;
+	detectedTimezone?: string;
+	timezoneSource: "file" | "user";
 	transactions: LedgerTx[];
 	rowsRead: number;
 	warnings: ReviewFlag[];
-	sheets?: { name: string; rowsRead: number }[];
+	sheets?: { name: string; rowsRead: number; reportKind?: string }[];
 	rowErrors: RowError[];
 	skippedRows?: { rowIndex: number; sheet: string; reason: string }[];
 }

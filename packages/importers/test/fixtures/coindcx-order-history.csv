@@ -1,0 +1,7 @@
+Order ID,Market,Pair,Total Quantity,Remaining Quantity,Price Per Unit,Avg Price,Fee Amount,Total Tds INR,Side,Order Type,Status,Exchange Code,Created At,Updated At
+synthetic-c1,USDTINR,I-USDT_INR,20,0,80,81,8.1,16.119,sell,limit_order,filled,I,2025-08-01 10:00:00 UTC,2025-08-01 10:01:00 UTC
+synthetic-c2,FOOINR,I-FOO_INR,10,6,50,51,1.02,0,buy,limit_order,partially_filled,I,2025-08-02 11:00:00 UTC,2025-08-02 11:01:00 UTC
+synthetic-c3,FOOINR,I-FOO_INR,7,7,50,0,0,0,sell,limit_order,cancelled,I,2025-08-03 12:00:00 UTC,2025-08-03 12:01:00 UTC
+synthetic-c4,BTCUSDT,B-BTC_USDT,0.03,0.02,50000,51000,2.55,0,buy,limit_order,cancelled,B,2025-08-04 13:00:00 UTC,2025-08-04 13:01:00 UTC
+synthetic-c5,FOOINR,I-FOO_INR,4,4,50,0,0,0,buy,limit_order,open,I,2025-08-05 14:00:00 UTC,2025-08-05 14:01:00 UTC
+synthetic-c6,FOOINR,I-FOO_INR,4,3,50,52,0.26,0.5174,sell,limit_order,open,I,2025-08-06 15:00:00 UTC,2025-08-06 15:01:00 UTC

@@ -39,12 +39,16 @@ export function normaliseHeader(value: string): string {
 	return value
 		.trim()
 		.toLowerCase()
-		.replace(/[\s*]+/g, "");
+		.replace(/[\s*¹²³⁰⁴⁵⁶⁷⁸⁹]+/g, "");
+}
+export interface ReadSheetOptions {
+	allowDuplicateHeaders?: boolean;
 }
 function sheetTable(
 	name: string,
 	grid: string[][],
 	excelDate1904?: boolean,
+	options: ReadSheetOptions = {},
 ): TableSheet {
 	if (!grid.length) return { name, headers: [], rows: [], excelDate1904 };
 	const index = grid.findIndex(
@@ -65,12 +69,29 @@ function sheetTable(
 			) && row.length > 2,
 	);
 	const headerIndex = Math.max(index, 0);
-	const headers = grid[headerIndex] ?? [];
-	if (
-		new Set(headers.map(normaliseHeader)).size !== headers.length ||
-		headers.some((v) => !v.trim())
-	)
-		throw new Error(`Sheet ${name} contains empty or duplicate column names.`);
+	const originalHeaders = grid[headerIndex] ?? [];
+	const used = new Set<string>();
+	const reserved = new Set(originalHeaders.map(normaliseHeader));
+	const duplicateHeaders: string[] = [];
+	const headers = originalHeaders.map((header) => {
+		if (!header.trim())
+			throw new Error(`Sheet ${name} contains empty column names.`);
+		let renamed = header;
+		let ordinal = 2;
+		if (used.has(normaliseHeader(header))) {
+			if (!options.allowDuplicateHeaders)
+				throw new Error(`Sheet ${name} contains duplicate column names.`);
+			do {
+				renamed = `${header}#${ordinal++}`;
+			} while (
+				reserved.has(normaliseHeader(renamed)) ||
+				used.has(normaliseHeader(renamed))
+			);
+			duplicateHeaders.push(renamed);
+		}
+		used.add(normaliseHeader(renamed));
+		return renamed;
+	});
 	const rows = grid.slice(headerIndex + 1).map((values) => {
 		const raw = Object.fromEntries(
 			headers.map((header, i) => [header, values[i] ?? ""]),
@@ -79,7 +100,7 @@ function sheetTable(
 			raw.__extraColumns = JSON.stringify(values.slice(headers.length));
 		return raw;
 	});
-	return { name, headers, rows, excelDate1904 };
+	return { name, headers, rows, excelDate1904, duplicateHeaders };
 }
 type XmlNode = Record<string, unknown>;
 function object(value: unknown): XmlNode {
@@ -100,7 +121,10 @@ function text(value: unknown): string {
 			? text(node.t)
 			: list(node.r).map(text).join("");
 }
-export function readSheets(file: InputFile): TableSheet[] {
+export function readSheets(
+	file: InputFile,
+	options: ReadSheetOptions = {},
+): TableSheet[] {
 	if (file.bytes.length > 25 * 1024 * 1024)
 		throw new Error("File exceeds 25 MB.");
 	if (file.bytes[0] !== 0x50 || file.bytes[1] !== 0x4b) {
@@ -109,7 +133,7 @@ export function readSheets(file: InputFile): TableSheet[] {
 			file.bytes,
 		);
 		if (content.includes("\0")) throw new Error("Binary content is not CSV.");
-		return [sheetTable("CSV", csvRecords(content))];
+		return [sheetTable("CSV", csvRecords(content), undefined, options)];
 	}
 	let total = 0;
 	let entries = 0;
@@ -194,7 +218,12 @@ export function readSheets(file: InputFile): TableSheet[] {
 				return Array.from({ length: cells.length }, (_, i) => cells[i] ?? "");
 			})
 			.filter((row) => row.some((v) => v !== ""));
-		return sheetTable(String(sheet["@name"] ?? "Sheet"), grid, date1904);
+		return sheetTable(
+			String(sheet["@name"] ?? "Sheet"),
+			grid,
+			date1904,
+			options,
+		);
 	});
 }
 function escapeXml(value: string): string {

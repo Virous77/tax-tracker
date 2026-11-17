@@ -71,3 +71,15 @@ as text or as Excel serial numbers is not verified; the importer should accept b
 
 Rows 1–8 of each sheet are invented placeholders for the real report's metadata and notes. Find the header row by
 scanning for known header names, not by a fixed row number.
+
+## Order history fixtures
+
+`binance-spot-order-history(UTC+5).csv` and its `.xlsx` counterpart are synthetic Spot Order History reports.
+The CSV starts with a UTF-8 BOM, retains superscript header footnotes and repeats `Time`.
+The rows cover Limit, Market and Stop-Limit, filled and partial trades, unexecuted cancellations,
+a canceled partial fill, ETH quotes, digit-leading assets and scientific notation.
+The workbook is built with the importers' `writeXlsx` from `csvRecords` of that CSV; the tests verify equivalence.
+
+`coindcx-order-history.csv` is a separate synthetic Order history layout, with routed pairs,
+explicit UTC timestamps, all four statuses, partial executions, quote-currency fees and INR TDS.
+It is independent of the older multi-sheet Trade Report fixtures. All order ids, dates and quantities are invented.

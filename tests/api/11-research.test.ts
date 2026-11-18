@@ -131,7 +131,7 @@ describe("Binance overlap and identical rows (export-formats.md A8)", () => {
 		}
 		// Unknown statement operations and statement-only dust are still retained.
 		for (const t of txs.filter((x) => x.importId === st.id)) {
-			if (t.type === "fee")
+			if (t.type === "transfer")
 				expect(t.reviewFlags.map((f) => f.code)).toContain("unknown_type");
 			else if (t.type === "swap")
 				expect(t).toMatchObject({

@@ -234,7 +234,7 @@ describe("EVM classifier", () => {
 			tokentx: [token({ from: external, to: a, value: "0" })],
 		});
 		expect(rows[0]).toMatchObject({
-			type: "fee",
+			type: "transfer",
 			reviewFlags: [{ code: "suspected_spam" }],
 		});
 		expect(rows[0]?.amountIn).toBeUndefined();
@@ -256,7 +256,7 @@ describe("EVM classifier", () => {
 			{
 				code: "suspected_spam",
 				message:
-					"Explorer marks this token unsafe. Unsolicited token from an unknown contract; verify before accepting. Claimed symbol imitates a known asset at a different contract.",
+					"Explorer marks this token unsafe.\nUnsolicited token from an unknown contract; verify before accepting.\nClaimed symbol imitates a known asset at a different contract.",
 			},
 		]);
 	});
@@ -302,8 +302,8 @@ describe("EVM classifier", () => {
 		expect(
 			classify({ address: row.from ?? a, txlistinternal: [row] })[0],
 		).toMatchObject({
-			type: "fee",
-			reviewFlags: [{ code: "parse_warning" }],
+			type: "transfer",
+			reviewFlags: [{ code: "unknown_type" }],
 			raw: { txlistinternal: [row] },
 		});
 	});

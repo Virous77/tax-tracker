@@ -23,7 +23,7 @@ export function transactionFee(chain: ChainConfig, row: ExplorerRow) {
 			flags.push({
 				code: "fee_review_required",
 				message:
-					"Receipt has operator-fee parameters with an unverified formula; review the additional fee (research §1.8)",
+					"The receipt lists operator-fee parameters without a confirmed fee amount. Review the additional fee.",
 			});
 	}
 	// Arbitrum gasUsed already includes gasUsedForL1; adding it would double-count (research §1.8).

@@ -118,6 +118,12 @@ export function createTransaction(db: TaxDatabase, input: unknown) {
 export function patchTransaction(db: TaxDatabase, id: string, input: unknown) {
 	const current = required(db.transactions.get(id));
 	const { resolveFlags, ...patch } = PatchTransactionRequestSchema.parse(input);
+	if (patch.venue !== undefined && current.source !== "manual")
+		throw new ApiError(
+			400,
+			"validation_error",
+			"Venue can only be changed for manual transactions.",
+		);
 	const tx = LedgerTxSchema.parse({
 		...current,
 		...patch,

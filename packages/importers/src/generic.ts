@@ -182,7 +182,7 @@ export function applyRecipe(
 			...timezoneConflict(
 				opts.timezone,
 				timezone,
-				fileTimezone ? "the file name" : "the file header",
+				fileTimezone ? "the file name" : "the column header",
 			),
 			...[...suffixes].flatMap((suffix) =>
 				timezoneConflict(opts.timezone, suffix, "the timestamps"),
@@ -190,6 +190,7 @@ export function applyRecipe(
 		],
 		detectedTimezone: timezone,
 		timezoneSource: timezone ? "file" : "user",
+		timezoneOrigin: fileTimezone ? "file_name" : timezone ? "header" : null,
 		sheets: [{ name: sheet.name, rowsRead: sheet.rows.length }],
 		rowErrors,
 	};

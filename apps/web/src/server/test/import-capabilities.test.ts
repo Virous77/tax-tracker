@@ -285,11 +285,13 @@ it("persists filename timezone precedence and both original Time columns", async
 	expect(result).toMatchObject({
 		detectedTimezone: "+05:30",
 		timezoneSource: "file",
+		timezoneOrigin: "file_name",
 	});
 	expect(result.warnings).toEqual(
 		expect.arrayContaining([
 			expect.objectContaining({
-				message: expect.stringContaining("instead of the selected"),
+				message:
+					"Used +05:30 from the file name instead of the selected -03:30.",
 			}),
 			expect.objectContaining({ message: expect.stringContaining("no fees") }),
 		]),
@@ -307,10 +309,32 @@ it("uses a selected fixed offset for a report without a timezone", async () => {
 	expect(result).toMatchObject({
 		timezoneSource: "user",
 		detectedTimezone: null,
+		timezoneOrigin: null,
 	});
 	expect(database().transactions.all()[0]?.timestamp).toBe(
 		"2026-04-01T13:31:00.000Z",
 	);
+});
+it("persists column-header timezone provenance in the import list and detail", async () => {
+	const result = await (await upload(fills(), "trades.xlsx", "IST")).json();
+	const expected = {
+		id: result.id,
+		detectedTimezone: "UTC",
+		timezoneSource: "file",
+		timezoneOrigin: "header",
+		warnings: expect.arrayContaining([
+			{
+				code: "parse_warning",
+				message: "Used UTC from the column header instead of the selected IST.",
+			},
+		]),
+	};
+	expect(result).toMatchObject(expected);
+	closeDatabases();
+	expect(await (await call("listImports")).json()).toMatchObject([expected]);
+	expect(
+		await (await call("getImport", "GET", undefined, { id: result.id })).json(),
+	).toMatchObject(expected);
 });
 it("supersedes an order, excludes it from the report and restores it on deletion", async () => {
 	const first = await (await upload(order(), "orders(UTC+5:30).xlsx")).json();

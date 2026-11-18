@@ -48,7 +48,7 @@ export function base(
 		source,
 		sourceRef: ref,
 		timestamp,
-		type: "fee",
+		type: "transfer",
 		raw: raw ?? null,
 		reviewFlags: [],
 	};

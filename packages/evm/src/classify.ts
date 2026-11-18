@@ -201,7 +201,7 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 			timestamp: new Date(
 				Number(field(exemplar, "timeStamp")) * 1000,
 			).toISOString(),
-			type: "fee",
+			type: kind === "fee" ? "fee" : "transfer",
 			txHash: hash,
 			chain: String(input.chainId),
 			raw,
@@ -352,16 +352,10 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 				});
 			}
 		}
-		if (markers.length)
-			mapped.push(
-				make(
-					markers.every((flag) => flag.code === "suspected_spam")
-						? "spam"
-						: "review",
-					0,
-					markers,
-				),
-			);
+		if (markers.length) {
+			const spam = markers.every((flag) => flag.code === "suspected_spam");
+			mapped.push(make(spam ? "spam" : "review", 0, markers));
+		}
 		if (D(gas).gt("0") || fee.flags.length) {
 			let target = mapped.find(
 				(tx) => !tx.reviewFlags.some((flag) => flag.code === "suspected_spam"),
@@ -370,21 +364,22 @@ export function classifyTransactions(input: ClassifierInput): ConnectorRow[] {
 				target = make("fee", 0);
 				mapped.push(target);
 			}
+			if (target.type === "transfer") target.type = "fee";
 			target.feeAsset = chain.nativeAsset;
 			target.feeAmount = gas;
 			target.reviewFlags.push(...fee.flags);
 		}
-		if (!mapped.length)
-			mapped.push(
-				make("review", 0, [
-					{
-						code: "parse_warning",
-						message:
-							"No positive confirmed asset movement; original transaction retained without a balance effect",
-					},
-				]),
-			);
+		if (!mapped.length) mapped.push(make("review", 0));
 		for (const tx of mapped) {
+			if (
+				tx.type === "transfer" &&
+				!tx.reviewFlags.some((flag) => flag.code === "suspected_spam")
+			)
+				tx.reviewFlags.push({
+					code: "unknown_type",
+					message:
+						"No confirmed asset movement. The original transaction has no balance effect.",
+				});
 			const {
 				id: _id,
 				importId: _import,

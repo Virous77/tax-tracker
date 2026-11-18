@@ -6,6 +6,7 @@ import {
 	EngineSettingsSchema,
 	formatInr,
 	LedgerTxSchema,
+	mergeReviewFlags,
 	PositiveDecimalSchema,
 	PutSettingsRequestSchema,
 	parseDecimal,
@@ -35,6 +36,17 @@ describe("decimal and time boundaries", () => {
 	});
 });
 describe("boundary schemas", () => {
+	test("merges distinct review reasons on separate lines across repeated parses", () => {
+		const first = { code: "parse_warning" as const, message: "First note\n\n" };
+		const second = { code: "parse_warning" as const, message: "Second note." };
+		const other = { code: "unknown_type" as const, message: "Needs review" };
+		const flags = mergeReviewFlags([first, second, first, other]);
+		expect(flags).toEqual([
+			{ ...first, message: "First note.\nSecond note." },
+			other,
+		]);
+		expect(mergeReviewFlags([...flags, first, second])).toEqual(flags);
+	});
 	test("settings defaults and tolerance", () => {
 		expect(EngineSettingsSchema.parse({}).feeTreatment).toBe("exclude");
 		expect(

@@ -75,7 +75,7 @@ describe("catalogue report kinds", () => {
 			if (kind.includes("futures") || kind.includes("options"))
 				for (const tx of csv.transactions) {
 					expect(tx).toMatchObject({
-						type: "fee",
+						type: "transfer",
 						reviewFlags: expect.arrayContaining([
 							expect.objectContaining({
 								code: "complex_onchain",
@@ -123,6 +123,7 @@ describe("catalogue report kinds", () => {
 			{ timezone: "IST" },
 		);
 		expect(result.detectedTimezone).toBe("UTC");
+		expect(result.timezoneOrigin).toBe("header");
 		for (const incomeKind of [
 			"interest",
 			"staking",
@@ -156,10 +157,16 @@ describe("catalogue report kinds", () => {
 				].includes((tx.raw as Record<string, string>).Operation ?? ""),
 		)) {
 			if (tx.type === "income") continue;
-			expect(tx.reviewFlags).toContainEqual(
-				expect.objectContaining({ code: "unknown_type" }),
-			);
-			expect(tx.assetIn).toBeUndefined();
+			expect(tx.type).toBe("transfer");
+			expect(tx.reviewFlags).toContainEqual({
+				code: "unknown_type",
+				message: `Statement operation ${JSON.stringify((tx.raw as Record<string, string>).Operation)} has no balance effect until reviewed.`,
+			});
+			expect([tx.amountIn, tx.amountOut, tx.feeAmount]).toEqual([
+				undefined,
+				undefined,
+				undefined,
+			]);
 		}
 	});
 	it("flags uncompleted wallet records without a balance effect and retains hashes on completed moves", () => {
@@ -174,7 +181,7 @@ describe("catalogue report kinds", () => {
 		expect(
 			parseBinance(sheets, { timezone: "IST" }).transactions[0],
 		).toMatchObject({
-			type: "fee",
+			type: "transfer",
 			reviewFlags: [expect.objectContaining({ code: "unknown_type" })],
 			raw,
 		});

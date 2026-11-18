@@ -97,6 +97,14 @@ export function parseReports(
 			ids.length === 1 ? ids[0] : ids.length > 1 ? `${venue}:mixed` : undefined,
 		detectedTimezone,
 		timezoneSource: detectedTimezone ? "file" : "user",
+		timezoneOrigin: fileTimezone
+			? "file_name"
+			: detectedTimezone &&
+					detected.every(
+						(kind, i) => !kind || headerTimezones[i] === detectedTimezone,
+					)
+				? "header"
+				: null,
 	};
 	const suffixes = new Set<ImportTimezone>();
 	if (fileTimezone)
@@ -110,7 +118,7 @@ export function parseReports(
 					options.timezone,
 					zone,
 					headerTimezones.includes(zone)
-						? "the file header"
+						? "the column header"
 						: "the export format",
 				),
 			);

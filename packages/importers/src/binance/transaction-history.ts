@@ -99,11 +99,8 @@ function review(
 	context: ReportContext,
 	message: string,
 	complex = false,
-	unclassifiedTrade = false,
 ) {
 	const tx = base(raw, sheet, context);
-	if (unclassifiedTrade) tx.type = "transfer";
-	// Catalogue §3: no monetary legs on review-only rows, so the engine cannot create spot disposals or lots.
 	tx.reviewFlags.push({ code: "unknown_type", message });
 	if (complex)
 		tx.reviewFlags.push({
@@ -119,46 +116,32 @@ function parse(
 	context: ReportContext,
 ): ReportRowResult {
 	const operation = raw.Operation ?? "";
+	const income = Object.hasOwn(BINANCE_INCOME, operation)
+		? BINANCE_INCOME[operation]
+		: undefined;
+	const unclassified = `Statement operation ${operation ? JSON.stringify(operation) : "(blank)"} has no balance effect until reviewed.`;
 
 	if (/futures|margin|options/i.test(raw.Account ?? ""))
-		return review(
-			raw,
-			sheet,
-			context,
-			"Derivative or margin balance event; tax treatment is a CA question.",
-			true,
-		);
+		return review(raw, sheet, context, unclassified, true);
 	if (moves.has(operation)) {
 		const tx = base(raw, sheet, context);
 		tx.type = "transfer";
 		return LedgerTxSchema.parse(tx);
 	}
 	if (/funding fee|realized profit|loan|borrow|repay|margin/i.test(operation))
-		return review(
-			raw,
-			sheet,
-			context,
-			"Derivative or margin balance event; tax treatment is a CA question.",
-			true,
-		);
+		return review(raw, sheet, context, unclassified, true);
 
 	if (
-		!BINANCE_INCOME[operation] &&
+		!income &&
 		!deposits.has(operation) &&
 		!withdrawals.has(operation) &&
 		!fees.has(operation)
 	)
-		return review(
-			raw,
-			sheet,
-			context,
-			"Unknown or unpaired statement operation; original preserved for review without a guessed tax classification.",
-		);
+		return review(raw, sheet, context, unclassified);
 	const change = numberString(raw.Change ?? "");
 	const tx = base(raw, sheet, context);
 	const asset = (raw.Coin ?? "").toUpperCase();
 	const amount = D(change).abs().toFixed();
-	const income = BINANCE_INCOME[operation];
 	if (income && D(change).gt("0")) {
 		tx.type = "income";
 		tx.incomeKind = income;
@@ -174,15 +157,9 @@ function parse(
 		tx.amountOut = amount;
 	} else if (fees.has(operation) && D(change).lt("0")) {
 		tx.type = "fee";
-		tx.assetOut = asset;
-		tx.amountOut = amount;
-	} else
-		return review(
-			raw,
-			sheet,
-			context,
-			"Unknown operation, unsupported sign, or ambiguous unpaired statement leg; check the original row before tax calculation.",
-		);
+		tx.feeAsset = asset;
+		tx.feeAmount = amount;
+	} else return review(raw, sheet, context, unclassified);
 	return LedgerTxSchema.parse(tx);
 }
 function prepare(sheet: TableSheet, context: ReportContext) {
@@ -266,14 +243,7 @@ function prepare(sheet: TableSheet, context: ReportContext) {
 	}
 	return (raw: Raw) => {
 		if (unclassified.has(raw))
-			return review(
-				raw,
-				sheet,
-				context,
-				ambiguousStatementTradeMessage,
-				false,
-				true,
-			);
+			return review(raw, sheet, context, ambiguousStatementTradeMessage);
 		return results.get(raw) ?? parse(raw, sheet, context);
 	};
 }

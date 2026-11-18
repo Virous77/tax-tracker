@@ -146,7 +146,7 @@ describe("verified research fixtures", () => {
 		expect(result.rowErrors).toHaveLength(2);
 		expect(new Set(result.transactions.map((tx) => tx.sourceRef)).size).toBe(8);
 		expect(result.transactions.at(-1)).toMatchObject({
-			type: "fee",
+			type: "transfer",
 			reviewFlags: expect.arrayContaining([
 				expect.objectContaining({ code: "complex_onchain" }),
 			]),
@@ -171,7 +171,8 @@ describe("verified research fixtures", () => {
 			true,
 		);
 		expect(
-			result.transactions.filter((tx) => tx.type !== "fee").at(-1)?.timestamp,
+			result.transactions.filter((tx) => tx.type !== "transfer").at(-1)
+				?.timestamp,
 		).toBe("2026-03-31T18:30:35.000Z");
 	});
 	it("applies generic recipes, signed quantities, digit grouping and checks", () => {

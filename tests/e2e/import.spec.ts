@@ -44,9 +44,8 @@ test("Binance trade history (UTC) shows the import summary", async ({
 		}),
 	).toBeVisible();
 	await expect(
-		// The zone comes from the "Date(UTC)" header; "file name" is P2-E2E-9 (BUGS.md).
 		page.getByText(
-			/^Source: Binance · Time zone: UTC \(from the file( name| header)?\)$/,
+			/^Source: Binance · Time zone: UTC \(from the column header\)$/,
 		),
 	).toBeVisible();
 	await expect(stat(page, "Rows read")).toHaveText("8");

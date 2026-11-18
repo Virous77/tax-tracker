@@ -29,6 +29,7 @@ export const imports = sqliteTable("imports", {
 	timezoneSource: text("timezone_source", { enum: ["file", "user"] })
 		.notNull()
 		.default("user"),
+	timezoneOrigin: text("timezone_origin", { enum: ["header", "file_name"] }),
 	coverage: text("coverage_json", { mode: "json" })
 		.$type<ImportSummary["coverage"]>()
 		.notNull()

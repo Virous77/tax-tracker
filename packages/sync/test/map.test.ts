@@ -227,7 +227,10 @@ describe("Binance mappings", () => {
 				{ time: "1600000000000", asset: "ETH", amount: "0.1", type: "BONUS" },
 				"locked",
 			),
-		).toMatchObject({ type: "fee", reviewFlags: [{ code: "parse_warning" }] }));
+		).toMatchObject({
+			type: "transfer",
+			reviewFlags: [{ code: "unknown_type" }, { code: "parse_warning" }],
+		}));
 	it("discovers both assets from knownAssets and honours extra symbols", () => {
 		const info = [
 			market,

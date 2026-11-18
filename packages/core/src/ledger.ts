@@ -58,21 +58,24 @@ export type ReviewFlag = z.infer<typeof ReviewFlagSchema>;
 export function mergeReviewFlags(flags: ReviewFlag[]): ReviewFlag[] {
 	const byCode = new Map<
 		ReviewCode,
-		{ flag: ReviewFlag; reasons: Set<string> }
+		{ flag: ReviewFlag; reasons: Map<string, string> }
 	>();
 	for (const flag of flags) {
-		const group = byCode.get(flag.code);
-		if (group) group.reasons.add(flag.message);
-		else byCode.set(flag.code, { flag, reasons: new Set([flag.message]) });
+		const group = byCode.get(flag.code) ?? { flag, reasons: new Map() };
+		for (const line of flag.message.split(/\r?\n/)) {
+			const reason = line.trim();
+			if (!reason) continue;
+			const sentence = `${reason.replace(/[.!?]+$/, "")}.`;
+			if (!group.reasons.has(sentence)) group.reasons.set(sentence, reason);
+		}
+		byCode.set(flag.code, group);
 	}
 	return [...byCode.values()].map(({ flag, reasons }) => ({
 		...flag,
 		message:
-			reasons.size === 1
-				? flag.message
-				: [...reasons]
-						.map((reason) => (/[.!?]$/.test(reason) ? reason : `${reason}.`))
-						.join(" "),
+			reasons.size < 2
+				? (reasons.values().next().value ?? flag.message)
+				: [...reasons.keys()].join("\n"),
 	}));
 }
 export const ManualVenueSchema = z.enum(["manual", "binance", "coindcx"]);

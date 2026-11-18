@@ -314,7 +314,7 @@ it("returns 202 before work finishes, rejects overlapping syncs, persists progre
 		trades: { lastId: "1" },
 	});
 });
-it("assigns a manual buy to the venue's holdings and disposal lot pool", async () => {
+it("moves a manual buy between venue balances and disposal lot pools", async () => {
 	const connection = await setup();
 	await call("putSettings", "PUT", { lotPool: "per_source" });
 	const { jobId } = await (
@@ -375,10 +375,68 @@ it("assigns a manual buy to the venue's holdings and disposal lot pool", async (
 	expect(report.scheduleVdaRows).toMatchObject([
 		{ costOfAcquisition: "250.00", trail: { lotTxIds: [buy.id] } },
 	]);
+	const patched = await call(
+		"patchTransaction",
+		"PATCH",
+		{ venue: "coindcx" },
+		{ id: buy.id },
+	);
+	expect(patched.status).toBe(200);
+	expect(await patched.json()).toMatchObject({
+		source: "manual",
+		venue: "coindcx",
+	});
+	expect(database().transactions.get(buy.id)?.venue).toBe("coindcx");
+	expect(
+		(await call("getReport", "GET", undefined, { taxYear: "2026-27" })).status,
+	).toBe(404);
+	expect(
+		await (
+			await call("connectionBalances", "GET", undefined, connection)
+		).json(),
+	).toMatchObject({
+		rows: [{ asset: "ETH", computed: "0.5", difference: "0.5" }],
+	});
+	const updatedReport = await (
+		await call("computeReport", "POST", undefined, { taxYear: "2026-27" })
+	).json();
+	expect(updatedReport.scheduleVdaRows).toMatchObject([
+		{ costOfAcquisition: "500.00" },
+	]);
+	expect(updatedReport.balances).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				asset: "ETH",
+				source: "coindcx",
+				computed: "0.5",
+			}),
+		]),
+	);
 	expect(
 		(await call("deleteTransaction", "DELETE", undefined, { id: buy.id }))
 			.status,
 	).toBe(204);
+});
+it("rejects a venue on an imported transaction without applying other edits", async () => {
+	const connection = await setup();
+	await call("syncConnection", "POST", undefined, connection);
+	await settleBackgroundJobs(database());
+	const tx = database().transactions.active()[0];
+	if (!tx) throw new Error("Missing synced transaction");
+	const response = await call(
+		"patchTransaction",
+		"PATCH",
+		{ venue: "binance", userNote: "must not be saved" },
+		{ id: tx.id },
+	);
+	expect(response.status).toBe(400);
+	expect(await response.json()).toMatchObject({
+		error: {
+			code: "validation_error",
+			message: "Venue can only be changed for manual transactions.",
+		},
+	});
+	expect(database().transactions.get(tx.id)).toEqual(tx);
 });
 it("retains incomplete warnings, reports balance drift, sanitizes failures and exposes failed connections in review", async () => {
 	const connection = await setup();

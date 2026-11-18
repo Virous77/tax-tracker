@@ -282,15 +282,15 @@ export function mapBinanceEarnAudit(raw: ApiRow, kind: string): SyncTx {
 		`earn-audit:${kind}:${stableHash(raw)}`,
 		text(raw, "time"),
 	);
-	if (
-		!["BONUS", "REALTIME", "REWARDS", "ALL", "INTEREST"].includes(
-			String(raw.type),
-		)
-	)
-		tx.reviewFlags.push({
-			code: "unknown_type",
-			message: "Unknown Earn reward type; audit row needs review",
-		});
+	const known = ["BONUS", "REALTIME", "REWARDS", "ALL", "INTEREST"].includes(
+		String(raw.type),
+	);
+	tx.reviewFlags.push({
+		code: "unknown_type",
+		message: known
+			? "Earn audit row has no separate balance effect."
+			: "Unknown Earn reward type; audit row needs review.",
+	});
 	return validated({
 		...tx,
 		reviewFlags: [

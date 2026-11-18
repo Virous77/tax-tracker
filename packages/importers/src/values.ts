@@ -234,7 +234,7 @@ export function baseTransaction(
 		source,
 		sourceRef,
 		timestamp,
-		type: "fee",
+		type: "transfer",
 		importId: null,
 		raw,
 		reviewFlags: [],

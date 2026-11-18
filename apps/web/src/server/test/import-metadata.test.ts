@@ -53,6 +53,7 @@ it("stores a future TDS-only importer result in details without creating ledger 
 		transactions: [],
 		reportKind: "binance:tds-summary",
 		timezoneSource: "user",
+		timezoneOrigin: null,
 		rowsRead: 1,
 		rowErrors: [],
 		warnings: [],

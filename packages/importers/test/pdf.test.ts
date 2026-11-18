@@ -19,6 +19,7 @@ describe("PDF balance snapshots", () => {
 			rowErrors: [],
 			rowsRead: 3,
 			timezoneSource: "file",
+			timezoneOrigin: "header",
 			balanceSnapshot: {
 				asOf: "2026-03-31",
 				timezone: "UTC",

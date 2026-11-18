@@ -1,4 +1,5 @@
 import type { LedgerTx, Recipe, ReviewFlag } from "@tax/core";
+import type { ImportSummary } from "@tax/core/api";
 export interface InputFile {
 	name: string;
 	bytes: Uint8Array;
@@ -45,6 +46,7 @@ export interface ImportResult {
 	reportKind?: string;
 	detectedTimezone?: string;
 	timezoneSource: "file" | "user";
+	timezoneOrigin: NonNullable<ImportSummary["timezoneOrigin"]> | null;
 	transactions: LedgerTx[];
 	rowsRead: number;
 	warnings: ReviewFlag[];

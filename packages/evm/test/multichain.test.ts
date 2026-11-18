@@ -509,7 +509,9 @@ describe("chain identity and classification", () => {
 		expect(
 			classified(8453, [normal({ l1Fee: "100", operatorFeeScalar: "1" })])[0]
 				?.reviewFlags[0]?.message,
-		).toContain("operator-fee");
+		).toBe(
+			"The receipt lists operator-fee parameters without a confirmed fee amount. Review the additional fee.",
+		);
 	});
 	it("maps MATIC native history to POL, retains its raw symbol, warns once, and drops native aliases", () => {
 		const main = normal({ timeStamp: "1600000000", nativeSymbol: "MATIC" });

@@ -44,15 +44,12 @@ test("a file whose header names UTC, imported as IST, warns and names both zones
 	);
 });
 
-test("the zone source label agrees with the warning: header, not file name", async ({
-	page,
-}) => {
+test("the zone source label identifies the column header", async ({ page }) => {
 	// binance-trade-history.csv has no zone in its name; the zone comes from "Date(UTC)".
 	await upload(page, path.join(FIXTURES, "binance-trade-history.csv"), /^IST /);
-	await expect(page.getByText(/Time zone: UTC/)).toBeVisible();
 	await expect(
-		page.getByText(/Time zone: UTC \(from the file name\)/),
-	).toHaveCount(0);
+		page.getByText(/Time zone: UTC \(from the column header\)/),
+	).toBeVisible();
 });
 
 test("statement + Trade History: covered same-second legs leave no empty rows (P2-E2E-6)", async ({

@@ -176,7 +176,7 @@ export const reportKind = {
 				...timezoneConflict(
 					options.timezone,
 					fileTimezone,
-					zones.length ? "the PDF statement" : "the file name",
+					zones.length ? "the statement header" : "the file name",
 				),
 				...(!fileTimezone
 					? [
@@ -189,6 +189,11 @@ export const reportKind = {
 					: []),
 			],
 			timezoneSource: fileTimezone ? "file" : "user",
+			timezoneOrigin: zones.length
+				? "header"
+				: fileTimezone
+					? "file_name"
+					: null,
 			detectedTimezone: fileTimezone,
 		};
 	},

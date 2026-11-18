@@ -234,8 +234,14 @@ describe("no 'catalogue' or '§' reaches any API message", () => {
 			} catch {
 				body = text;
 			}
-			for (const message of messages(body))
-				if (/catalogu?e|§/i.test(message)) hits.push(`${where}: ${message}`);
+			for (const message of messages(body)) {
+				const appText = message.replace(
+					/^Statement operation "(?:[^"\\]|\\.)*"/,
+					"Statement operation",
+				);
+				if (/catalogu?e|research|§/i.test(appText))
+					hits.push(`${where}: ${message}`);
+			}
 		}
 		expect(hits).toEqual([]);
 	});

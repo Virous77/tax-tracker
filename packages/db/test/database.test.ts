@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LedgerTx } from "@tax/core";
 import type { ImportDetail } from "@tax/core/api";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../src/index.js";
 
@@ -57,6 +58,54 @@ function transaction(importId: string): LedgerTx {
 	};
 }
 describe("database", () => {
+	it("upgrades old review-only fees while preserving real fees and user edits", () => {
+		const { dir, db } = setup();
+		const imported = record();
+		db.imports.save(imported);
+		const { id, source, importId, timestamp, raw } = transaction(imported.id);
+		const placeholder: LedgerTx = {
+			id,
+			source,
+			importId,
+			timestamp,
+			raw,
+			type: "fee",
+			sourceRef: "review-only",
+			reviewFlags: [{ code: "parse_warning", message: "Keep the original." }],
+		};
+		const fee: LedgerTx = {
+			...placeholder,
+			id: randomUUID(),
+			sourceRef: "real-fee",
+			feeAsset: "BTC",
+			feeAmount: "0.01",
+		};
+		const edited: LedgerTx = {
+			...placeholder,
+			id: randomUUID(),
+			sourceRef: "edited",
+		};
+		db.transactions.insert([placeholder, fee, edited].map((tx) => ({ tx })));
+		db.transactions.update({ ...edited, userNote: "checked" });
+		db.close();
+		const sqlite = new Database(join(dir, "tax-tracker.db"));
+		sqlite.exec(
+			"DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
+		);
+		sqlite.close();
+		const upgraded = openDatabase(dir);
+		expect(upgraded.transactions.get(id)).toMatchObject({
+			type: "transfer",
+			raw,
+			reviewFlags: [{ code: "parse_warning" }, { code: "unknown_type" }],
+		});
+		expect(upgraded.transactions.get(fee.id)).toEqual(fee);
+		expect(upgraded.transactions.get(edited.id)).toEqual({
+			...edited,
+			userNote: "checked",
+		});
+		upgraded.close();
+	});
 	it("migrates, persists precise strings, preserves edits on reimport and cascades deletes", () => {
 		const { dir, db } = setup();
 		const imported = record();

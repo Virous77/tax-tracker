@@ -122,6 +122,7 @@ export async function startSync(db: TaxDatabase, id: string) {
 				reportKindLabel: null,
 				detectedTimezone: null,
 				timezoneSource: "user",
+				timezoneOrigin: null,
 				coverage: [],
 				status: "pending_recipe",
 				rowsRead: 0,

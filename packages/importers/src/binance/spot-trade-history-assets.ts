@@ -22,8 +22,7 @@ export const reportKind: ReportKind = {
 			raw,
 			sheet,
 			"oldTrade",
-			context.options,
+			context,
 			context.reference(raw, raw["Trade ID"]),
-			context.fileName,
 		),
 };

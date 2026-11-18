@@ -12,8 +12,7 @@ export const reportKind: ReportKind = {
 			raw,
 			sheet,
 			"wallet",
-			context.options,
+			context,
 			`withdraw:${context.reference(raw, raw["Transaction ID"])}`,
-			context.fileName,
 		),
 };

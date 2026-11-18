@@ -23,7 +23,7 @@ import {
 	type ReportMissingDetails,
 } from "@tax/core/api";
 import Database, { type Database as SQLiteDatabase } from "better-sqlite3";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { phase2Repositories } from "./phase2.js";
@@ -670,11 +670,25 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 					.run().changes,
 			recover: () =>
 				orm.transaction(() => {
+					const restart =
+						"Server restarted before completion; retry the operation.";
+					const imports = sqlite
+						.prepare(
+							`UPDATE imports SET status='failed',error=?
+							WHERE kind='api_sync' AND status='pending_recipe' AND id IN (
+								SELECT json_extract(result, '$.importId') FROM jobs
+								WHERE kind='sync' AND status IN ('pending','running')
+								AND json_extract(payload, '$.connectionId')=imports.connection_id
+							)`,
+						)
+						.run(restart).changes;
+					if (imports) invalidateReports("ledger_changed");
 					const changed = orm
 						.update(schema.jobs)
 						.set({
 							status: "failed",
-							error: "Server restarted before completion; retry the operation.",
+							error: restart,
+							progress: sql`json_remove(${schema.jobs.progress}, '$.waitingUntil')`,
 							updatedAt: new Date().toISOString(),
 						})
 						.where(inArray(schema.jobs.status, ["pending", "running"]))

@@ -1,5 +1,9 @@
 import { D, type LedgerTx } from "@tax/core";
 import { binanceReportKinds } from "./binance/index.js";
+import {
+	ambiguousStatementGroup,
+	matchStatementLegs,
+} from "./binance/statement-overlap.js";
 import { coindcxReportKinds } from "./coindcx/index.js";
 import { canonical, parseTimestamp } from "./values.js";
 
@@ -310,6 +314,48 @@ export function reconcileReportKinds(
 			else
 				for (const tx of candidates.length ? candidates : dedicated)
 					ambiguity(tx, [statement]);
+		}
+	}
+	const groups = new Map<string, { category: string; rows: LedgerTx[] }>();
+	for (const tx of [...old, ...available]) {
+		if (
+			tx.source !== "binance" ||
+			transactionReportKind(tx) !== "binance:transaction-history"
+		)
+			continue;
+		const category = ambiguousStatementGroup(tx);
+		if (!category) continue;
+		const key = canonical([tx.importId, tx.timestamp, category]);
+		const group = groups.get(key) ?? { category, rows: [] };
+		group.rows.push(tx);
+		groups.set(key, group);
+	}
+	const dedicatedTrades = [...old, ...available].filter(
+		(tx) =>
+			tx.source === "binance" &&
+			!blocked.has(tx) &&
+			!claimed.has(tx) &&
+			(isFill(tx) || dedicatedFamily(tx) === "convert"),
+	);
+	for (const { category, rows } of groups.values()) {
+		const first = rows[0];
+		if (!first) continue;
+		const candidates = dedicatedTrades.filter(
+			(tx) =>
+				tx.timestamp.slice(0, 19) === first.timestamp.slice(0, 19) &&
+				(category === "trade"
+					? isFill(tx)
+					: category === "binance convert" &&
+						dedicatedFamily(tx) === "convert"),
+		);
+		if (!candidates.length) continue;
+		const matches = matchStatementLegs(rows, candidates);
+		if (!matches.length) continue;
+		for (const match of matches) {
+			if (available.includes(match.statement))
+				duplicate(match.statement, match.dedicated);
+			else if (candidates.some((tx) => available.includes(tx)))
+				supersede(match.statement, candidates);
 		}
 	}
 	result.insert = available.filter((tx) => !blocked.has(tx));

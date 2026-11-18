@@ -64,9 +64,9 @@ export function importFile(
 	return source === "binance"
 		? parseBinance(sheets, opts, file.name)
 		: source === "coindcx"
-			? parseCoinDcx(sheets, opts)
+			? parseCoinDcx(sheets, opts, file.name)
 			: opts.recipe
-				? applyRecipe(sheets, opts.recipe, opts)
+				? applyRecipe(sheets, opts.recipe, opts, file.name)
 				: (() => {
 						throw new Error("Unknown layout; supply a reviewed recipe.");
 					})();

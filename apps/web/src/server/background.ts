@@ -42,8 +42,15 @@ export function startBackgroundJob<T>(
 						result: (value) => {
 							if (!job.cancelled) db.jobs.update(jobId, "running", value);
 						},
-						progress: (p) => {
-							if (!job.cancelled) db.jobs.progress(jobId, p);
+						progress: ({ waitingUntil, ...progress }) => {
+							if (!job.cancelled)
+								db.jobs.progress(jobId, {
+									...progress,
+									waitingUntil:
+										waitingUntil === undefined
+											? null
+											: new Date(waitingUntil).toISOString(),
+								});
 						},
 					});
 					if (!job.cancelled) db.jobs.update(jobId, "completed", result);

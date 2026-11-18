@@ -13,6 +13,8 @@ export class CoinDcxClient {
 			fetch: opts.fetch,
 			now: opts.now,
 			minIntervalMs: 350,
+			vendor: "CoinDCX",
+			redact: [opts.credentials.apiSecret],
 		});
 	}
 	async request(

@@ -17,6 +17,6 @@ export async function importPdf(
 		.map((line) => line.cells.map((c) => c.str).join(" "))
 		.join("\n");
 	if (form16a.detect(text)) return form16a.parse();
-	if (binance.detect(text)) return binance.parse(lines, options);
+	if (binance.detect(text)) return binance.parse(lines, options, file.name);
 	throw pdfError("pdf_unknown_layout");
 }

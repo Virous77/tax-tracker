@@ -55,6 +55,27 @@ export const ReviewFlagSchema = z.object({
 });
 export type ReviewCode = z.infer<typeof ReviewCodeSchema>;
 export type ReviewFlag = z.infer<typeof ReviewFlagSchema>;
+export function mergeReviewFlags(flags: ReviewFlag[]): ReviewFlag[] {
+	const byCode = new Map<
+		ReviewCode,
+		{ flag: ReviewFlag; reasons: Set<string> }
+	>();
+	for (const flag of flags) {
+		const group = byCode.get(flag.code);
+		if (group) group.reasons.add(flag.message);
+		else byCode.set(flag.code, { flag, reasons: new Set([flag.message]) });
+	}
+	return [...byCode.values()].map(({ flag, reasons }) => ({
+		...flag,
+		message:
+			reasons.size === 1
+				? flag.message
+				: [...reasons]
+						.map((reason) => (/[.!?]$/.test(reason) ? reason : `${reason}.`))
+						.join(" "),
+	}));
+}
+export const ManualVenueSchema = z.enum(["manual", "binance", "coindcx"]);
 export const TxTypeSchema = z.enum([
 	"buy",
 	"sell",
@@ -85,6 +106,7 @@ export const InrRateSourceSchema = z.enum([
 export const LedgerTxFieldsSchema = z.object({
 	id: z.uuid(),
 	source: z.string().min(1),
+	venue: ManualVenueSchema.optional(),
 	sourceRef: z.string().min(1),
 	importId: z.string().nullable(),
 	timestamp: z.iso.datetime(),
@@ -106,7 +128,7 @@ export const LedgerTxFieldsSchema = z.object({
 	txHash: z.string().optional(),
 	chain: z.string().optional(),
 	raw: z.unknown().refine((v) => v !== undefined, "Original row required"),
-	reviewFlags: z.array(ReviewFlagSchema),
+	reviewFlags: z.array(ReviewFlagSchema).transform(mergeReviewFlags),
 	userNote: z.string().optional(),
 });
 export const LedgerTxSchema = LedgerTxFieldsSchema.superRefine((tx, ctx) => {

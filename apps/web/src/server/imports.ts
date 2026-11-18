@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { type Recipe, RecipeSchema } from "@tax/core";
+import { D, type Recipe, RecipeSchema, timezoneOffsetMinutes } from "@tax/core";
 import type {
 	ConfirmImportRequestSchema,
 	CreateImportRequestSchema,
@@ -45,6 +45,20 @@ function storedSheets(db: TaxDatabase, id: string): TableSheet[] {
 			.map((row) => row.data as Record<string, string>),
 	}));
 }
+function snapshotContent(
+	snapshot: NonNullable<ImportResult["balanceSnapshot"]>,
+) {
+	const rows = snapshot.rows
+		.map(({ asset, amount, wallet }) =>
+			canonical([asset, D(amount).toFixed(), wallet ?? null]),
+		)
+		.sort();
+	return canonical([
+		snapshot.asOf,
+		timezoneOffsetMinutes(snapshot.timezone),
+		rows,
+	]);
+}
 function saveResult(
 	db: TaxDatabase,
 	imported: ImportDetail,
@@ -68,23 +82,39 @@ function saveResult(
 				rawRowId: queues.get(canonical(tx.raw))?.shift(),
 			})),
 		);
-		if (result.balanceSnapshot)
-			db.balanceSnapshots.save({
-				id: randomUUID(),
-				importId: imported.id,
-				venue: imported.source,
-				...result.balanceSnapshot,
-				createdAt: imported.createdAt,
-			});
+		let snapshotInserted = 0;
+		let snapshotDuplicate = 0;
+		if (result.balanceSnapshot) {
+			const snapshot = result.balanceSnapshot;
+			const content = snapshotContent(snapshot);
+			const duplicate = db.balanceSnapshots
+				.list()
+				.some(
+					(existing) =>
+						existing.venue === imported.source &&
+						(snapshotContent(existing) === content ||
+							db.imports.get(existing.importId)?.fileSha256 ===
+								imported.fileSha256),
+				);
+			if (duplicate) snapshotDuplicate = snapshot.rows.length;
+			else {
+				db.balanceSnapshots.save({
+					id: randomUUID(),
+					importId: imported.id,
+					venue: imported.source,
+					...snapshot,
+					createdAt: imported.createdAt,
+				});
+				snapshotInserted = snapshot.rows.length;
+			}
+		}
 		const updated = {
 			...imported,
 			status: "imported" as const,
 			rowsRead: result.rowsRead,
 			rowsInserted:
-				count.inserted +
-				(result.balanceSnapshot?.rows.length ?? 0) +
-				(result.tdsSummary?.length ?? 0),
-			rowsDuplicate: count.duplicate,
+				count.inserted + snapshotInserted + (result.tdsSummary?.length ?? 0),
+			rowsDuplicate: count.duplicate + snapshotDuplicate,
 			rowsError: result.rowErrors.length,
 			rowsSkipped: result.skippedRows?.length ?? 0,
 			skippedRows: result.skippedRows ?? [],
@@ -275,7 +305,12 @@ export async function createImport(
 					null,
 				);
 			if (source === "coindcx")
-				return saveResult(db, imported, parseCoinDcx(sheets, options), null);
+				return saveResult(
+					db,
+					imported,
+					parseCoinDcx(sheets, options, input.fileName),
+					null,
+				);
 			const recipes = [...db.recipes.list(), ...libraryRecipes];
 			const recipe =
 				sheets.length === 1
@@ -289,7 +324,7 @@ export async function createImport(
 				return saveResult(
 					db,
 					imported,
-					applyRecipe(sheets, recipe, options),
+					applyRecipe(sheets, recipe, options, input.fileName),
 					recipe.id,
 				);
 			return imported;
@@ -327,7 +362,12 @@ export async function confirmImport(
 	const sheets = storedSheets(db, id);
 	let result: ImportResult;
 	try {
-		result = applyRecipe(sheets, recipe, { timezone: imported.timezone });
+		result = applyRecipe(
+			sheets,
+			recipe,
+			{ timezone: imported.timezone },
+			imported.fileName,
+		);
 		for (const sheet of sheets)
 			if (sheet.name !== (recipe.sheet ?? sheets[0]?.name)) {
 				result.rowsRead += sheet.rows.length;
@@ -382,7 +422,12 @@ export function previewRecipe(
 	let sheet: TableSheet;
 	try {
 		const sheets = storedSheets(db, imported.id);
-		result = applyRecipe(sheets, recipe, { timezone: imported.timezone });
+		result = applyRecipe(
+			sheets,
+			recipe,
+			{ timezone: imported.timezone },
+			imported.fileName,
+		);
 		sheet = required(
 			sheets.find((value) =>
 				recipe.sheet ? value.name === recipe.sheet : sheets.length === 1,

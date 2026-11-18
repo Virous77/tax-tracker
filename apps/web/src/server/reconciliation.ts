@@ -71,6 +71,7 @@ export function insertReconciled(
 	importId: string,
 	rows: { tx: LedgerTx; rawRowId?: string }[],
 ) {
+	if (!rows.length) return { inserted: 0, duplicate: 0 };
 	const incoming = rows.map(({ tx }) => reconciliationView(tx));
 	const venues = new Set(incoming.map((tx) => tx.source));
 	const existing = db.transactions
@@ -119,28 +120,32 @@ export function insertReconciled(
 	return db.atomic(() => {
 		for (const row of result.supersede)
 			db.transactions.supersede(row.existingId, importId);
+		const writes = rows.map(({ tx, rawRowId }, index) => {
+			const ref = incoming[index]?.sourceRef ?? "";
+			const candidates = ambiguous.get(ref);
+			return {
+				tx: candidates
+					? {
+							...tx,
+							reviewFlags: [
+								...tx.reviewFlags,
+								{
+									code: "possible_duplicate" as const,
+									message: `Possible report-kind duplicate; review candidate transactions: ${candidates.join(", ")}.`,
+								},
+							],
+						}
+					: tx,
+				rawRowId,
+				duplicateOf: preDuplicates.get(tx.id) ?? duplicates.get(ref),
+				skipCrossChannel: replacements.has(ref) || Boolean(candidates),
+			};
+		});
 		return db.transactions.insert(
-			rows.map(({ tx, rawRowId }, index) => {
-				const ref = incoming[index]?.sourceRef ?? "";
-				const candidates = ambiguous.get(ref);
-				return {
-					tx: candidates
-						? {
-								...tx,
-								reviewFlags: [
-									...tx.reviewFlags,
-									{
-										code: "possible_duplicate" as const,
-										message: `Possible report-kind duplicate; review candidate transactions: ${candidates.join(", ")}.`,
-									},
-								],
-							}
-						: tx,
-					rawRowId,
-					duplicateOf: preDuplicates.get(tx.id) ?? duplicates.get(ref),
-					skipCrossChannel: replacements.has(ref) || Boolean(candidates),
-				};
-			}),
+			writes.sort(
+				(a, b) =>
+					Number(Boolean(a.duplicateOf)) - Number(Boolean(b.duplicateOf)),
+			),
 		);
 	});
 }

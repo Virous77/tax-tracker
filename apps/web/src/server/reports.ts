@@ -93,7 +93,18 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 				code: "import_incomplete",
 				message: `Import ${item.fileName}: ${item.rowsError} excluded rows; status ${item.status}. Review the import before relying on this report.`,
 			}));
-		warnings.push(...db.imports.list().flatMap((item) => item.warnings));
+		warnings.push(
+			...db.imports
+				.list()
+				.flatMap((item) =>
+					item.warnings.filter(
+						(flag) =>
+							flag.code !== "parse_warning" ||
+							flag.message !==
+								"Unsupported sheets and invalid rows are listed in row errors and are excluded from calculations.",
+					),
+				),
+		);
 		let fx = (() => null) as ReturnType<typeof createFxLookup>;
 		try {
 			fx = createFxLookup(

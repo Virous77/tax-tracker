@@ -6,12 +6,7 @@ import {
 	type ReportRowResult,
 } from "../reports.js";
 import type { TableSheet } from "../types.js";
-import {
-	baseTransaction,
-	canonical,
-	numberString,
-	parseTimestamp,
-} from "../values.js";
+import { baseTransaction, canonical, numberString } from "../values.js";
 import { BINANCE_HEADERS, BINANCE_INCOME } from "./headers.js";
 
 const trades = new Set([
@@ -34,6 +29,17 @@ const swaps = new Set([
 	"Large OTC trading",
 	"Buy Crypto With Card",
 ]);
+export const ambiguousStatementTradeMessage =
+	"Statement has non-unique or incomplete trade legs. This unclassified entry has no balance effect. Import a dedicated history or review the original legs.";
+
+export function statementTradeCategory(operation: string): string | undefined {
+	if (trades.has(operation) || fees.has(operation)) return "trade";
+	if (swaps.has(operation)) return operation.toLowerCase();
+}
+
+export function isStatementTradeFee(operation: string): boolean {
+	return fees.has(operation);
+}
 const moves = new Set([
 	"transfer_in",
 	"transfer_out",
@@ -79,10 +85,9 @@ function base(
 				: originals,
 			raw["Transaction ID"],
 		),
-		parseTimestamp(
+		context.parseTimestamp(
 			raw.UTC_Time ?? "",
 			"yyyy-MM-dd HH:mm:ss",
-			context.options.timezone,
 			sheet.excelDate1904,
 		),
 		originals,
@@ -94,8 +99,10 @@ function review(
 	context: ReportContext,
 	message: string,
 	complex = false,
+	unclassifiedTrade = false,
 ) {
 	const tx = base(raw, sheet, context);
+	if (unclassifiedTrade) tx.type = "transfer";
 	// Catalogue §3: no monetary legs on review-only rows, so the engine cannot create spot disposals or lots.
 	tx.reviewFlags.push({ code: "unknown_type", message });
 	if (complex)
@@ -180,16 +187,12 @@ function parse(
 }
 function prepare(sheet: TableSheet, context: ReportContext) {
 	const results = new Map<Raw, ReportRowResult>();
+	const unclassified = new Set<Raw>();
 	const groups = new Map<string, Raw[]>();
 	for (const raw of sheet.rows) {
 		if (/futures|margin|options/i.test(raw.Account ?? "")) continue;
 		const op = raw.Operation ?? "";
-		const category =
-			trades.has(op) || fees.has(op)
-				? "trade"
-				: swaps.has(op)
-					? op.toLowerCase()
-					: undefined;
+		const category = statementTradeCategory(op);
 		if (!category) continue;
 		const key = canonical([raw.UTC_Time, raw.Account, category]);
 		const group = groups.get(key) ?? [];
@@ -197,6 +200,7 @@ function prepare(sheet: TableSheet, context: ReportContext) {
 		groups.set(key, group);
 	}
 	for (const group of groups.values()) {
+		if (group.every((row) => fees.has(row.Operation ?? ""))) continue;
 		try {
 			const positive = group.filter(
 				(r) =>
@@ -220,22 +224,7 @@ function prepare(sheet: TableSheet, context: ReportContext) {
 				group.length !== 2 + feeRows.length ||
 				received.Coin === spent.Coin
 			) {
-				if (
-					group.some(
-						(r) =>
-							trades.has(r.Operation ?? "") || swaps.has(r.Operation ?? ""),
-					)
-				)
-					for (const row of group)
-						results.set(
-							row,
-							review(
-								row,
-								sheet,
-								context,
-								"Statement has non-unique or incomplete trade legs; use dedicated Trade History or review the originals before classification.",
-							),
-						);
+				for (const row of group) unclassified.add(row);
 				continue;
 			}
 			const tx = base(received, sheet, context, group);
@@ -257,7 +246,10 @@ function prepare(sheet: TableSheet, context: ReportContext) {
 				};
 			const fee = feeRows[0];
 			if (fee) {
-				if (D(numberString(fee.Change ?? "")).gt("0")) continue;
+				if (D(numberString(fee.Change ?? "")).gt("0")) {
+					for (const row of group) unclassified.add(row);
+					continue;
+				}
 				tx.feeAsset = fee.Coin?.toUpperCase();
 				tx.feeAmount = numberString(fee.Change ?? "", true);
 			}
@@ -269,10 +261,21 @@ function prepare(sheet: TableSheet, context: ReportContext) {
 					skip: "Statement leg is preserved in the grouped transaction raw rows.",
 				});
 		} catch {
-			// Invalid or non-unique groups stay as individual review rows; no candidate pairing is guessed.
+			for (const row of group) unclassified.add(row);
 		}
 	}
-	return (raw: Raw) => results.get(raw) ?? parse(raw, sheet, context);
+	return (raw: Raw) => {
+		if (unclassified.has(raw))
+			return review(
+				raw,
+				sheet,
+				context,
+				ambiguousStatementTradeMessage,
+				false,
+				true,
+			);
+		return results.get(raw) ?? parse(raw, sheet, context);
+	};
 }
 export const reportKind: ReportKind = {
 	verified: true,

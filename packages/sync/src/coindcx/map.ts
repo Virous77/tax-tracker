@@ -57,7 +57,7 @@ export function mapCoinDcxTrade(raw: ApiRow, markets: ApiRow[]): SyncTx {
 	tx.reviewFlags.push({
 		code: "parse_warning",
 		message:
-			"CoinDCX does not specify fee currency; quote currency assumed. GST is not separated (research §2.2)",
+			"CoinDCX does not specify fee currency. The fee is treated as quote currency and GST is shown together with fees.",
 	});
 	if (!["I", "B", "KC"].includes(String(raw.ecode)))
 		tx.reviewFlags.push({

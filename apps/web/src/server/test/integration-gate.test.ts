@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { istDate, taxYearOf } from "@tax/core";
 import { HttpClient, type HttpRequest, mapBinanceP2p } from "@tax/sync";
 import { expect, it, vi } from "vitest";
 import { settleBackgroundJobs } from "../background";
@@ -116,20 +116,6 @@ it("reconciles signed sync and flags every difference against the shared mock", 
 				}),
 			);
 		const db = database();
-		// The old P2P purchase is outside Binance's six-month API window and comes from a file.
-		const p2p = mapBinanceP2p(fixture.P2P_BUY);
-		if (!p2p) throw new Error("Missing fixture purchase");
-		db.transactions.insert([
-			{
-				tx: {
-					...p2p,
-					id: randomUUID(),
-					importId: null,
-					source: "binance",
-					sourceRef: "fixture-p2p-file",
-				},
-			},
-		]);
 		for (const stream of [
 			"deposits",
 			"withdrawals",
@@ -162,6 +148,18 @@ it("reconciles signed sync and flags every difference against the shared mock", 
 			).json();
 			expect(job, JSON.stringify(job)).toMatchObject({ status: "completed" });
 		}
+		const p2p = mapBinanceP2p(fixture.P2P_BUY);
+		if (!p2p) throw new Error("Missing fixture purchase");
+		if (!db.transactions.active().some((tx) => tx.sourceRef === p2p.sourceRef))
+			expect(
+				(
+					await call("createTransaction", "POST", {
+						...p2p,
+						importId: null,
+						venue: "binance",
+					})
+				).status,
+			).toBe(201);
 		for (const connection of [binance, dcx, ...wallets]) {
 			const balances = await (
 				await call("connectionBalances", "GET", undefined, connection)
@@ -199,23 +197,28 @@ it("reconciles signed sync and flags every difference against the shared mock", 
 				})
 			).status,
 		).toBe(200);
-		const fill = await (
-			await call("fillPrices", "POST", { taxYear: "2025-26" })
-		).json();
+		const dustDate = new Date(
+			fixture.BINANCE_DUST[0].operateTime,
+		).toISOString();
+		const taxYear = taxYearOf(dustDate);
+		const fill = await (await call("fillPrices", "POST", { taxYear })).json();
 		await settleBackgroundJobs(db);
 		expect(
 			await (await call("getJob", "GET", undefined, { id: fill.jobId })).json(),
 		).toMatchObject({
 			status: "completed",
-			result: { missing: [{ asset: "XRP", date: "2025-11-05" }] },
+			result: {
+				missing: expect.arrayContaining([
+					{ asset: "XRP", date: istDate(dustDate) },
+				]),
+			},
 		});
 		expect(
-			(await call("computeReport", "POST", undefined, { taxYear: "2025-26" }))
-				.status,
+			(await call("computeReport", "POST", undefined, { taxYear })).status,
 		).toBe(200);
 		// XRP has no fixture kline; a disabled fallback must leave the gap explicit.
 		const report = await (
-			await call("getReport", "GET", undefined, { taxYear: "2025-26" })
+			await call("getReport", "GET", undefined, { taxYear })
 		).json();
 		expect(
 			report.warnings.some(

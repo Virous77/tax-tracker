@@ -26,7 +26,14 @@ import {
 	mapBinanceTrade,
 	type SymbolInfo,
 } from "./map.js";
-import { fetchHistory, historyStreams } from "./streams.js";
+import {
+	DAY,
+	discoveryStreams,
+	FIRST_SYNC,
+	fetchHistory,
+	type HistoryStream,
+	historyStreams,
+} from "./streams.js";
 
 async function balances(
 	client: BinanceClient,
@@ -99,7 +106,15 @@ async function balances(
 	return [...totals.values()];
 }
 async function* sync(opts: BinanceSyncOptions): AsyncGenerator<StreamBatch> {
-	const client = new BinanceClient(opts);
+	const now = (opts.now ?? Date.now)();
+	const cursors = { ...opts.cursors };
+	let earliest = now;
+	const observe = (time: unknown) => {
+		if (typeof time === "number" && Number.isFinite(time) && time >= FIRST_SYNC)
+			earliest = Math.min(earliest, time);
+	};
+	for (const cursor of Object.values(cursors))
+		observe(cursorObject(cursor).earliestActivity);
 	const assets = new Set(opts.knownAssets.map((asset) => asset.toUpperCase()));
 	const collect = (tx: SyncTx) => {
 		for (const asset of [tx.assetIn, tx.assetOut, tx.feeAsset])
@@ -119,9 +134,31 @@ async function* sync(opts: BinanceSyncOptions): AsyncGenerator<StreamBatch> {
 			}
 		}
 	};
-	let done = 0,
-		fetched = 0;
+	let done = 0;
+	let fetched = 0;
+	let streamsTotal: number | null = null;
 	let stream = "binance:key-check";
+	const progress = (waitingUntil?: number) =>
+		opts.onProgress?.({
+			stream,
+			streamsDone: done,
+			streamsTotal,
+			rowsFetched: fetched,
+			waitingUntil,
+		});
+	const client = new BinanceClient(opts, progress);
+	async function* walkHistory(config: HistoryStream, start?: number) {
+		stream = `binance:${config.name}`;
+		for await (const batch of fetchHistory(client, opts, config, start)) {
+			for (const row of batch.rows) collect(row.tx);
+			observe(cursorObject(batch.cursor).earliestActivity);
+			cursors[stream] = batch.cursor;
+			fetched += batch.rows.length;
+			progress();
+			yield batch;
+		}
+		done++;
+	}
 	try {
 		await client.time();
 		await client.requireReadOnly();
@@ -138,21 +175,9 @@ async function* sync(opts: BinanceSyncOptions): AsyncGenerator<StreamBatch> {
 				cursor: null,
 				incomplete: balanceNotices.join("; "),
 			};
-		for (const config of historyStreams) {
-			stream = `binance:${config.name}`;
-			for await (const batch of fetchHistory(client, opts, config)) {
-				for (const row of batch.rows) collect(row.tx);
-				fetched += batch.rows.length;
-				opts.onProgress?.({
-					stream,
-					streamsDone: done,
-					streamsTotal: null,
-					rowsFetched: fetched,
-				});
-				yield batch;
-			}
-			done++;
-		}
+		// These low-weight streams expose older history in the widest available windows.
+		for (const config of historyStreams)
+			if (discoveryStreams.has(config.name)) yield* walkHistory(config);
 		stream = "binance:dust";
 		const dust = object(
 			await client.request("/sapi/v1/asset/dribblet", { accountType: "SPOT" }),
@@ -162,7 +187,10 @@ async function* sync(opts: BinanceSyncOptions): AsyncGenerator<StreamBatch> {
 				mapBinanceDust(raw, parent),
 			),
 		);
-		dustRows.forEach(collect);
+		for (const tx of dustRows) {
+			collect(tx);
+			observe(Date.parse(tx.timestamp));
+		}
 		yield {
 			stream,
 			rows: dustRows.map((tx) => ({ tx })),
@@ -179,83 +207,142 @@ async function* sync(opts: BinanceSyncOptions): AsyncGenerator<StreamBatch> {
 			baseAsset: text(row, "baseAsset"),
 			quoteAsset: text(row, "quoteAsset"),
 		}));
-		const symbols = discoverSymbols(info, assets, opts.extraSymbols);
-		for (const extra of opts.extraSymbols.map((v) => v.toUpperCase()))
-			if (!symbols.some((row) => row.symbol === extra)) {
-				const parts = splitPair(extra);
-				if (parts)
-					symbols.push({
-						symbol: extra,
-						baseAsset: parts[0],
-						quoteAsset: parts[1],
-					});
-				else
-					yield {
-						stream: `binance:myTrades:${extra}`,
-						rows: [],
-						cursor: opts.cursors[`binance:myTrades:${extra}`] ?? null,
-						incomplete:
-							"Extra symbol is absent from exchangeInfo and cannot be split safely",
-					};
-			}
-		for (const market of symbols) {
-			stream = `binance:myTrades:${market.symbol}`;
-			let lastId = String(cursorObject(opts.cursors[stream]).lastId ?? "-1");
-			for (;;) {
-				let page: ReturnType<typeof rows>;
-				try {
-					page = rows(
-						await client.request("/api/v3/myTrades", {
-							symbol: market.symbol,
-							fromId: (BigInt(lastId) + 1n).toString(),
-							limit: 1000,
-						}),
-					);
-				} catch (error) {
-					if (error instanceof UpstreamError && error.code === "-1121") {
-						yield {
-							stream,
-							rows: [],
-							cursor: { lastId },
-							incomplete:
-								"Symbol is delisted or unavailable; verify trades against a file export",
-						};
-						break;
-					}
-					throw error;
-				}
-				const mapped = page.map((raw) => ({
-					tx: mapBinanceTrade(raw, market),
-				}));
-				if (page.length) {
-					const next = page.reduce(
-						(max, row) =>
-							BigInt(text(row, "id")) > BigInt(max) ? text(row, "id") : max,
-						lastId,
-					);
-					if (BigInt(next) <= BigInt(lastId))
-						throw new UpstreamError("Binance trade pagination did not advance");
-					lastId = next;
-				}
-				fetched += page.length;
-				opts.onProgress?.({
-					stream,
-					streamsDone: done,
-					streamsTotal: historyStreams.length + 1 + symbols.length,
-					rowsFetched: fetched,
+		const extraMarkets: SymbolInfo[] = [];
+		for (const extra of new Set(
+			opts.extraSymbols.map((symbol) => symbol.toUpperCase()),
+		)) {
+			if (info.some((market) => market.symbol === extra)) continue;
+			const parts = splitPair(extra);
+			if (parts)
+				extraMarkets.push({
+					symbol: extra,
+					baseAsset: parts[0],
+					quoteAsset: parts[1],
 				});
-				yield { stream, rows: mapped, cursor: { lastId } };
-				if (page.length < 1000) break;
-			}
-			done++;
+			else
+				yield {
+					stream: `binance:myTrades:${extra}`,
+					rows: [],
+					cursor: cursors[`binance:myTrades:${extra}`] ?? null,
+					incomplete:
+						"Extra symbol is absent from exchangeInfo and cannot be split safely",
+				};
 		}
+		const completedMarkets = new Set<string>();
+		const markets = () =>
+			[
+				...discoverSymbols(info, assets, opts.extraSymbols),
+				...extraMarkets,
+			].filter((market) => !completedMarkets.has(market.symbol));
+		async function* walkTrades(symbols: SymbolInfo[]) {
+			for (const market of symbols) {
+				stream = `binance:myTrades:${market.symbol}`;
+				const old = cursorObject(cursors[stream]);
+				let lastId = String(old.lastId ?? "-1");
+				let earliestActivity =
+					typeof old.earliestActivity === "number"
+						? old.earliestActivity
+						: undefined;
+				completedMarkets.add(market.symbol);
+				for (;;) {
+					let page: ReturnType<typeof rows>;
+					try {
+						page = rows(
+							await client.request("/api/v3/myTrades", {
+								symbol: market.symbol,
+								fromId: (BigInt(lastId) + 1n).toString(),
+								limit: 1000,
+							}),
+						);
+					} catch (error) {
+						if (error instanceof UpstreamError && error.code === "-1121") {
+							yield {
+								stream,
+								rows: [],
+								cursor: cursors[stream] ?? { lastId },
+								incomplete:
+									"Symbol is delisted or unavailable; verify trades against a file export",
+							};
+							break;
+						}
+						throw error;
+					}
+					const mapped = page.map((raw) => ({
+						tx: mapBinanceTrade(raw, market),
+					}));
+					if (page.length) {
+						const next = page.reduce(
+							(max, row) =>
+								BigInt(text(row, "id")) > BigInt(max) ? text(row, "id") : max,
+							lastId,
+						);
+						if (BigInt(next) <= BigInt(lastId))
+							throw new UpstreamError(
+								"Binance trade pagination did not advance",
+							);
+						lastId = next;
+					}
+					for (const { tx } of mapped) {
+						collect(tx);
+						observe(Date.parse(tx.timestamp));
+						earliestActivity = Math.min(
+							earliestActivity ?? now,
+							Date.parse(tx.timestamp),
+						);
+					}
+					const cursor = {
+						lastId,
+						...(earliestActivity === undefined ? {} : { earliestActivity }),
+					};
+					cursors[stream] = cursor;
+					fetched += page.length;
+					progress();
+					yield { stream, rows: mapped, cursor };
+					if (page.length < 1000) break;
+				}
+				done++;
+			}
+		}
+		const remainingHistory = historyStreams.filter(
+			(config) => !discoveryStreams.has(config.name),
+		);
+		const historyStartStream = "binance:history-start";
+		const previousStart = cursorObject(cursors[historyStartStream]).firstStart;
+		const discovering = remainingHistory.some(
+			(config) =>
+				!config.capMonths &&
+				typeof cursorObject(cursors[`binance:${config.name}`]).endTime !==
+					"number",
+		);
+		if (discovering) yield* walkTrades(markets());
+		// Observed activity is a hint, not proof there were no earlier fiat or Convert transactions.
+		const firstStart =
+			typeof previousStart === "number"
+				? previousStart
+				: Math.max(FIRST_SYNC, Math.min(earliest - 89 * DAY, now - 365 * DAY));
+		if (
+			firstStart > FIRST_SYNC &&
+			(discovering || previousStart !== undefined)
+		) {
+			yield {
+				stream: historyStartStream,
+				rows: [],
+				cursor: { firstStart },
+				incomplete: `Some Binance API histories were scanned from ${new Date(firstStart).toISOString().slice(0, 10)} onward. Import earlier exports to cover any older activity.`,
+			};
+		}
+		for (const config of remainingHistory)
+			yield* walkHistory(config, config.capMonths ? FIRST_SYNC : firstStart);
+		const finalMarkets = markets();
+		streamsTotal = done + finalMarkets.length;
+		yield* walkTrades(finalMarkets);
 	} catch (error) {
 		if (error instanceof UpstreamAuthError) throw error;
 		if (!(error instanceof UpstreamError)) throw error;
 		yield {
 			stream,
 			rows: [],
-			cursor: opts.cursors[stream] ?? null,
+			cursor: cursors[stream] ?? null,
 			incomplete:
 				error instanceof UpstreamRateLimitError && error.hardStop
 					? `Binance IP ban; retry after ${error.retryAfterMs} ms`
@@ -266,7 +353,15 @@ async function* sync(opts: BinanceSyncOptions): AsyncGenerator<StreamBatch> {
 export const binanceConnector: Connector<BinanceSyncOptions> = {
 	sync,
 	async balances(opts) {
-		const client = new BinanceClient(opts);
+		const client = new BinanceClient(opts, (waitingUntil) =>
+			opts.onProgress?.({
+				stream: "binance:balances",
+				streamsDone: 0,
+				streamsTotal: null,
+				rowsFetched: 0,
+				waitingUntil,
+			}),
+		);
 		await client.time();
 		await client.requireReadOnly();
 		return balances(client);

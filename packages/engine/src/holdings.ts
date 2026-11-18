@@ -3,7 +3,7 @@ import {
 	type EngineSettings,
 	type LedgerTx,
 	LedgerTxSchema,
-	venueForSource,
+	venueForTransaction,
 } from "@tax/core";
 import { matchTransfers } from "./matching.js";
 import { FIAT } from "./valuation.js";
@@ -31,21 +31,21 @@ export function computeHoldings(input: {
 	>();
 	const change = (
 		asset: string | undefined,
-		source: string,
+		venue: string,
 		amount: string | undefined,
 	) => {
 		if (!asset || !amount || FIAT.has(asset)) return;
-		const venue = venueForSource(source);
 		const key = JSON.stringify([asset, venue]);
 		const row = rows.get(key) ?? { asset, venue, quantity: "0" };
 		row.quantity = D(row.quantity).plus(amount).toFixed();
 		rows.set(key, row);
 	};
 	for (const tx of txs) {
-		change(tx.assetIn, tx.source, tx.amountIn);
+		const venue = venueForTransaction(tx);
+		change(tx.assetIn, venue, tx.amountIn);
 		change(
 			tx.assetOut,
-			tx.source,
+			venue,
 			tx.amountOut ? D(tx.amountOut).negated().toFixed() : undefined,
 		);
 		if (tx.feeAsset && tx.feeAmount) {
@@ -53,8 +53,7 @@ export function computeHoldings(input: {
 			const included =
 				match && tx.feeAsset === tx.assetOut ? D(match.feeQuantity) : D("0");
 			const extra = D(tx.feeAmount).minus(included.gt("0") ? included : "0");
-			if (extra.gt("0"))
-				change(tx.feeAsset, tx.source, extra.negated().toFixed());
+			if (extra.gt("0")) change(tx.feeAsset, venue, extra.negated().toFixed());
 		}
 	}
 	return [...rows.values()].sort(

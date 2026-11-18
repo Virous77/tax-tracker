@@ -44,17 +44,17 @@ export class DisposalBook {
 			const flags: ReviewFlag[] = [];
 			if (slice.costInr === null) {
 				const type = slice.txId ? this.ledger.get(slice.txId)?.type : undefined;
+				const missingHistory =
+					slice.txId === null ||
+					slice.acquiredAt === null ||
+					type === "deposit" ||
+					type === "gift";
 				flags.push({
 					txId: tx.id,
-					code:
-						slice.txId === null ||
-						slice.acquiredAt === null ||
-						type === "deposit" ||
-						type === "gift"
-							? "missing_history"
-							: "missing_inr_value",
-					message:
-						"Acquisition history or cost basis is unknown; excluded from totals.",
+					code: missingHistory ? "missing_history" : "missing_inr_value",
+					message: missingHistory
+						? "Acquisition history or cost basis is unknown; excluded from totals."
+						: "Acquisition is recorded but its INR cost is unknown; excluded from totals.",
 				});
 			}
 			if (value === null)

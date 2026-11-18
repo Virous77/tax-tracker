@@ -5,7 +5,6 @@ import {
 	baseTransaction,
 	numberString,
 	parseAmountWithAsset,
-	parseTimestamp,
 	RowParseError,
 	splitPair,
 	tradePriceQuote,
@@ -88,10 +87,9 @@ export const reportKind: ReportKind = {
 		const tx = baseTransaction(
 			"binance",
 			`order:${id}`,
-			parseTimestamp(
+			context.parseTimestamp(
 				get("Time#2"),
 				"yyyy-MM-dd HH:mm:ss",
-				context.options.timezone,
 				sheet.excelDate1904,
 			),
 			raw,
@@ -109,7 +107,7 @@ export const reportKind: ReportKind = {
 		tx.reviewFlags.push({
 			code: "fee_review_required",
 			message:
-				"Order History contains no fee; import Spot Trade History to obtain the actual fee and fee asset (catalogue §1.3).",
+				"Order History contains no fee; import Spot Trade History to obtain the actual fee and fee asset.",
 		});
 		return LedgerTxSchema.parse(tx);
 	},

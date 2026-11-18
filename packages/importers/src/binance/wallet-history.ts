@@ -12,9 +12,8 @@ export const reportKind: ReportKind = {
 			raw,
 			sheet,
 			"wallet",
-			context.options,
+			context,
 			context.reference(raw, raw["Trade ID"] ?? raw["Transaction ID"]),
-			context.fileName,
 		);
 	},
 };

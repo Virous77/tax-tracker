@@ -146,13 +146,20 @@ describe("in-process multichain shared mock", () => {
 								row.tx.assetIn === "MATIC" || row.tx.assetOut === "MATIC",
 						),
 					).toBe(false);
+					const historical = rows.some(({ tx }) => {
+						const raw = tx.raw as { nativeSymbols?: string[] };
+						const rename = chainConfig(chainId).nativeRename;
+						return (
+							rename &&
+							(tx.timestamp < new Date(rename.at).toISOString() ||
+								raw.nativeSymbols?.includes(rename.from))
+						);
+					});
 					expect(
-						rows.some((row) =>
-							row.tx.reviewFlags.some((flag) =>
-								flag.message.includes("renamed"),
-							),
+						rows.some(({ tx }) =>
+							tx.reviewFlags.some((flag) => flag.message.includes("renamed")),
 						),
-					).toBe(true);
+					).toBe(historical);
 				}
 				if (chainId === 56) {
 					expect(rows.some((row) => row.tx.assetIn === "USDT")).toBe(true);

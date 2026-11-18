@@ -1,7 +1,7 @@
 import { LedgerTxSchema } from "@tax/core";
 import type { ReportContext } from "./reports.js";
 import type { TableSheet } from "./types.js";
-import { baseTransaction, parseTimestamp, RowParseError } from "./values.js";
+import { baseTransaction, RowParseError } from "./values.js";
 export function reviewOnly(
 	venue: string,
 	kind: string,
@@ -18,10 +18,9 @@ export function reviewOnly(
 	const tx = baseTransaction(
 		venue,
 		`${kind}:${context.reference(raw, raw["Transaction ID"] ?? raw["Position ID"])}`,
-		parseTimestamp(
+		context.parseTimestamp(
 			raw[timeColumn],
 			"yyyy-MM-dd HH:mm:ss",
-			context.options.timezone,
 			sheet.excelDate1904,
 		),
 		raw,

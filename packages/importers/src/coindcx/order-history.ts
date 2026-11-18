@@ -4,7 +4,6 @@ import { normaliseHeader } from "../spreadsheet.js";
 import {
 	baseTransaction,
 	numberString,
-	parseTimestamp,
 	RowParseError,
 	splitPair,
 	tradePriceQuote,
@@ -32,7 +31,7 @@ export const reportKind: ReportKind = {
 			"Created At",
 			"Updated At",
 		]),
-	parse: (raw, sheet) => {
+	parse: (raw, sheet, context) => {
 		const get = (key: string) =>
 			raw[
 				sheet.headers.find(
@@ -90,10 +89,9 @@ export const reportKind: ReportKind = {
 		const tx = baseTransaction(
 			"coindcx",
 			`order:${id}`,
-			parseTimestamp(
+			context.parseTimestamp(
 				get("Updated At"),
 				"yyyy-MM-dd HH:mm:ss",
-				"UTC",
 				sheet.excelDate1904,
 			),
 			raw,
@@ -117,13 +115,12 @@ export const reportKind: ReportKind = {
 			tx.reviewFlags.push({
 				code: "parse_warning",
 				message:
-					"Average price has more than ten decimal places and may contain float noise; the exported value has been preserved (catalogue §2.2).",
+					"Average price has more than ten decimal places and may contain float noise; the exported value has been preserved.",
 			});
 		if (tx.feeAmount !== undefined)
 			tx.reviewFlags.push({
 				code: "parse_warning",
-				message:
-					"Fee may include GST; no split has been inferred (catalogue §2.2).",
+				message: "Fee may include GST; no split has been inferred.",
 			});
 		return LedgerTxSchema.parse(tx);
 	},

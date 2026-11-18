@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Connector, ConnectorContext, LedgerTx } from "@tax/core";
+import { IncompleteExplorerHistoryError } from "@tax/evm";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { settleBackgroundJobs } from "../background";
 import { closeDatabases, database } from "../context";
@@ -13,10 +14,20 @@ const control = vi.hoisted(() => ({
 	incomplete: false,
 	fail: false,
 	drift: false,
+	waitingUntil: undefined as number | undefined,
+	balanceError: undefined as Error | undefined,
 }));
 vi.mock("../connectors", () => {
 	const connector: Connector<ConnectorContext> = {
 		async *sync(opts) {
+			if (control.waitingUntil !== undefined)
+				opts.onProgress?.({
+					stream: "trades",
+					streamsDone: 0,
+					streamsTotal: 1,
+					rowsFetched: 0,
+					waitingUntil: control.waitingUntil,
+				});
 			await control.gate;
 			opts.signal?.throwIfAborted();
 			if (control.fail)
@@ -48,6 +59,7 @@ vi.mock("../connectors", () => {
 			};
 		},
 		async balances() {
+			if (control.balanceError) throw control.balanceError;
 			return [
 				{ asset: "ETH", amount: control.drift ? "1.5" : "1", wallet: "spot" },
 			];
@@ -73,6 +85,8 @@ beforeEach(async () => {
 	control.fail = false;
 	control.incomplete = false;
 	control.drift = false;
+	control.waitingUntil = undefined;
+	control.balanceError = undefined;
 });
 afterEach(async () => {
 	await settleBackgroundJobs(database());
@@ -234,6 +248,7 @@ it("validates connections, lowercases addresses and returns only keySet", async 
 });
 it("returns 202 before work finishes, rejects overlapping syncs, persists progress and resumes idempotently", async () => {
 	const connection = await setup();
+	control.waitingUntil = Date.parse("2026-11-17T05:30:00Z");
 	let release: () => void = () => {};
 	control.gate = new Promise<void>((resolve) => {
 		release = resolve;
@@ -247,16 +262,24 @@ it("returns 202 before work finishes, rejects overlapping syncs, persists progre
 	expect(
 		(await call("syncConnection", "POST", undefined, connection)).status,
 	).toBe(409);
-	expect(
-		await (await call("getJob", "GET", undefined, { id: jobId })).json(),
-	).toMatchObject({ status: "running" });
-	release();
+	try {
+		await vi.waitFor(async () => {
+			expect(
+				await (await call("getJob", "GET", undefined, { id: jobId })).json(),
+			).toMatchObject({
+				status: "running",
+				progress: { waitingUntil: "2026-11-17T05:30:00.000Z" },
+			});
+		});
+	} finally {
+		release();
+	}
 	await settleBackgroundJobs(database());
 	expect(
 		await (await call("getJob", "GET", undefined, { id: jobId })).json(),
 	).toMatchObject({
 		status: "completed",
-		progress: { rowsFetched: 1 },
+		progress: { rowsFetched: 1, waitingUntil: null },
 		result: {
 			streams: [{ rowsInserted: 1 }],
 			balanceCheck: [{ asset: "ETH", difference: "0" }],
@@ -290,6 +313,72 @@ it("returns 202 before work finishes, rejects overlapping syncs, persists progre
 	expect(database().cursors.get(connection.id)).toEqual({
 		trades: { lastId: "1" },
 	});
+});
+it("assigns a manual buy to the venue's holdings and disposal lot pool", async () => {
+	const connection = await setup();
+	await call("putSettings", "PUT", { lotPool: "per_source" });
+	const { jobId } = await (
+		await call("syncConnection", "POST", undefined, connection)
+	).json();
+	await settleBackgroundJobs(database());
+	expect(
+		await (await call("getJob", "GET", undefined, { id: jobId })).json(),
+	).toMatchObject({ status: "completed" });
+	const manual = await call("createTransaction", "POST", {
+		importId: null,
+		venue: "binance",
+		sourceRef: "manual-buy",
+		timestamp: "2026-04-20T00:00:00Z",
+		type: "buy",
+		assetIn: "ETH",
+		amountIn: "0.5",
+		inrValue: "250",
+		raw: { manual: true },
+		reviewFlags: [],
+	});
+	expect(manual.status).toBe(201);
+	const buy = await manual.json();
+	expect(buy).toMatchObject({ source: "manual", venue: "binance" });
+	const sale = {
+		...database().transactions.active()[0],
+		id: "00000000-0000-4000-8000-000000000001",
+		importId: null,
+		source: "binance-api",
+		sourceRef: "sale",
+		timestamp: "2026-05-02T00:00:00Z",
+		type: "sell" as const,
+		assetIn: "INR",
+		amountIn: "500",
+		assetOut: "ETH",
+		amountOut: "0.5",
+		inrValue: "500",
+		raw: {},
+		reviewFlags: [],
+	};
+	database().transactions.insert([{ tx: sale }]);
+	closeDatabases();
+	expect(
+		await (
+			await call("listTransactions", "GET", undefined, {}, "?source=manual")
+		).json(),
+	).toMatchObject({
+		items: [{ id: buy.id, source: "manual", venue: "binance" }],
+	});
+	expect(
+		await (
+			await call("connectionBalances", "GET", undefined, connection)
+		).json(),
+	).toMatchObject({ rows: [{ asset: "ETH", difference: "0" }] });
+	const report = await (
+		await call("computeReport", "POST", undefined, { taxYear: "2026-27" })
+	).json();
+	expect(report.scheduleVdaRows).toMatchObject([
+		{ costOfAcquisition: "250.00", trail: { lotTxIds: [buy.id] } },
+	]);
+	expect(
+		(await call("deleteTransaction", "DELETE", undefined, { id: buy.id }))
+			.status,
+	).toBe(204);
 });
 it("retains incomplete warnings, reports balance drift, sanitizes failures and exposes failed connections in review", async () => {
 	const connection = await setup();
@@ -325,6 +414,50 @@ it("retains incomplete warnings, reports balance drift, sanitizes failures and e
 	expect(await (await call("review")).json()).toMatchObject({
 		connections: [{ lastSyncStatus: "failed" }],
 	});
+});
+it("completes an EVM sync when the balance check discovers incomplete older history", async () => {
+	await setup();
+	await call(
+		"putProvider",
+		"PUT",
+		{ apiKey: "test-explorer-key" },
+		{ name: "alchemy" },
+	);
+	const connection = await (
+		await call("createConnection", "POST", {
+			kind: "evm",
+			label: "Wallet",
+			address: `0x${"a".repeat(40)}`,
+			chainId: 42161,
+			options: { providers: ["alchemy"] },
+		})
+	).json();
+	const stream = `evm:42161:${connection.address}:txlistinternal`;
+	control.balanceError = new IncompleteExplorerHistoryError([
+		{ stream, message: "Older internal transfers are unavailable." },
+	]);
+	const { jobId } = await (
+		await call("syncConnection", "POST", undefined, connection)
+	).json();
+	await settleBackgroundJobs(database());
+	expect(
+		await (await call("getJob", "GET", undefined, { id: jobId })).json(),
+	).toMatchObject({
+		status: "completed",
+		result: {
+			streams: expect.arrayContaining([
+				expect.objectContaining({
+					stream,
+					incomplete: "Older internal transfers are unavailable.",
+				}),
+			]),
+			balanceCheck: [],
+			notices: [expect.stringMatching(/balance check skipped/i)],
+		},
+	});
+	expect(database().connections.get(connection.id)?.lastSyncStatus).toBe(
+		"incomplete",
+	);
 });
 it("fills prices only when enabled and computes reports offline from the cache", async () => {
 	const connection = await setup();

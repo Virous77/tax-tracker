@@ -22,6 +22,7 @@ import {
 } from "./map.js";
 export const DAY = 86_400_000;
 export const FIRST_SYNC = Date.parse("2017-07-01T00:00:00Z");
+export const discoveryStreams = new Set(["deposits", "dividends"]);
 export interface HistoryStream {
 	name: string;
 	path: string;
@@ -141,6 +142,7 @@ export async function* fetchHistory(
 	client: BinanceClient,
 	opts: BinanceSyncOptions,
 	config: HistoryStream,
+	firstStart = FIRST_SYNC,
 ): AsyncGenerator<StreamBatch> {
 	const stream = `binance:${config.name}`;
 	const old = cursorObject(opts.cursors[stream]);
@@ -149,7 +151,7 @@ export async function* fetchHistory(
 		FIRST_SYNC,
 		typeof old.endTime === "number"
 			? old.endTime - (config.overlapDays ?? 3) * DAY
-			: FIRST_SYNC,
+			: firstStart,
 	);
 	if (typeof old.pendingSince === "number")
 		start = Math.min(start, old.pendingSince);
@@ -157,13 +159,13 @@ export async function* fetchHistory(
 	if (config.capMonths) {
 		const cap = new Date(now);
 		cap.setUTCMonth(cap.getUTCMonth() - config.capMonths);
-		if (start < cap.getTime()) {
-			start = cap.getTime();
-			incomplete =
-				"P2P API only returns the past six months; import older orders from a file";
-		}
+		start = Math.max(start, cap.getTime());
+		incomplete =
+			"P2P API only returns the past six months; import older orders from a file";
 	}
 	let pendingSince: number | undefined;
+	let earliestActivity =
+		typeof old.earliestActivity === "number" ? old.earliestActivity : undefined;
 	for (; start <= now; ) {
 		const end = Math.min(now, start + config.days * DAY - 1);
 		const collected: ApiRow[] = [];
@@ -238,6 +240,11 @@ export async function* fetchHistory(
 		for (const row of collected) {
 			const tx = config.map(row);
 			if (tx) {
+				if (discoveryStreams.has(config.name))
+					earliestActivity = Math.min(
+						earliestActivity ?? now,
+						Date.parse(tx.timestamp),
+					);
 				if (config.name.startsWith("earn:")) {
 					const ref = tx.sourceRef,
 						ordinal = auditCounts.get(ref) ?? 0;
@@ -255,6 +262,7 @@ export async function* fetchHistory(
 				: {
 						endTime: end,
 						...(pendingSince === undefined ? {} : { pendingSince }),
+						...(earliestActivity === undefined ? {} : { earliestActivity }),
 					},
 			...(incomplete || windowIncomplete
 				? { incomplete: windowIncomplete ?? incomplete }

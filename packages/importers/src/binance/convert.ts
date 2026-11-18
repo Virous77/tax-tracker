@@ -1,10 +1,6 @@
 import { D, LedgerTxSchema } from "@tax/core";
 import { hasHeaders, type ReportKind } from "../reports.js";
-import {
-	baseTransaction,
-	parseAmountWithAsset,
-	parseTimestamp,
-} from "../values.js";
+import { baseTransaction, parseAmountWithAsset } from "../values.js";
 export const reportKind: ReportKind = {
 	verified: true,
 	id: "binance:convert",
@@ -24,10 +20,9 @@ export const reportKind: ReportKind = {
 		const tx = baseTransaction(
 			"binance",
 			`convert:${context.reference(raw)}`,
-			parseTimestamp(
+			context.parseTimestamp(
 				raw["Date Updated"] || raw.Date || "",
 				"yyyy-MM-dd HH:mm:ss",
-				context.options.timezone,
 				sheet.excelDate1904,
 			),
 			raw,

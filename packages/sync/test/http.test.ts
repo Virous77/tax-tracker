@@ -57,6 +57,7 @@ describe("HTTP transport", () => {
 		"honours Retry-After %s",
 		async (header) => {
 			const sleep = vi.fn(async (_ms: number) => {});
+			const onRateLimitWait = vi.fn();
 			const fetcher = vi
 				.fn()
 				.mockResolvedValueOnce(response({}, 429, { "retry-after": header }))
@@ -66,8 +67,12 @@ describe("HTTP transport", () => {
 				sleep,
 				now: () => 0,
 				random: () => 0,
-			}).request(url());
+			}).request(url(), { onRateLimitWait });
 			expect(sleep.mock.calls[0]?.[0]).toBe(header === "2" ? 2000 : 3000);
+			expect(onRateLimitWait.mock.calls).toEqual([
+				[sleep.mock.calls[0]?.[0]],
+				[],
+			]);
 		},
 	);
 	it("never retries a Binance 418", async () => {
@@ -131,6 +136,29 @@ describe("HTTP transport", () => {
 		expect(JSON.stringify(log.mock.calls)).not.toMatch(
 			/secret|hidden|header-key|body-key|authorization/,
 		);
+	});
+	it("keeps the vendor auth diagnosis and redacts echoed request data", async () => {
+		const client = new HttpClient({
+			vendor: "Binance",
+			redact: ["upstream-secret"],
+			fetch: async () =>
+				response(
+					{
+						code: -1022,
+						msg: "Signature for this request is not valid. header-key upstream-secret hidden ?symbol=BTCUSDT&signature=hidden",
+					},
+					400,
+				),
+		});
+		await expect(
+			client.request(url(), {
+				headers: { "X-MBX-APIKEY": "header-key" },
+			}),
+		).rejects.toMatchObject({
+			code: "-1022",
+			message:
+				"Binance -1022: Signature for this request is not valid. [redacted] [redacted] [redacted] [parameter removed]",
+		});
 	});
 	it("applies a per-host interval across clients and concurrent requests", async () => {
 		let now = 0;

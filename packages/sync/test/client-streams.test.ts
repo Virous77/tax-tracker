@@ -4,6 +4,7 @@ import { BinanceClient } from "../src/binance/client.js";
 import { binanceConnector } from "../src/binance/index.js";
 import {
 	DAY,
+	FIRST_SYNC,
 	fetchHistory,
 	type HistoryStream,
 	historyStreams,
@@ -125,6 +126,122 @@ describe("exchange clients", () => {
 	});
 });
 describe("history windows and cursors", () => {
+	it.each([true, false])(
+		"bounds expensive first-sync walks (activity found: %s)",
+		async (hasActivity) => {
+			const now = opts.now?.() ?? 0;
+			const tradeTime = now - 400 * DAY;
+			const request = vi
+				.spyOn(BinanceClient.prototype, "request")
+				.mockImplementation(async (path) => {
+					if (path.endsWith("/time")) return { serverTime: String(now) };
+					if (path.endsWith("/apiRestrictions")) return { enableReading: true };
+					if (path.endsWith("/account")) return { balances: [] };
+					if (path.endsWith("/position") || path.endsWith("/assetDividend"))
+						return { rows: [] };
+					if (path.endsWith("/dribblet")) return { userAssetDribblets: [] };
+					if (path.endsWith("/exchangeInfo"))
+						return {
+							symbols: [
+								{ symbol: "BNBBTC", baseAsset: "BNB", quoteAsset: "BTC" },
+							],
+						};
+					if (path.endsWith("/myTrades"))
+						return hasActivity
+							? [
+									{
+										...first(sample("binance-myTrades")),
+										time: String(tradeTime),
+									},
+								]
+							: [];
+					const config = historyStreams.find((s) => s.path === path);
+					if (config?.shape === "convert") return { list: [], moreData: false };
+					if (config?.shape === "data") return { data: [] };
+					if (config?.shape === "rows") return { rows: [] };
+					return [];
+				});
+			try {
+				const batches: StreamBatch[] = [];
+				for await (const batch of binanceConnector.sync({
+					...opts,
+					extraSymbols: ["BNBBTC"],
+				}))
+					batches.push(batch);
+				const convert = request.mock.calls.filter(([path]) =>
+					path.endsWith("/convert/tradeFlow"),
+				);
+				const fiat = request.mock.calls.filter(([path]) =>
+					path.endsWith("/fiat/orders"),
+				);
+				const start = hasActivity ? tradeTime - 89 * DAY : now - 365 * DAY;
+				expect(convert[0]?.[1]?.startTime).toBe(start);
+				expect(fiat[0]?.[1]?.beginTime).toBe(start);
+				expect(convert).toHaveLength(hasActivity ? 17 : 13);
+				expect(fiat).toHaveLength(hasActivity ? 12 : 10);
+				const originalWindowCount = historyStreams
+					.filter((s) => !s.capMonths)
+					.reduce(
+						(total, s) =>
+							total + Math.ceil((now - FIRST_SYNC) / (s.days * DAY)),
+						0,
+					);
+				expect(request.mock.calls.length).toBeLessThan(originalWindowCount / 2);
+				expect(batches).toContainEqual(
+					expect.objectContaining({
+						stream: "binance:history-start",
+						cursor: { firstStart: start },
+						incomplete: expect.stringContaining("Import earlier exports"),
+					}),
+				);
+			} finally {
+				request.mockRestore();
+			}
+		},
+	);
+
+	it.each([
+		[undefined, [0, 0, 1]],
+		["0", [0, 0, 0]],
+		["100000", [0, 1, 2]],
+	] as const)(
+		"uses the full UID budget and prefers reported weight (%s)",
+		async (value, waitsPerRequest) => {
+			const initialTime = opts.now?.() ?? 0;
+			let now = initialTime;
+			const progress = vi.fn((waitingUntil?: number) => {
+				if (waitingUntil !== undefined) now = waitingUntil;
+			});
+			const fetcher = vi.fn(
+				async () =>
+					new Response("{}", {
+						headers:
+							value === undefined ? {} : { "X-SAPI-USED-UID-WEIGHT-1M": value },
+					}),
+			);
+			const client = new BinanceClient(
+				{
+					...opts,
+					baseUrls: { binance: `https://weight-${value}.invalid` },
+					fetch: fetcher,
+					now: () => now,
+				},
+				progress,
+			);
+			for (const expected of waitsPerRequest) {
+				await client.request("/sapi/v1/fiat/orders");
+				expect(
+					progress.mock.calls.filter(([until]) => until !== undefined),
+				).toHaveLength(expected);
+			}
+			if (value !== "0")
+				expect(progress.mock.calls.slice(0, 2)).toEqual([
+					[initialTime + 60_000],
+					[],
+				]);
+		},
+	);
+
 	it("offset-pages a full deposit window and retains its oldest pending row", async () => {
 		const stream = config("deposits"),
 			client = new BinanceClient(opts),

@@ -1,7 +1,11 @@
 import { AssetSchema, D } from "@tax/core";
 import { pdfError } from "../pdf/text.js";
 import type { PdfLine } from "../pdf/types.js";
-import { timezoneOffsetMinutes } from "../timezone.js";
+import {
+	timezoneConflict,
+	timezoneFromFileName,
+	timezoneOffsetMinutes,
+} from "../timezone.js";
 import type {
 	BalanceSnapshot,
 	ImportOptions,
@@ -15,7 +19,7 @@ export const reportKind = {
 	verified: false,
 	detect: (text: string) =>
 		/binance/i.test(text) && /account\s*statement/i.test(text),
-	parse(lines: PdfLine[], options: ImportOptions): ImportResult {
+	parse(lines: PdfLine[], options: ImportOptions, fileName = ""): ImportResult {
 		timezoneOffsetMinutes(options.timezone);
 		const text = lines
 			.map((l) => l.cells.map((c) => c.str).join(" "))
@@ -41,7 +45,8 @@ export const reportKind = {
 				: ("UTC" as const),
 		);
 		if (new Set(zones).size > 1) throw pdfError("pdf_unknown_layout", this.id);
-		const timezone = zones[0] ?? options.timezone;
+		const fileTimezone = zones[0] ?? timezoneFromFileName(fileName);
+		const timezone = fileTimezone ?? options.timezone;
 		try {
 			timezoneOffsetMinutes(timezone);
 		} catch {
@@ -168,7 +173,12 @@ export const reportKind = {
 					message:
 						"The Binance PDF layout is unverified; check the balance rows against the original statement. This snapshot creates no transactions.",
 				},
-				...(!zones.length
+				...timezoneConflict(
+					options.timezone,
+					fileTimezone,
+					zones.length ? "the PDF statement" : "the file name",
+				),
+				...(!fileTimezone
 					? [
 							{
 								code: "ambiguous_timezone" as const,
@@ -178,8 +188,8 @@ export const reportKind = {
 						]
 					: []),
 			],
-			timezoneSource: zones.length ? "file" : "user",
-			detectedTimezone: zones[0],
+			timezoneSource: fileTimezone ? "file" : "user",
+			detectedTimezone: fileTimezone,
 		};
 	},
 };

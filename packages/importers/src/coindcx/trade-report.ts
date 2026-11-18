@@ -1,10 +1,10 @@
 import { D, type LedgerTx, LedgerTxSchema } from "@tax/core";
+import type { ReportContext } from "../reports.js";
 import { normaliseHeader } from "../spreadsheet.js";
-import type { ImportOptions, TableSheet } from "../types.js";
+import type { TableSheet } from "../types.js";
 import {
 	baseTransaction,
 	numberString,
-	parseTimestamp,
 	RowParseError,
 	splitPair,
 	tradePriceQuote,
@@ -25,7 +25,7 @@ export function isTradeReport(sheet: TableSheet): boolean {
 export function convert(
 	raw: Record<string, string>,
 	sheet: TableSheet,
-	opts: ImportOptions,
+	context: ReportContext,
 	sourceRef: string,
 ): LedgerTx {
 	if (raw.__extraColumns)
@@ -42,10 +42,9 @@ export function convert(
 	const tx = baseTransaction(
 		"coindcx",
 		sourceRef,
-		parseTimestamp(
+		context.parseTimestamp(
 			get(columns.timestamp),
 			"yyyy-MM-dd HH:mm:ss",
-			opts.timezone,
 			sheet.excelDate1904,
 		),
 		raw,

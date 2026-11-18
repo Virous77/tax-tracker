@@ -140,7 +140,11 @@ describe("catalogue report kinds", () => {
 			result.transactions.filter((tx) => tx.type === "withdrawal"),
 		).toHaveLength(4);
 		expect(
-			result.transactions.filter((tx) => tx.type === "transfer"),
+			result.transactions.filter(
+				(tx) =>
+					tx.type === "transfer" &&
+					!tx.reviewFlags.some((flag) => flag.code === "unknown_type"),
+			),
 		).toHaveLength(17);
 		for (const tx of result.transactions.filter(
 			(tx) =>

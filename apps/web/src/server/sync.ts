@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { D, type LedgerTx, LedgerTxSchema, taxYearOf } from "@tax/core";
+import {
+	D,
+	type FetchedBalance,
+	type LedgerTx,
+	LedgerTxSchema,
+	taxYearOf,
+} from "@tax/core";
 import {
 	type BalanceCheckRow,
 	FetchedBalanceSchema,
@@ -8,6 +14,7 @@ import {
 } from "@tax/core/api";
 import type { TaxDatabase } from "@tax/db";
 import { computeHoldings } from "@tax/engine";
+import { IncompleteExplorerHistoryError } from "@tax/evm";
 import { startBackgroundJob } from "./background";
 import { connectionOptions } from "./connections";
 import { connectorFor } from "./connectors";
@@ -36,6 +43,8 @@ function connectionLedger(db: TaxDatabase, id: string): LedgerTx[] {
 }
 export function connectionBalances(db: TaxDatabase, id: string) {
 	const connection = required(db.connections.get(id));
+	if (connection.kind === "evm" && connection.lastSyncStatus === "incomplete")
+		return { fetchedAt: null, rows: [] };
 	const fetched = db.fetchedBalances.list(id);
 	const holdings = computeHoldings({
 		transactions: connectionLedger(db, id),
@@ -141,12 +150,36 @@ export async function startSync(db: TaxDatabase, id: string) {
 			};
 			const years = new Set<string>();
 			const indexes = new Map<string, number>();
-			ctx.result(summary);
-			db.imports.save(imported);
-			db.connections.save({
-				...connection,
-				lastSyncStatus: "running",
-				lastSyncError: null,
+			const streamSummary = (name: string): SyncSummary["streams"][number] => {
+				const stored = summary.streams.find((row) => row.stream === name);
+				if (stored) return stored;
+				const stream = {
+					stream: name,
+					rowsFetched: 0,
+					rowsInserted: 0,
+					rowsDuplicate: 0,
+					rowsFlagged: 0,
+				};
+				summary.streams.push(stream);
+				return stream;
+			};
+			const markIncomplete = (name: string, message: string) => {
+				const stream = streamSummary(name);
+				if (stream.incomplete === message) return;
+				stream.incomplete = message;
+				imported.warnings.push({
+					code: "import_incomplete",
+					message: `${name}: ${message}`,
+				});
+			};
+			db.atomic(() => {
+				ctx.result(summary);
+				db.imports.save(imported);
+				db.connections.save({
+					...connection,
+					lastSyncStatus: "running",
+					lastSyncError: null,
+				});
 			});
 			try {
 				const options = await connectionOptions(
@@ -165,16 +198,7 @@ export async function startSync(db: TaxDatabase, id: string) {
 							importId: imported.id,
 						}),
 					);
-					const stream = summary.streams.find(
-						(row) => row.stream === batch.stream,
-					) ?? {
-						stream: batch.stream,
-						rowsFetched: 0,
-						rowsInserted: 0,
-						rowsDuplicate: 0,
-						rowsFlagged: 0,
-					};
-					if (!summary.streams.includes(stream)) summary.streams.push(stream);
+					const stream = streamSummary(batch.stream);
 					const index = indexes.get(batch.stream) ?? 0;
 					db.atomic(() => {
 						const inserts = rows.map((tx, offset) => {
@@ -197,13 +221,8 @@ export async function startSync(db: TaxDatabase, id: string) {
 						stream.rowsFlagged += rows.filter(
 							(tx) => (db.transactions.get(tx.id)?.reviewFlags.length ?? 0) > 0,
 						).length;
-						if (batch.incomplete) {
-							stream.incomplete = batch.incomplete;
-							imported.warnings.push({
-								code: "import_incomplete",
-								message: `${batch.stream}: ${batch.incomplete}`,
-							});
-						}
+						if (batch.incomplete)
+							markIncomplete(batch.stream, batch.incomplete);
 						imported.rowsRead += rows.length;
 						imported.rowsInserted += count.inserted;
 						imported.rowsDuplicate += count.duplicate;
@@ -214,19 +233,49 @@ export async function startSync(db: TaxDatabase, id: string) {
 					indexes.set(batch.stream, index + rows.length);
 					for (const tx of rows) years.add(taxYearOf(tx.timestamp));
 				}
-				const balances = FetchedBalanceSchema.array().parse(
-					await connector.balances(options),
-				);
+				let balances: FetchedBalance[] | undefined;
+				if (
+					connection.kind !== "evm" ||
+					!summary.streams.some((row) => row.incomplete)
+				) {
+					try {
+						balances = FetchedBalanceSchema.array().parse(
+							await connector.balances({
+								...options,
+								onProgress: (progress) =>
+									ctx.progress({
+										...progress,
+										streamsDone: summary.streams.length,
+										streamsTotal: summary.streams.length,
+										rowsFetched: summary.streams.reduce(
+											(total, stream) => total + stream.rowsFetched,
+											0,
+										),
+									}),
+							}),
+						);
+					} catch (error) {
+						if (!(error instanceof IncompleteExplorerHistoryError)) throw error;
+						for (const { stream, message } of error.streams)
+							markIncomplete(stream, message);
+					}
+				}
 				ctx.signal.throwIfAborted();
-				db.fetchedBalances.replace(id, balances, new Date().toISOString());
-				const check = connectionBalances(db, id);
-				summary.balanceCheck = check.rows.map(
-					({ flagged: _flagged, ...row }): BalanceCheckRow => row,
-				);
-				for (const row of check.rows.filter((row) => row.flagged)) {
-					const message = `${connection.label}: ${row.asset} fetched ${row.fetched}, computed ${row.computed}, difference ${row.difference}`;
-					imported.warnings.push({ code: "balance_mismatch", message });
-					summary.notices.push(message);
+				if (!balances) {
+					summary.notices.push(
+						"Balance check skipped because explorer history is incomplete.",
+					);
+				} else {
+					db.fetchedBalances.replace(id, balances, new Date().toISOString());
+					const check = connectionBalances(db, id);
+					summary.balanceCheck = check.rows.map(
+						({ flagged: _flagged, ...row }): BalanceCheckRow => row,
+					);
+					for (const row of check.rows.filter((row) => row.flagged)) {
+						const message = `${connection.label}: ${row.asset} fetched ${row.fetched}, computed ${row.computed}, difference ${row.difference}`;
+						imported.warnings.push({ code: "balance_mismatch", message });
+						summary.notices.push(message);
+					}
 				}
 				const incomplete = summary.streams.some((row) => row.incomplete);
 				db.atomic(() => {

@@ -4,7 +4,7 @@ import {
 	type FetchedBalance,
 	type StreamBatch,
 } from "@tax/core";
-import { UpstreamError } from "@tax/sync";
+import { UpstreamAuthError, UpstreamError } from "@tax/sync";
 import {
 	address,
 	block,
@@ -23,6 +23,12 @@ import { fromUnits, spamReasons, tokenAsset, tokenDecimals } from "./tokens.js";
 import { type WalkResult, walkBlocks } from "./walk.js";
 
 const actions: ExplorerAction[] = ["txlist", "txlistinternal", "tokentx"];
+export class IncompleteExplorerHistoryError extends UpstreamError {
+	constructor(readonly streams: { stream: string; message: string }[]) {
+		super("Cannot reconcile balances while explorer history is incomplete");
+	}
+}
+
 function streamName(opts: EvmOptions, action: ExplorerAction): string {
 	return `evm:${opts.chainId}:${address(opts.address)}:${action}`;
 }
@@ -83,7 +89,11 @@ async function readHistory(
 			if (found < sent - before)
 				result.txlist.incomplete = `${sent - before - found} sent transactions not found (their gas is missing); add another explorer key`;
 		} catch (error) {
-			if (!(error instanceof UpstreamError)) throw error;
+			if (
+				error instanceof UpstreamAuthError ||
+				!(error instanceof UpstreamError)
+			)
+				throw error;
 			result.txlist.incomplete = `Sent-transaction completeness check unavailable: ${error.message}`;
 		}
 	}
@@ -99,7 +109,11 @@ export const evmConnector: Connector<EvmOptions> = {
 		try {
 			history = await readHistory(opts, provider, safe);
 		} catch (error) {
-			if (!(error instanceof UpstreamError)) throw error;
+			if (
+				error instanceof UpstreamAuthError ||
+				!(error instanceof UpstreamError)
+			)
+				throw error;
 			yield {
 				stream: streamName(opts, "txlist"),
 				rows: [],
@@ -128,11 +142,8 @@ export const evmConnector: Connector<EvmOptions> = {
 				code: "parse_warning",
 				message: [...new Set(provider.notices)].join("; "),
 			});
-		const incomplete = actions
-			.map((action) => history[action].incomplete)
-			.filter(Boolean)
-			.join("; ");
 		for (const [index, action] of actions.entries()) {
+			const incomplete = history[action].incomplete;
 			opts.onProgress?.({
 				stream: streamName(opts, action),
 				streamsDone: index,
@@ -165,10 +176,11 @@ export const evmConnector: Connector<EvmOptions> = {
 			current = await provider.blockNumber(),
 			safe = Math.max(0, current - 64);
 		const history = await readHistory({ ...opts, cursors: {} }, provider, safe);
-		if (actions.some((action) => history[action].incomplete))
-			throw new UpstreamError(
-				"Cannot reconcile balances while explorer history is incomplete",
-			);
+		const incomplete = actions.flatMap((action) => {
+			const message = history[action].incomplete;
+			return message ? [{ stream: streamName(opts, action), message }] : [];
+		});
+		if (incomplete.length) throw new IncompleteExplorerHistoryError(incomplete);
 		for (const action of actions)
 			if (
 				safe < current &&

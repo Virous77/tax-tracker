@@ -19,11 +19,15 @@ export const coindcxReportKinds = [
 export function isCoinDcx(sheet: TableSheet): boolean {
 	return coindcxReportKinds.some((kind) => kind.detect(sheet));
 }
-export function parseCoinDcx(sheets: TableSheet[], opts: ImportOptions) {
-	return parseReports("coindcx", coindcxReportKinds, sheets, opts);
+export function parseCoinDcx(
+	sheets: TableSheet[],
+	opts: ImportOptions,
+	fileName?: string,
+) {
+	return parseReports("coindcx", coindcxReportKinds, sheets, opts, fileName);
 }
 export const coindcx: Importer = {
 	id: "coindcx",
 	detect: (file) => readSheets(file).some(isCoinDcx),
-	parse: (file, opts) => parseCoinDcx(readSheets(file), opts),
+	parse: (file, opts) => parseCoinDcx(readSheets(file), opts, file.name),
 };

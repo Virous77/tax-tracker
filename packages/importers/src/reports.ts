@@ -1,17 +1,23 @@
 import type { LedgerTx, ReviewFlag } from "@tax/core";
 import { normaliseHeader } from "./spreadsheet.js";
-import { timezoneFromFileName, timezoneOffsetMinutes } from "./timezone.js";
+import {
+	timezoneConflict,
+	timezoneFromFileName,
+	timezoneFromHeader,
+	timezoneFromTimestamp,
+	timezoneOffsetMinutes,
+} from "./timezone.js";
 import type {
 	ImportOptions,
 	ImportResult,
 	ImportTimezone,
 	TableSheet,
 } from "./types.js";
-import { RowParseError, sourceReferences } from "./values.js";
+import { parseTimestamp, RowParseError, sourceReferences } from "./values.js";
 
 export interface ReportContext {
-	options: ImportOptions;
 	fileName: string;
+	parseTimestamp: (value: string, format: string, date1904?: boolean) => string;
 	reference: (raw: unknown, id?: string) => string;
 }
 export type ReportRowResult = LedgerTx | { skip: string };
@@ -63,17 +69,13 @@ export function parseReports(
 		kinds.find((kind) => kind.detect(sheet)),
 	);
 	const ids = [...new Set(detected.flatMap((kind) => (kind ? [kind.id] : [])))];
-	const fileTimezone =
-		venue === "binance" ? timezoneFromFileName(fileName) : undefined;
-	const headerTimezone = (sheet: TableSheet): ImportTimezone | undefined =>
-		sheet.headers.some(
-			(h) => h === "UTC_Time" || /^Date\(UTC(?:\+0)?\)$/i.test(h),
-		)
-			? "UTC"
-			: undefined;
+	const fileTimezone = timezoneFromFileName(fileName);
+	const headerTimezones = sheets.map(
+		(sheet, index) =>
+			detected[index] && sheet.headers.map(timezoneFromHeader).find(Boolean),
+	);
 	const sheetTimezones = detected.map(
-		(kind, i) =>
-			kind?.timezone ?? (sheets[i] ? headerTimezone(sheets[i]) : undefined),
+		(kind, index) => headerTimezones[index] ?? kind?.timezone,
 	);
 	const explicitTimezones = [
 		...new Set(sheetTimezones.flatMap((zone) => (zone ? [zone] : []))),
@@ -96,15 +98,22 @@ export function parseReports(
 		detectedTimezone,
 		timezoneSource: detectedTimezone ? "file" : "user",
 	};
-	if (
-		fileTimezone &&
-		timezoneOffsetMinutes(fileTimezone) !==
-			timezoneOffsetMinutes(options.timezone)
-	)
-		result.warnings.push({
-			code: "parse_warning",
-			message: `Used ${fileTimezone} from the Binance file name instead of the selected ${options.timezone}; exported times use the file's UTC offset.`,
-		});
+	const suffixes = new Set<ImportTimezone>();
+	if (fileTimezone)
+		result.warnings.push(
+			...timezoneConflict(options.timezone, fileTimezone, "the file name"),
+		);
+	else
+		for (const zone of explicitTimezones)
+			result.warnings.push(
+				...timezoneConflict(
+					options.timezone,
+					zone,
+					headerTimezones.includes(zone)
+						? "the file header"
+						: "the export format",
+				),
+			);
 	const coverage = new Map<
 		string,
 		{ firstTimestamp: string; lastTimestamp: string }
@@ -130,9 +139,16 @@ export function parseReports(
 			warned.add(kind.id);
 		}
 		const context: ReportContext = {
-			options: {
-				...options,
-				timezone: fileTimezone ?? sheetTimezones[index] ?? options.timezone,
+			parseTimestamp(value, format, date1904) {
+				const timestamp = parseTimestamp(
+					value,
+					format,
+					fileTimezone ?? sheetTimezones[index] ?? options.timezone,
+					date1904,
+				);
+				const suffix = timezoneFromTimestamp(value);
+				if (suffix) suffixes.add(suffix);
+				return timestamp;
 			},
 			fileName,
 			reference,
@@ -163,7 +179,9 @@ export function parseReports(
 					if (
 						venue === "binance" &&
 						!fileTimezone &&
-						sheet.headers.includes("Time")
+						!sheetTimezones[index] &&
+						sheet.headers.includes("Time") &&
+						!timezoneFromTimestamp(raw["Time#2"] ?? raw.Time ?? "")
 					)
 						parsed.reviewFlags.push({
 							code: "ambiguous_timezone",
@@ -194,12 +212,15 @@ export function parseReports(
 			}
 		});
 	}
-	if (result.rowErrors.length)
-		result.warnings.push({
-			code: "parse_warning",
-			message:
-				"Unsupported sheets and invalid rows are listed in row errors and are excluded from calculations.",
-		});
+	for (const suffix of suffixes)
+		if (
+			fileTimezone
+				? fileTimezone !== suffix
+				: !explicitTimezones.includes(suffix)
+		)
+			result.warnings.push(
+				...timezoneConflict(options.timezone, suffix, "the timestamps"),
+			);
 	result.coverage = [...coverage]
 		.map(([reportKind, range]) => ({ reportKind, ...range }))
 		.sort((a, b) => a.reportKind.localeCompare(b.reportKind));

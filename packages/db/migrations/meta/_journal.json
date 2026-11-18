@@ -36,6 +36,13 @@
 			"when": 1794900000002,
 			"tag": "0004_server_handoff",
 			"breakpoints": true
+		},
+		{
+			"idx": 5,
+			"version": "6",
+			"when": 1794973685993,
+			"tag": "0005_manual_venue",
+			"breakpoints": true
 		}
 	]
 }

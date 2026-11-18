@@ -30,16 +30,23 @@ const READ_PATHS = new Set([
 	"/sapi/v3/asset/getUserAsset",
 ]);
 export type Params = Record<string, string | number | boolean>;
+const WEIGHT_WINDOW_MS = 60_000;
+
 export class BinanceClient {
 	private http: HttpClient;
 	private offset = 0;
 	private spotLimit = 6000;
-	private used = new Map<string, { count: number; at: number }>();
-	constructor(private opts: BinanceSyncOptions) {
+	private used = new Map<string, { count: number; expiresAt: number }[]>();
+	constructor(
+		private opts: BinanceSyncOptions,
+		private onRateLimitWait?: (waitingUntil?: number) => void,
+	) {
 		this.http = new HttpClient({
 			fetch: opts.fetch,
 			now: opts.now,
 			minIntervalMs: 400,
+			vendor: "Binance",
+			redact: [opts.credentials.apiSecret],
 		});
 	}
 	async time(): Promise<void> {
@@ -75,7 +82,8 @@ export class BinanceClient {
 						? { "X-MBX-APIKEY": this.opts.credentials.apiKey }
 						: {},
 					signal: this.opts.signal,
-					notBeforeMs: this.notBefore(path),
+					notBeforeMs: () => this.notBefore(path),
+					onRateLimitWait: this.onRateLimitWait,
 					prepare: signed
 						? (target) => {
 								target.searchParams.delete("signature");
@@ -94,20 +102,33 @@ export class BinanceClient {
 							}
 						: undefined,
 					onResponse: (response) => {
-						const budget = this.budget(path),
-							key = `${budget.scope}:${budget.header}`;
-						const count = response.headers.get(budget.header),
-							now = (this.opts.now ?? Date.now)(),
-							old = this.used.get(key);
-						this.used.set(key, {
-							count:
-								count !== null
-									? Number(count)
-									: (old && now - old.at < 60_000 ? old.count : 0) +
-										budget.weight,
-							at:
-								count !== null || !old || now - old.at >= 60_000 ? now : old.at,
-						});
+						const { scope, header, weight } = this.budget(path);
+						const now = (this.opts.now ?? Date.now)();
+						const entries = this.activeWeights(scope, now);
+						entries.push({ count: weight, expiresAt: now + WEIGHT_WINDOW_MS });
+						const headerValue = response.headers.get(header) ?? "";
+						const reported = /^\d+$/.test(headerValue)
+							? Number(headerValue)
+							: NaN;
+						if (Number.isSafeInteger(reported)) {
+							let excess =
+								entries.reduce((sum, entry) => sum + entry.count, 0) - reported;
+							if (excess < 0)
+								entries.push({
+									count: -excess,
+									expiresAt: now + WEIGHT_WINDOW_MS,
+								});
+							for (const entry of entries) {
+								if (excess <= 0) break;
+								const expired = Math.min(excess, entry.count);
+								entry.count -= expired;
+								excess -= expired;
+							}
+						}
+						this.used.set(
+							scope,
+							entries.filter((entry) => entry.count > 0),
+						);
 					},
 				});
 				if (path === "/api/v3/exchangeInfo") {
@@ -126,6 +147,11 @@ export class BinanceClient {
 				await this.time();
 			}
 		}
+	}
+	private activeWeights(scope: string, now: number) {
+		return (this.used.get(scope) ?? []).filter(
+			(entry) => entry.expiresAt > now,
+		);
 	}
 	private budget(path: string) {
 		const spot = path.startsWith("/api/"),
@@ -158,11 +184,16 @@ export class BinanceClient {
 		};
 	}
 	private notBefore(path: string): number {
-		const budget = this.budget(path),
-			used = this.used.get(`${budget.scope}:${budget.header}`);
-		return used && used.count + budget.weight > budget.limit / 2
-			? used.at + 60_000
-			: 0;
+		const { scope, limit, weight } = this.budget(path);
+		const entries = this.activeWeights(scope, (this.opts.now ?? Date.now)());
+		let excess =
+			entries.reduce((sum, entry) => sum + entry.count, weight) - limit;
+		if (excess <= 0) return 0;
+		for (const entry of entries) {
+			excess -= entry.count;
+			if (excess <= 0) return entry.expiresAt;
+		}
+		return 0;
 	}
 	async checkKey(): Promise<KeyCheck> {
 		const row = object(await this.request("/sapi/v1/account/apiRestrictions"));

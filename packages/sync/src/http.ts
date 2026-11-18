@@ -44,9 +44,12 @@ export interface HttpOptions {
 	maxRetries?: number;
 	minIntervalMs?: number;
 	log?: (line: string) => void;
+	vendor?: string;
+	redact?: string[];
 }
 export interface HttpRequest extends RequestInit {
-	notBeforeMs?: number;
+	notBeforeMs?: number | (() => number);
+	onRateLimitWait?: (waitingUntil?: number) => void;
 	prepare?: (url: URL, request: RequestInit) => void;
 	minIntervalMs?: number;
 	onResponse?: (response: Response) => void;
@@ -60,13 +63,59 @@ function vendorError(value: unknown): { code?: string; text: string } {
 	return {
 		code: typeof row.code === "string" ? row.code : undefined,
 		text: [
-			row.msg,
-			row.message,
-			typeof row.result === "string" ? row.result : "",
-		]
-			.filter((v) => typeof v === "string")
-			.join(" "),
+			...new Set(
+				[
+					row.msg,
+					row.message,
+					typeof row.result === "string" ? row.result : "",
+				].filter((v): v is string => typeof v === "string" && v.length > 0),
+			),
+		].join(" "),
 	};
+}
+
+function authError(
+	vendor: ReturnType<typeof vendorError>,
+	status: number,
+	target: URL,
+	request: RequestInit,
+	options: HttpOptions,
+): UpstreamAuthError {
+	const headers = new Headers(request.headers);
+	const secrets = [
+		...(options.redact ?? []),
+		...(typeof request.body === "string" ? [request.body] : []),
+		...Array.from(headers)
+			.filter(([key]) => /key|signature|authorization|cookie|token/i.test(key))
+			.flatMap(([, value]) => [value, value.replace(/^Bearer /i, "")]),
+		...Array.from(target.searchParams)
+			.filter(([key]) => /key|signature|secret|token/i.test(key))
+			.map(([, value]) => value),
+	];
+	let message = vendor.text
+		.replace(/https?:\/\/[^\s"'<>]+/gi, "[URL removed]")
+		.replace(/(?:\?|%3F)?[\w.-]+(?:=|%3D)[^\s"'<>]+/gi, "[parameter removed]")
+		.replace(/\p{Cc}/gu, " ");
+	for (const secret of secrets
+		.filter(Boolean)
+		.sort((a, b) => b.length - a.length))
+		for (const spelling of new Set([secret, encodeURIComponent(secret)]))
+			message = message.replaceAll(spelling, "[redacted]");
+	const code =
+		vendor.code &&
+		/^-?\d{1,12}$/.test(vendor.code) &&
+		!secrets.includes(vendor.code)
+			? vendor.code
+			: undefined;
+	const label = [options.vendor, code].filter(Boolean).join(" ");
+	const detail =
+		message.trim().slice(0, 500) ||
+		"Upstream rejected credentials or permissions";
+	return new UpstreamAuthError(
+		label ? `${label}: ${detail}` : detail,
+		status,
+		code,
+	);
 }
 
 export class HttpClient {
@@ -86,21 +135,42 @@ export class HttpClient {
 		const target = new URL(url);
 		if (target.username || target.password)
 			throw new UpstreamError("URL credentials are not supported");
-		const { minIntervalMs, notBeforeMs, prepare, onResponse, ...request } =
-			init;
+		const {
+			minIntervalMs,
+			notBeforeMs,
+			onRateLimitWait,
+			prepare,
+			onResponse,
+			...request
+		} = init;
 		const now = this.options.now ?? Date.now;
 		const retries = this.options.maxRetries ?? 4;
+		const waitForLimit = async (until: number) => {
+			const remaining = until - now();
+			if (remaining <= 0) return;
+			onRateLimitWait?.(until);
+			try {
+				await this.sleep(remaining, request.signal ?? undefined);
+			} finally {
+				onRateLimitWait?.();
+			}
+		};
 		for (let attempt = 0; ; attempt++) {
 			request.signal?.throwIfAborted();
 			const interval = Math.max(this.interval, minIntervalMs ?? 0);
 			if (interval > 0 || notBeforeMs !== undefined) {
+				const notBefore =
+					typeof notBeforeMs === "function"
+						? notBeforeMs()
+						: (notBeforeMs ?? 0);
 				const start = Math.max(
 					now(),
 					hostSlots.get(target.host) ?? 0,
-					notBeforeMs ?? 0,
+					notBefore,
 				);
 				hostSlots.set(target.host, start + interval);
-				await this.sleep(start - now(), request.signal ?? undefined);
+				if (notBefore > now()) await waitForLimit(start);
+				else await this.sleep(start - now(), request.signal ?? undefined);
 			}
 			const started = now();
 			let status = 0;
@@ -153,11 +223,7 @@ export class HttpClient {
 						vendor.text,
 					)
 				)
-					throw new UpstreamAuthError(
-						"Upstream rejected credentials or permissions",
-						status,
-						vendor.code,
-					);
+					throw authError(vendor, status, target, request, this.options);
 				if (
 					status === 429 ||
 					/rate limit|free api limit|credits.*exhaust/i.test(vendor.text)
@@ -195,15 +261,13 @@ export class HttpClient {
 			const backoff =
 				Math.min(30_000, 500 * 2 ** attempt) *
 				(0.5 + (this.options.random ?? Math.random)());
-			await this.sleep(
-				Math.max(
-					backoff,
-					failure instanceof UpstreamRateLimitError
-						? failure.retryAfterMs
-						: retryAfterMs,
-				),
-				request.signal ?? undefined,
-			);
+			if (failure instanceof UpstreamRateLimitError)
+				await waitForLimit(now() + Math.max(backoff, failure.retryAfterMs));
+			else
+				await this.sleep(
+					Math.max(backoff, retryAfterMs),
+					request.signal ?? undefined,
+				);
 		}
 	}
 }

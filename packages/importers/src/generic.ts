@@ -7,10 +7,17 @@ import {
 } from "@tax/core";
 import { headerWarnings } from "./reports.js";
 import { readSheets } from "./spreadsheet.js";
+import {
+	timezoneConflict,
+	timezoneFromFileName,
+	timezoneFromHeader,
+	timezoneFromTimestamp,
+} from "./timezone.js";
 import type {
 	Importer,
 	ImportOptions,
 	ImportResult,
+	ImportTimezone,
 	RowError,
 	TableSheet,
 } from "./types.js";
@@ -133,9 +140,14 @@ export function applyRecipe(
 	sheets: TableSheet[],
 	recipeInput: Recipe,
 	opts: ImportOptions,
+	fileName = "",
 ): ImportResult {
 	const recipe = RecipeSchema.parse(recipeInput);
 	const sheet = recipeSheet(sheets, recipe);
+	const fileTimezone = timezoneFromFileName(fileName);
+	const timezone = fileTimezone ?? timezoneFromHeader(recipe.columns.timestamp);
+	const effectiveRecipe = timezone ? { ...recipe, timezone } : recipe;
+	const suffixes = new Set<ImportTimezone>();
 	const ref = sourceReferences();
 	const transactions: LedgerTx[] = [];
 	const rowErrors: RowError[] = [];
@@ -144,12 +156,14 @@ export function applyRecipe(
 			transactions.push(
 				convertRecipeRow(
 					raw,
-					recipe,
+					effectiveRecipe,
 					opts,
 					ref(raw, raw[recipe.columns.id ?? ""]),
 					sheet.excelDate1904,
 				),
 			);
+			const suffix = timezoneFromTimestamp(raw[recipe.columns.timestamp] ?? "");
+			if (suffix && suffix !== timezone) suffixes.add(suffix);
 		} catch (error) {
 			rowErrors.push({
 				rowIndex: index,
@@ -163,8 +177,19 @@ export function applyRecipe(
 	return {
 		transactions,
 		rowsRead: sheet.rows.length,
-		warnings: headerWarnings(sheet),
-		timezoneSource: "user",
+		warnings: [
+			...headerWarnings(sheet),
+			...timezoneConflict(
+				opts.timezone,
+				timezone,
+				fileTimezone ? "the file name" : "the file header",
+			),
+			...[...suffixes].flatMap((suffix) =>
+				timezoneConflict(opts.timezone, suffix, "the timestamps"),
+			),
+		],
+		detectedTimezone: timezone,
+		timezoneSource: timezone ? "file" : "user",
 		sheets: [{ name: sheet.name, rowsRead: sheet.rows.length }],
 		rowErrors,
 	};
@@ -179,6 +204,7 @@ export const generic: Importer = {
 			readSheets(file, { allowDuplicateHeaders: true }),
 			opts.recipe,
 			opts,
+			file.name,
 		);
 	},
 };

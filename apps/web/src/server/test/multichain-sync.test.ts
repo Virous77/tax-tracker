@@ -7,13 +7,14 @@ import { closeDatabases, database } from "../context";
 import { type Endpoint, handle } from "../http";
 
 it.each([
-	[1, "etherscan"],
-	[1, "blockscout"],
-	[8453, "alchemy"],
-	[56, "nodereal"],
+	[1, "etherscan", true],
+	[1, "blockscout", true],
+	[8453, "alchemy", true],
+	[56, "nodereal", true],
+	[42161, "alchemy", false],
 ] as const)(
-	"syncs chain %s through %s and reconciles complete persisted holdings",
-	async (chainId, provider) => {
+	"syncs chain %s through %s (complete history: %s)",
+	async (chainId, provider, complete) => {
 		const modulePath = new URL(
 			"../../../../../tools/mock-sync/server.mjs",
 			import.meta.url,
@@ -102,6 +103,27 @@ it.each([
 					await call("getJob", "GET", undefined, { id: jobId })
 				).json();
 				expect(job, JSON.stringify(job)).toMatchObject({ status: "completed" });
+				if (!complete) {
+					expect(job.result).toMatchObject({
+						streams: expect.arrayContaining([
+							expect.objectContaining({
+								stream: expect.stringMatching(/:txlistinternal$/),
+								incomplete: expect.stringMatching(/internal transfers/i),
+							}),
+						]),
+						balanceCheck: [],
+						notices: [expect.stringMatching(/balance check skipped/i)],
+					});
+					expect(
+						database().connections.get(connection.id)?.lastSyncStatus,
+					).toBe("incomplete");
+					expect(
+						await (
+							await call("connectionBalances", "GET", undefined, connection)
+						).json(),
+					).toEqual({ fetchedAt: null, rows: [] });
+					continue;
+				}
 				expect(
 					job.result.streams.every(
 						(stream: { incomplete?: string }) => !stream.incomplete,

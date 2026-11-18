@@ -121,43 +121,45 @@ export function mapBinanceDust(raw: ApiRow, parent: ApiRow): SyncTx {
 		feeAmount: amount(raw, "serviceChargeAmount"),
 	});
 }
-const income: Record<string, IncomeKind> = Object.fromEntries([
-	...[
-		"Simple Earn Flexible Interest",
-		"Savings Interest",
-		"Savings distribution",
-		"Pool Distribution",
-		"Launchpool Interest",
-	].map((v) => [v, "interest"]),
-	...[
-		"Staking Rewards",
-		"ETH 2.0 Staking Rewards",
-		"Simple Earn Locked Rewards",
-		"POS savings interest",
-		"BNB Vault Rewards",
-		"Swap Farming Rewards",
-		"Liquid Swap rewards",
-	].map((v) => [v, "staking"]),
-	...[
-		"Airdrop Assets",
-		"Distribution",
-		"Simple Earn Flexible Airdrop",
-		"HODLer Airdrops Distribution",
-		"Launchpool Airdrop",
-		"Megadrop Rewards",
-		"Cash Voucher distribution",
-		"Campaign Related Reward",
-	].map((v) => [v, "airdrop"]),
-	...[
-		"Commission Rebate",
-		"Commission History",
-		"Referral Kickback",
-		"Referral Commission",
-		"Referrer rebates",
-		"Commission Fee Shared With You",
-	].map((v) => [v, "referral"]),
-	["Super BNB Mining", "mining"],
-]) as Record<string, IncomeKind>;
+const income: Record<string, IncomeKind> = Object.fromEntries(
+	[
+		...[
+			"Simple Earn Flexible Interest",
+			"Savings Interest",
+			"Savings distribution",
+			"Pool Distribution",
+			"Launchpool Interest",
+		].map((v) => [v, "interest"]),
+		...[
+			"Staking Rewards",
+			"ETH 2.0 Staking Rewards",
+			"Simple Earn Locked Rewards",
+			"POS savings interest",
+			"BNB Vault Rewards",
+			"Swap Farming Rewards",
+			"Liquid Swap rewards",
+		].map((v) => [v, "staking"]),
+		...[
+			"Airdrop Assets",
+			"Distribution",
+			"Simple Earn Flexible Airdrop",
+			"HODLer Airdrops Distribution",
+			"Launchpool Airdrop",
+			"Megadrop Rewards",
+			"Cash Voucher distribution",
+			"Campaign Related Reward",
+		].map((v) => [v, "airdrop"]),
+		...[
+			"Commission Rebate",
+			"Commission History",
+			"Referral Kickback",
+			"Referral Commission",
+			"Referrer rebates",
+			"Commission Fee Shared With You",
+		].map((v) => [v, "referral"]),
+		["Super BNB Mining", "mining"],
+	].map(([description, kind]) => [String(description).toLowerCase(), kind]),
+) as Record<string, IncomeKind>;
 export function mapBinanceDividend(raw: ApiRow): SyncTx {
 	const tx = start(raw, `dividend:${text(raw, "id")}`, text(raw, "divTime"));
 	if (text(raw, "direction") !== "1")
@@ -165,7 +167,8 @@ export function mapBinanceDividend(raw: ApiRow): SyncTx {
 			tx,
 			"Unknown dividend direction; classify this receipt manually",
 		);
-	if (!income[String(raw.enInfo)])
+	const kind = income[String(raw.enInfo).trim().toLowerCase()];
+	if (!kind)
 		tx.reviewFlags.push({
 			code: "unknown_type",
 			message:
@@ -174,7 +177,7 @@ export function mapBinanceDividend(raw: ApiRow): SyncTx {
 	return validated({
 		...tx,
 		type: "income",
-		incomeKind: income[String(raw.enInfo)] ?? "other",
+		incomeKind: kind ?? "other",
 		assetIn: text(raw, "asset"),
 		amountIn: amount(raw, "amount"),
 	});
@@ -295,7 +298,7 @@ export function mapBinanceEarnAudit(raw: ApiRow, kind: string): SyncTx {
 			{
 				code: "parse_warning",
 				message:
-					"Earn reward retained for cross-check only; assetDividend is the income feed because these may overlap (research §1.3)",
+					"Earn reward retained for cross-check only because Binance Distribution History may already include it.",
 			},
 		],
 	});

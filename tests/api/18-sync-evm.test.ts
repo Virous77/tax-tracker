@@ -264,6 +264,10 @@ describe("EVM sync on all five chains", () => {
 					options: { providers: ["alchemy"] },
 				});
 				const s = await syncOk(c.id);
+				expect(s.balanceCheck).toEqual([]);
+				expect(s.notices).toContainEqual(
+					expect.stringMatching(/balance check skipped/i),
+				);
 				expect(
 					s.streams.some((st) => /internal/i.test(st.incomplete ?? "")),
 				).toBe(true);

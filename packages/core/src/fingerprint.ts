@@ -3,6 +3,10 @@ import type { LedgerTx } from "./ledger.js";
 
 export const venueForSource = (source: string): string =>
 	source.replace(/-api$/, "");
+export const venueForTransaction = (
+	tx: Pick<LedgerTx, "source" | "venue">,
+): string =>
+	tx.source === "manual" && tx.venue ? tx.venue : venueForSource(tx.source);
 export const normalizedTxHash = (hash: string): string =>
 	hash.toLowerCase().replace(/^0x/, "");
 export function siblingChannel(source: string): string | null {

@@ -240,6 +240,26 @@ describe("EVM classifier", () => {
 		expect(rows[0]?.amountIn).toBeUndefined();
 		expect(rows[0]?.raw).toMatchObject({ tokentx: [{ value: "0" }] });
 	});
+	it("keeps one spam flag with all distinct reasons", () => {
+		const [row] = classify({
+			tokentx: [
+				token({
+					from: external,
+					to: a,
+					statusRep: "2",
+					contractAddress: external,
+					tokenSymbol: "USDT",
+				}),
+			],
+		});
+		expect(row?.reviewFlags).toEqual([
+			{
+				code: "suspected_spam",
+				message:
+					"Explorer marks this token unsafe. Unsolicited token from an unknown contract; verify before accepting. Claimed symbol imitates a known asset at a different contract.",
+			},
+		]);
+	});
 	it("does not exclude gas along with a spam receipt", () => {
 		const rows = classify({
 			txlist: [tx({ value: "0" })],

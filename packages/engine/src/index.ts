@@ -18,7 +18,7 @@ import {
 	taxYearBounds,
 	type Valuation,
 	type VdaReport,
-	venueForSource,
+	venueForTransaction,
 } from "@tax/core";
 import { type VdaRules, VdaRulesSchema } from "@tax/rules";
 import { BalanceBook } from "./balances.js";
@@ -127,8 +127,8 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 	}
 	const deposits = new Map(matches.map((m) => [m.deposit.id, m]));
 	const moved = new Map<string, LotSlice[]>();
-	const pool = (source: string) =>
-		settings.lotPool === "global" ? "global" : venueForSource(source);
+	const pool = (tx: LedgerTx) =>
+		settings.lotPool === "global" ? "global" : venueForTransaction(tx);
 	const lots = new LotBook();
 	const holdings = new BalanceBook(settings);
 	const tds = new TdsBook();
@@ -154,7 +154,7 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 		if (moved.has(match.deposit.id)) return;
 		const slices = lots.consume(
 			match.withdrawal.assetOut ?? "",
-			pool(match.withdrawal.source),
+			pool(match.withdrawal),
 			match.withdrawal.amountOut ?? "0",
 		);
 		const ratio = D(match.deposit.amountIn ?? "0").div(
@@ -177,7 +177,8 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 	};
 	for (const [order, tx] of included.entries()) {
 		const current = inYear(tx);
-		const sourcePool = pool(tx.source);
+		const sourcePool = pool(tx);
+		const venue = venueForTransaction(tx);
 		const inferredRate = ledgerStablecoinRate(tx);
 		if (inferredRate) rate = inferredRate;
 		const isTrade = ["buy", "sell", "swap"].includes(tx.type);
@@ -258,10 +259,10 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 				isDisposal,
 				warn,
 			);
-		holdings.change(tx.assetIn, tx.source, tx.amountIn, tx.id);
+		holdings.change(tx.assetIn, venue, tx.amountIn, tx.id);
 		holdings.change(
 			tx.assetOut,
-			tx.source,
+			venue,
 			tx.amountOut ? D(tx.amountOut).negated().toFixed() : undefined,
 			tx.id,
 		);
@@ -372,7 +373,10 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 		}
 		if (tx.type === "fee" && tx.assetOut && tx.amountOut)
 			lots.consume(tx.assetOut, sourcePool, tx.amountOut);
-		if (tx.type === "transfer")
+		if (
+			tx.type === "transfer" &&
+			!tx.reviewFlags.some((flag) => flag.code === "unknown_type")
+		)
 			warn({
 				txId: tx.id,
 				code: "unmatched_transfer",
@@ -401,7 +405,7 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 			if (extraFee.gt("0")) {
 				holdings.change(
 					tx.feeAsset,
-					tx.source,
+					venue,
 					extraFee.negated().toFixed(),
 					tx.id,
 				);

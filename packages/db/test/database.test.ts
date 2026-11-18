@@ -117,4 +117,47 @@ describe("database", () => {
 		expect(db.jobs.get(job)?.status).toBe("failed");
 		db.close();
 	});
+	it("marks interrupted API sync imports failed without removing rows or cursors", () => {
+		const { dir, db } = setup();
+		const connectionId = randomUUID();
+		const imported = { ...record(), status: "pending_recipe" as const };
+		db.connections.save({
+			id: connectionId,
+			kind: "binance",
+			label: "Synthetic",
+			options: {},
+			createdAt: imported.createdAt,
+			lastSyncAt: null,
+			lastSyncStatus: "running",
+			lastSyncError: null,
+		});
+		db.imports.save({ ...imported, kind: "api_sync", connectionId });
+		const unrelated = { ...record(), status: "pending_recipe" as const };
+		db.imports.save(unrelated);
+		db.transactions.insert([{ tx: transaction(imported.id) }]);
+		db.cursors.save(connectionId, "trades", { lastId: "92" });
+		const jobId = db.jobs.create("sync", { connectionId });
+		db.jobs.update(jobId, "running", { importId: imported.id });
+		db.close();
+
+		const reopened = openDatabase(dir);
+		try {
+			expect(reopened.jobs.recover()).toBe(1);
+			expect(reopened.jobs.get(jobId)).toMatchObject({ status: "failed" });
+			expect(reopened.connections.get(connectionId)).toMatchObject({
+				lastSyncStatus: "failed",
+			});
+			expect(reopened.imports.get(imported.id)).toMatchObject({
+				status: "failed",
+				error: expect.stringContaining("Server restarted"),
+			});
+			expect(reopened.imports.get(unrelated.id)?.status).toBe("pending_recipe");
+			expect(reopened.transactions.active()).toHaveLength(1);
+			expect(reopened.cursors.get(connectionId)).toEqual({
+				trades: { lastId: "92" },
+			});
+		} finally {
+			reopened.close();
+		}
+	});
 });

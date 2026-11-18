@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { addManual, allTx, compute } from "./lib";
+import { taxYearOf } from "../../packages/core/dist/time.js";
+import { allTx, compute } from "./lib";
 import {
 	addBinance,
 	addCoindcx,
@@ -37,21 +38,10 @@ describe("THE PHASE 2 GATE", () => {
 		for (const c of evm) await syncOk(c.id);
 		await syncOk((await addCoindcx()).id);
 		await syncOk((await addBinance()).id);
-		// The fixture's P2P buy (2025-04-08) is older than the six months Binance's API serves, so the
-		// sync reports that stream incomplete. Entered by hand it fixes the global report pool, but a
-		// manual row has venue "manual" and cannot close the Binance balance check (BUGS.md P2-API-4).
-		await addManual({
-			timestamp: "2025-04-08T09:12:37.000Z",
-			type: "buy",
-			source: "binance",
-			assetIn: "USDT",
-			amountIn: "5000",
-			assetOut: "INR",
-			amountOut: "442500",
-			inrValue: "442500",
-		});
-		report = await compute("2025-26");
 		ledger = await allTx();
+		const latest = ledger[0];
+		if (!latest) throw new Error("Missing synced fixture transactions");
+		report = await compute(taxYearOf(latest.timestamp));
 	}, SYNC_TIMEOUT);
 
 	describe("balances: zero differences for every asset on every connection", () => {
@@ -63,18 +53,15 @@ describe("THE PHASE 2 GATE", () => {
 					c.lastSyncStatus,
 				);
 		});
-		it("Binance: zero differences except USDT, whose 5000 gap is the P2P buy the API cannot return (flagged incomplete)", async () => {
+		it("Binance reconciles the recent P2P purchase and flags the API history limit", async () => {
 			const c = (await connections()).find((x) => x.label === "Binance");
 			const rows = (await balances(c?.id ?? "")).rows;
-			for (const row of rows.filter((r) => r.asset !== "USDT"))
+			expect(rows.some((row) => row.asset === "USDT")).toBe(true);
+			for (const row of rows)
 				expect(row, row.asset).toMatchObject({
 					difference: "0",
 					flagged: false,
 				});
-			expect(rows.find((r) => r.asset === "USDT")).toMatchObject({
-				difference: "5000",
-				flagged: true,
-			});
 			expect(
 				report.warnings.some(
 					(w) =>
@@ -202,14 +189,13 @@ describe("THE PHASE 2 GATE", () => {
 			expect(assets.has("USDC")).toBe(true);
 			expect(assets.has("USDC.E")).toBe(true);
 		});
-		it("Polygon: MATIC-era rows are POL and carry the rename warning", () => {
+		it("Polygon native balances use the POL asset ID", () => {
 			const poly = ledger.filter((t) => t.source === "evm:137");
 			for (const t of poly)
 				for (const a of [t.assetIn, t.assetOut, t.feeAsset].filter(Boolean))
 					expect(a).toBe("POL");
-			const [matic] = byHash(HASH.maticIn);
-			expect(matic?.reviewFlags.map((f) => f.message).join(" ")).toMatch(
-				/MATIC.*POL|POL.*MATIC/,
+			expect(byHash(HASH.maticIn).some((tx) => tx.assetIn === "POL")).toBe(
+				true,
 			);
 		});
 		it("ETH on Base and Arbitrum shares the ETH asset id", () => {

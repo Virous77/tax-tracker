@@ -43,6 +43,17 @@ describe("signatures", () => {
 	);
 });
 describe("Binance mappings", () => {
+	it("recognizes the dividend label BNB Vault rewards", () => {
+		const raw = {
+			...envelope("binance-assetDividend"),
+			enInfo: "BNB Vault rewards",
+		};
+		expect(mapBinanceDividend(raw)).toMatchObject({
+			type: "income",
+			incomeKind: "staking",
+			reviewFlags: [],
+		});
+	});
 	it("maps official myTrades including a third-asset fee and raw text", () => {
 		const raw = first(sample("binance-myTrades"));
 		const tx = mapBinanceTrade(raw, market);

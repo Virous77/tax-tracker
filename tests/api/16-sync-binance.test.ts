@@ -31,6 +31,7 @@ const EXPECTED_STREAMS: Record<string, number> = {
 	"binance:dividends": 2,
 	"binance:fiat:0": 1,
 	"binance:fiat:1": 1,
+	"binance:p2p:BUY": 1,
 	"binance:earn:flexible": 1,
 	"binance:dust": 1,
 	"binance:myTrades:ETHUSDT": 5,
@@ -179,14 +180,13 @@ describe("Binance sync", () => {
 				BNB: "0.009554",
 			});
 		});
-		it("USDT: fetched spot+funding+earn 1977.433845; the 5000 gap is the P2P buy outside the API window (mock issue M1)", async () => {
+		it("USDT includes the recent P2P purchase and reconciles across spot, funding and Earn", async () => {
 			const row = (await balances(id)).rows.find((r) => r.asset === "USDT");
 			expect(row).toMatchObject({
 				fetched: "1977.433845",
-				difference: "5000",
-				flagged: true,
+				difference: "0",
+				flagged: false,
 			});
-			expect(summary.notices.join("\n")).toMatch(/USDT .*difference 5000/);
 		});
 		it("connection is 'incomplete' because P2P/dust are incomplete", async () => {
 			const c = (await connections()).find((x) => x.id === id);
@@ -296,7 +296,7 @@ describe("Binance sync", () => {
 				const job = await sync(id);
 				await scenario("normal");
 				expect(job.status).toBe("failed");
-				expect(job.error).toMatch(/signature|auth|key|credential/i);
+				expect(job.error).toMatch(/Binance -1022:.*signature/i);
 				expectNoSecrets(JSON.stringify(job), "job");
 			},
 			SYNC_TIMEOUT,

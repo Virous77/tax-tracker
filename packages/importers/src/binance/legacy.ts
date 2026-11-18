@@ -1,11 +1,11 @@
 import { type LedgerTx, LedgerTxSchema } from "@tax/core";
-import { timezoneFromFileName } from "../timezone.js";
-import type { ImportOptions, TableSheet } from "../types.js";
+import type { ReportContext } from "../reports.js";
+import { timezoneFromHeader } from "../timezone.js";
+import type { TableSheet } from "../types.js";
 import {
 	amountAsset,
 	baseTransaction,
 	numberString,
-	parseTimestamp,
 	RowParseError,
 	splitPair,
 	tradePriceQuote,
@@ -14,36 +14,28 @@ export function rowTransaction(
 	raw: Record<string, string>,
 	sheet: TableSheet,
 	kind: "trade" | "oldTrade" | "wallet",
-	opts: ImportOptions,
+	context: ReportContext,
 	sourceRef: string,
-	fileName: string,
 ): LedgerTx {
 	if (raw.__extraColumns)
 		throw new RowParseError("Row has more cells than the header.");
 	const dateColumn = sheet.headers.find((v) => /^date/i.test(v)) ?? "";
-	const fileTimezone = timezoneFromFileName(fileName);
-	const timezoneExplicit =
-		/UTC(?:\+0)?\)/i.test(dateColumn) || dateColumn === "UTC_Time";
+	const { fileName } = context;
 	const tx = baseTransaction(
 		"binance",
 		sourceRef,
-		parseTimestamp(
+		context.parseTimestamp(
 			raw[dateColumn] ?? "",
 			"yyyy-MM-dd HH:mm:ss",
-			fileTimezone ?? (timezoneExplicit ? "UTC" : opts.timezone),
 			sheet.excelDate1904,
 		),
 		raw,
 	);
-	if (
-		!fileTimezone &&
-		((timezoneExplicit && opts.timezone !== "UTC") ||
-			(/UTC(?!\)|\+0\))/i.test(dateColumn) && !timezoneExplicit))
-	)
+	if (/UTC/i.test(dateColumn) && !timezoneFromHeader(dateColumn))
 		tx.reviewFlags.push({
 			code: "ambiguous_timezone",
 			message:
-				"Header timezone conflicts with the selected timezone or has an unsupported offset. Verify this timestamp.",
+				"The date header has an unsupported UTC offset. Verify this timestamp.",
 		});
 
 	if (kind === "wallet") {

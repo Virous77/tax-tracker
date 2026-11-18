@@ -101,7 +101,7 @@ describe("CoinDCX TDS columns (docs/research/export-formats.md B3/B4)", () => {
 });
 
 describe("Binance overlap and identical rows (export-formats.md A8)", () => {
-	it("statement after the dedicated histories adds only what they cannot give (income)", async () => {
+	it("statement after dedicated histories links covered legs and retains exclusive operations", async () => {
 		await importOk(fixture("binance-trade-history.csv"), "t.csv", {
 			source: "binance",
 			timezone: "UTC",
@@ -121,8 +121,15 @@ describe("Binance overlap and identical rows (export-formats.md A8)", () => {
 		);
 		const txs = await allTx();
 		expect(txs.length).toBe(11 + st.rowsInserted);
-		// Phase 2 (catalogue §1.5): ambiguous/unknown statement operations are amount-free fee rows flagged
-		// unknown_type, and statement-only dust conversion stays; nothing duplicates the dedicated histories.
+		for (const timestamp of [
+			"2025-06-15T03:12:44.000Z",
+			"2026-05-10T09:00:00.000Z",
+		]) {
+			const fills = txs.filter((tx) => tx.timestamp === timestamp);
+			expect(fills).toHaveLength(2);
+			expect(fills.every((tx) => tx.importId !== st.id)).toBe(true);
+		}
+		// Unknown statement operations and statement-only dust are still retained.
 		for (const t of txs.filter((x) => x.importId === st.id)) {
 			if (t.type === "fee")
 				expect(t.reviewFlags.map((f) => f.code)).toContain("unknown_type");

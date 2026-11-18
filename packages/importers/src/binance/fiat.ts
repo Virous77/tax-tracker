@@ -1,6 +1,6 @@
 import { D, LedgerTxSchema } from "@tax/core";
 import { hasHeaders, type ReportKind } from "../reports.js";
-import { baseTransaction, numberString, parseTimestamp } from "../values.js";
+import { baseTransaction, numberString } from "../values.js";
 // Catalogue §1.2 / export-formats §A6: identical fiat headers need the selected report direction.
 export const reportKind: ReportKind = {
 	verified: true,
@@ -20,10 +20,9 @@ export const reportKind: ReportKind = {
 		const tx = baseTransaction(
 			"binance",
 			`fiat:${context.reference(raw, raw["Order ID"])}`,
-			parseTimestamp(
+			context.parseTimestamp(
 				raw[date] ?? "",
 				"yyyy-MM-dd HH:mm:ss",
-				/UTC(?:\+0)?\)/.test(date) ? "UTC" : context.options.timezone,
 				sheet.excelDate1904,
 			),
 			raw,

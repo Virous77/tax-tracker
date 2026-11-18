@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { LedgerTxSchema, taxYearOf } from "@tax/core";
+import { LedgerTxSchema, mergeReviewFlags, taxYearOf } from "@tax/core";
 import {
 	CreateTransactionRequestSchema,
 	PatchTransactionRequestSchema,
@@ -22,7 +22,7 @@ function reviewedLedger(
 	);
 	return ledger.map((tx) => ({
 		...tx,
-		reviewFlags: [
+		reviewFlags: mergeReviewFlags([
 			...tx.reviewFlags,
 			...flags.filter(
 				(flag) =>
@@ -32,7 +32,7 @@ function reviewedLedger(
 							original.code === flag.code && original.message === flag.message,
 					),
 			),
-		],
+		]),
 	}));
 }
 export function listTransactions(db: TaxDatabase, query: TransactionsQuery) {
@@ -147,8 +147,13 @@ export function review(db: TaxDatabase, taxYear?: string) {
 		return report ? [report] : [];
 	});
 
+	const superseded = new Set(
+		db.transactions.superseded().map(({ txId }) => txId),
+	);
 	const ledger = reviewedLedger(db, years).filter(
-		(tx) => !taxYear || taxYearOf(tx.timestamp) === taxYear,
+		(tx) =>
+			!superseded.has(tx.id) &&
+			(!taxYear || taxYearOf(tx.timestamp) === taxYear),
 	);
 	const reportItems = reportReviewItems(
 		reports,

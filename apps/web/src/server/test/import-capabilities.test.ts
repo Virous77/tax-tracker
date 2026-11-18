@@ -122,6 +122,65 @@ function fills() {
 		],
 	]);
 }
+it.each([true, false])(
+	"links every covered same-second statement leg (fills first: %s)",
+	async (fillsFirst) => {
+		const fixture = (name: string) =>
+			readFileSync(
+				new URL(
+					`../../../../../packages/importers/test/fixtures/binance-${name}.csv`,
+					import.meta.url,
+				),
+			);
+		const uploadFills = () => upload(fixture("trade-history"), "trades.csv");
+		const uploadStatement = () =>
+			upload(fixture("transaction-statement"), "statement.csv");
+		if (fillsFirst) expect((await uploadFills()).status).toBe(201);
+		const imported = await (await uploadStatement()).json();
+		const timestamps = new Set([
+			"2025-06-15T03:12:44.000Z",
+			"2026-05-10T09:00:00.000Z",
+		]);
+		const db = database();
+		const atSameSecond = () =>
+			db.transactions.active().filter((tx) => timestamps.has(tx.timestamp));
+		if (fillsFirst) {
+			expect(imported.rowsDuplicate).toBeGreaterThanOrEqual(12);
+			expect(
+				db.rawRows
+					.list(imported.id)
+					.filter((row) =>
+						timestamps.has(
+							`${(row.data as Record<string, string>).UTC_Time?.replace(" ", "T")}.000Z`,
+						),
+					)
+					.every((row) => row.txId !== null),
+			).toBe(true);
+		} else {
+			expect(atSameSecond()).toHaveLength(12);
+			for (const tx of atSameSecond())
+				expect(tx).toMatchObject({
+					type: "transfer",
+					reviewFlags: [
+						expect.objectContaining({
+							code: "unknown_type",
+							message: expect.stringContaining("unclassified"),
+						}),
+					],
+				});
+			expect((await uploadFills()).status).toBe(201);
+		}
+		expect(atSameSecond()).toHaveLength(4);
+		expect(atSameSecond().every((tx) => tx.type === "swap")).toBe(true);
+		const review = await (await call("review")).json();
+		const unknown = review.groups.find(
+			(group: { code: string }) => group.code === "unknown_type",
+		);
+		expect(
+			unknown.items.every((tx: LedgerTx) => !timestamps.has(tx.timestamp)),
+		).toBe(true);
+	},
+);
 const catalogue = [
 	["binance-convert", "binance:convert"],
 	["binance-fiat-deposit", "binance:fiat"],
@@ -378,6 +437,41 @@ it.each(["file-first", "api-first"])(
 );
 
 describe("PDF errors and snapshots", () => {
+	it("deduplicates identical PDFs and identical snapshots from different PDFs", async () => {
+		const original = syntheticPdf(statementPages());
+		const first = await (await upload(original)).json();
+		expect(first).toMatchObject({
+			rowsRead: 3,
+			rowsInserted: 3,
+			rowsDuplicate: 0,
+		});
+		const [same, reencoded] = await Promise.all([
+			upload(original, "renamed.pdf"),
+			upload(
+				syntheticPdf(statementPages(), "12345678"),
+				"encrypted.pdf",
+				"IST",
+				"12345678",
+			),
+		]);
+		const duplicate = await same.json();
+		const reencodedDuplicate = await reencoded.json();
+		expect(duplicate.fileSha256).toBe(first.fileSha256);
+		expect(reencodedDuplicate.fileSha256).not.toBe(first.fileSha256);
+		for (const item of [duplicate, reencodedDuplicate]) {
+			expect(item).toMatchObject({
+				rowsRead: 3,
+				rowsInserted: 0,
+				rowsDuplicate: 3,
+			});
+			expect(database().rawRows.list(item.id)).toHaveLength(3);
+		}
+		expect(reencodedDuplicate.warnings).toContainEqual({
+			code: "parse_warning",
+			message: expect.stringMatching(/UTC.*instead of.*IST/),
+		});
+		expect(database().balanceSnapshots.list()).toHaveLength(1);
+	});
 	it.each([
 		[
 			"missing password",

@@ -18,6 +18,7 @@ import {
 	IncomeKindSchema,
 	LedgerTxFieldsSchema,
 	LedgerTxSchema,
+	ManualVenueSchema,
 	NonNegativeDecimalSchema,
 	ReviewCodeSchema,
 	ReviewFlagSchema,
@@ -343,14 +344,13 @@ export const TransactionListItemSchema = z.intersection(
 export const ListTransactionsResponseSchema = PaginationResponseSchema.extend({
 	items: z.array(TransactionListItemSchema),
 });
-/** A manual row may be assigned to an exchange so it counts in that venue's lots and balance check. */
-export const ManualVenueSchema = z.enum(["manual", "binance", "coindcx"]);
+export { ManualVenueSchema } from "../ledger.js";
 export const CreateTransactionRequestSchema = LedgerTxFieldsSchema.omit({
 	id: true,
 	source: true,
 })
 	.extend({ venue: ManualVenueSchema.default("manual") })
-	.superRefine(({ venue: _venue, ...tx }, ctx) => {
+	.superRefine((tx, ctx) => {
 		const parsed = LedgerTxSchema.safeParse({
 			...tx,
 			id: "00000000-0000-4000-8000-000000000000",

@@ -9,7 +9,7 @@ export const reportKind: ReportKind = {
 		convert(
 			raw,
 			sheet,
-			context.options,
+			context,
 			context.reference(raw, raw[column(sheet, columns.id) ?? ""]),
 		),
 };

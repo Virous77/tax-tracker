@@ -81,6 +81,7 @@ export const transactions = sqliteTable(
 	{
 		id: text("id").primaryKey(),
 		source: text("source").notNull(),
+		venue: text("venue").$type<LedgerTx["venue"]>(),
 		sourceRef: text("source_ref").notNull(),
 		fingerprint: text("fingerprint"),
 		supersededBy: text("superseded_by").references(() => imports.id, {

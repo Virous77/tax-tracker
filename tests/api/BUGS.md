@@ -114,6 +114,94 @@ Still noted, not changed: ledger edits invalidate every year (safe but broad); u
 
 # Phase 2
 
+## Final regression round — 2026-11-18
+
+Run against image `tax-tracker-app:local` from `main` at `7426d76` (`2b7d028` contract, `98286b1` UI, `7426d76`
+server), compose project `taxapi3` on port 3111 (`tests/api/phase2.env`), mock-sync on 11601, mock LLM on 11511, fresh
+data dir. The setup is the same as in the round below.
+
+**Result: 793 tests, 793 pass, 0 fail** (25 files, 39 min). No flakes; nothing was re-run.
+Phase 1 files (01–13): 401/401. Phase 2 files (14–24): 392/392.
+
+| File                       | Tests   | Pass    | Fail  |
+| -------------------------- | ------- | ------- | ----- |
+| `01-health-settings`       | 34      | 34      | 0     |
+| `02-imports`               | 36      | 36      | 0     |
+| `03-edge-data`             | 14      | 14      | 0     |
+| `04-recipes`               | 24      | 24      | 0     |
+| `05-transactions`          | 54      | 54      | 0     |
+| `06-review`                | 11      | 11      | 0     |
+| `07-reports`               | 29      | 29      | 0     |
+| `08-exports`               | 19      | 19      | 0     |
+| `09-auth`                  | 56      | 56      | 0     |
+| `10-security`              | 32      | 32      | 0     |
+| `11-research`              | 8       | 8       | 0     |
+| `12-server-round2`         | 13      | 13      | 0     |
+| `13-round3`                | 11      | 11      | 0     |
+| `14-vault`                 | 41      | 41      | 0     |
+| `15-providers-connections` | 74      | 74      | 0     |
+| `16-sync-binance`          | 51      | 51      | 0     |
+| `17-sync-coindcx`          | 13      | 13      | 0     |
+| `18-sync-evm`              | 45      | 45      | 0     |
+| `18b-gate`                 | 32      | 32      | 0     |
+| `19-prices`                | 22      | 22      | 0     |
+| `20-import-kinds`          | 54      | 54      | 0     |
+| `21-pdf-snapshots`         | 27      | 27      | 0     |
+| `22-dedupe-supersede`      | 16      | 16      | 0     |
+| `23-phase2-security`       | 37      | 37      | 0     |
+| `24-regression-round`      | 40      | 40      | 0     |
+| **Total**                  | **793** | **793** | **0** |
+
+**Gate (`18b-gate`), `normal` scenario:** every asset on Binance, CoinDCX and all ten EVM connections has
+`difference: "0"` and `flagged: false`. **`drift`:** `18-sync-evm` still gives USDC `difference: "0.5"`, `flagged: true`
+and a `balance_mismatch`. The first Binance sync stays under 6 minutes (`16 › … first full sync …`).
+
+### Fixed (verified this round)
+
+| Bug                                  | Evidence (passing test)                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P2-API-8 unknown ops are empty `fee` | The 3 tests that failed last round now pass: `24 › Binance statement legs next to Trade History › no statement row is an amount-free fee row`, `› every amount-free statement row is a transfer flagged unknown_type`, `› no fee row anywhere in the ledger lacks a fee amount`. New: `24 › unknown statement operations are transfers (P2-API-8)` ("Some Future Operation" is an amount-free `transfer` + `unknown_type` and keeps its raw row; also with `binance-statement-all-operations.csv`). |
+| P2-API-9 "§" in the EVM fee message  | The `fee_review_required` message in `packages/evm/src/fees.ts` no longer cites research (checked in the code). Only a code comment still says "research §1.8", and comments are not user text. The mock never sends operator-fee fields, so the API scan cannot reach it. `24 › no 'catalogue' or '§' reaches any API message` still passes; it also rejects "research".                                                                                                                           |
+
+### Tests added this round (`24-regression-round.test.ts`, 13 → 40)
+
+- **`timezoneOrigin` (contract 2b7d028):**
+  - `binance-trade-history.csv` as IST → `header`, warning "Used UTC from the column header instead of the selected IST.";
+  - `binance-spot-order-history(UTC+5).csv` → `file_name`, "Used +05:00 from the file name instead of the selected IST.";
+  - a file name zone wins over the header zone ("Used +05:30 from the file name …");
+  - `binance-convert.csv` (no zone) → `timezoneSource: "user"`, `timezoneOrigin: null`, no conflict warning;
+  - a matching selection → no warning.
+
+  The value is persisted in both `GET /api/imports/:id` and the list.
+- **Venue PATCH (one real Binance sync):**
+  - manual → binance opens a 7 USDT gap; → coindcx closes it; binance → manual closes it again, with no re-sync;
+  - a PATCH without `venue` keeps the venue;
+  - unknown venues (`kraken`, `evm:1`, `""`, `BINANCE`, `null`) → 400 `validation_error` and nothing changes;
+  - synced (`binance-api`) and file-imported rows → 400 "Venue can only be changed for manual transactions." for
+    every venue, with the row and the balances unchanged.
+- **Merged flags:**
+  - one flag per code;
+  - repeated reasons are removed even when they differ only by a full stop;
+  - a multi-line reason is split into lines;
+  - reasons are joined by `"\n"`;
+  - a single reason keeps its own wording;
+  - Review returns the same text;
+  - a PATCH does not change it;
+  - the imported CoinDCX workbook's multi-reason flags have distinct, trimmed lines.
+
+### Observations (no bug filed)
+
+- `coindcx-order-history.csv` and `coindcx-order-statuses.csv` come back as `timezoneSource: "file"` with
+  `timezoneOrigin: null`, and the warning says "from the export format". The contract has no value for "export
+  format", so the UI falls back to "from the file". This is consistent, but `null` here does not mean "the user's
+  selection".
+- A file name zone that disagrees with the column header (e.g. `trades(UTC+5:30).csv` with `Date(UTC)`) uses the file
+  name and only warns about the selection. Nothing says that the header disagreed.
+- `11-research › statement after dedicated histories …` still allows `fee` rows flagged `unknown_type`. It can now be
+  tightened, since `24` asserts there are none.
+
+---
+
 ## Regression round — 2026-11-18
 
 Run on 2026-11-18 against image `tax-tracker-app:local` from `main` at `50c248b`, compose project `taxapi3` on
@@ -203,7 +291,7 @@ exports to cover any older activity"). `16-sync-binance › a first full sync �
 - `23-phase2-security`: the request-detail regex also rejects a query string (`?x=`).
 - New `24-regression-round.test.ts`. `README.md` and `phase2.env` updated (project `taxapi3`, no proxy).
 
-### P2-API-8. Medium — unknown statement operations are still amount-free `fee` rows
+### P2-API-8. Medium (FIXED 2026-11-18, 7426d76) — unknown statement operations are still amount-free `fee` rows
 
 - **Endpoint:** `POST /api/imports` (Binance Transaction History / statement), `GET /api/transactions`.
 - **Steps:** import `binance-trade-history.csv`, then `binance-transaction-statement.csv` (or the statement
@@ -219,7 +307,7 @@ exports to cover any older activity"). `16-sync-binance › a first full sync �
   statement row is an amount-free fee row`, `› every amount-free statement row is a transfer flagged
   unknown_type`, `› no fee row anywhere in the ledger lacks a fee amount` (all fail).
 
-### P2-API-9. Low — one "§" message is left in the EVM fee code
+### P2-API-9. Low (FIXED 2026-11-18, 7426d76) — one "§" message is left in the EVM fee code
 
 - **Where:** `packages/evm/src/fees.ts`. An OP-stack receipt with `operatorFeeScalar`/`operatorFeeConstant`
   but no `operatorFee` adds a `fee_review_required` flag: "…review the additional fee (research §1.8)".

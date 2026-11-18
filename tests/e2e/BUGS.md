@@ -145,6 +145,110 @@ Still noted, not changed: ledger edits invalidate every year (safe but broad); u
 
 ---
 
+# Phase 2 final regression round — browser E2E, 2026-11-18
+
+Image `tax-tracker-app:local` built from `main` at `7426d76` (not rebuilt for this round). It includes `2b7d028`
+(contract), `98286b1` (UI) and `7426d76` (server). Phase 2 ran on Compose project `taxe2e2` (`docker-compose.yml` +
+`tests/e2e/phase2.compose.yml`, port **3112**, mock-sync **11602**, fresh data dir) with
+`PHASE2_ONLY=1 pnpm exec playwright test -c tests/e2e/phase2.config.ts --project=phase2`. Phase 1 ran with
+`pnpm test:e2e` (stacks `taxe2e*` on 3102–3104). The API run (`taxapi3`, 3111/11601/11511) ran at the same time on
+its own stack.
+
+## Results
+
+- **Phase 2: 97 tests, 96 pass, 1 fail, 0 skipped (14.6 min).** The failure is the new bug test P2-E2E-11.
+  No flakes: nothing needed a re-run.
+- **Phase 1: 124 tests, 124 pass, 0 fail (1.5 min).**
+- First Binance sync of the `normal` account through the browser: 4.0 min (`phase2-sync` › "binance normal full
+  sync…"). Every Binance balance difference is 0. `drift` still shows USDC 0.5 flagged (`phase2-sync` › "drift
+  highlights the 0.5 USDC difference…").
+
+| Phase 2 spec                     | Pass | Fail          | Skip |
+| -------------------------------- | ---- | ------------- | ---- |
+| `phase2-connections.spec.ts`     | 16   | 0             | 0    |
+| `phase2-import.spec.ts`          | 9    | 0             | 0    |
+| `phase2-regression.spec.ts`      | 18   | 1 (P2-E2E-11) | 0    |
+| `phase2-report-settings.spec.ts` | 3    | 0             | 0    |
+| `phase2-responsive-a11y.spec.ts` | 34   | 0             | 0    |
+| `phase2-sync.spec.ts`            | 10   | 0             | 0    |
+| `phase2-venue.spec.ts`           | 6    | 0             | 0    |
+
+| Phase 1 spec              | Pass | Fail |
+| ------------------------- | ---- | ---- |
+| `empty-states.spec.ts`    | 7    | 0    |
+| `import.spec.ts`          | 10   | 0    |
+| `imports-list.spec.ts`    | 3    | 0    |
+| `password.spec.ts`        | 11   | 0    |
+| `recipe-wizard.spec.ts`   | 7    | 0    |
+| `report.spec.ts`          | 6    | 0    |
+| `responsive-a11y.spec.ts` | 32   | 0    |
+| `review.spec.ts`          | 11   | 0    |
+| `round3.spec.ts`          | 13   | 0    |
+| `screenshots.spec.ts`     | 4    | 0    |
+| `settings.spec.ts`        | 5    | 0    |
+| `shell.spec.ts`           | 9    | 0    |
+| `transactions.spec.ts`    | 6    | 0    |
+
+## Fixed (verified this round)
+
+| #         | Finding                                                | Evidence (passing test in `phase2-regression.spec.ts` unless noted)                                                                                                                                                                                                                            |
+| --------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P2-E2E-7  | Merged flags: ×N chip unreachable, Review list gone    | "repeated flags of one code merge into one chip without a count and list their reasons": one `parse_warning` chip, no "×N"; the drawer says "2 reasons" with 2 list items; Review shows the 2 reasons as 2 list items. Screenshot `grouped-flag-chips`.                                        |
+| P2-E2E-8  | Unknown statement operation is an empty Fee row        | "no amount-free Fee rows after importing the statement (unknown operation)" and new "an unknown statement operation is an unclassified transfer, not an empty Fee row" (02 Feb 2026 row is Transfer + `unknown_type`; `?type=fee` has no `unknown_type` row, statement + all-operations file). |
+| P2-E2E-9  | Zone label says "from the file name" for a header zone | "the zone source label identifies the column header" and new "the zone source label identifies the file name" (`+05:00 (from the file name)` on the summary and the Imports drawer) and "a file without a zone … (your answer)". Screenshot `import-timezone-file-name`.                       |
+| P2-E2E-10 | Normal Binance sync shows "Incomplete" and a red error | New group "normal Binance sync": amber (`--warning`) "Synced with notes" badge, a Notes list (3 notes: dust, history start, P2P window), no "Last sync error", also after reload. Screenshots `sync-binance-notes`, `sync-notes-{375,1280}-{light,dark}`.                                      |
+
+Red is still used where it should be:
+
+- **Incomplete with a real difference:** "Counts toward in the drawer: Binance opens a red gap, Manual closes it".
+  Moving a hand-recorded 50 USDT withdrawal to Binance in the drawer gives USDT difference 50, "Add missing
+  transaction", a red (`--loss`) "Incomplete" badge and a red "Last sync error". Moving it back to "Manual (no
+  exchange)" closes the gap ("Matched") and the card returns to amber "Synced with notes". No re-sync is needed.
+  Screenshots `counts-toward-gap-open`, `counts-toward-gap-closed`.
+- **Failed:** "bad_signature: the Failed badge and the last sync error stay red". Both are `--loss`, after a reload.
+  Screenshot `sync-failed-red`.
+- **Completed with a difference (`drift`):** not red. See P2-E2E-11.
+
+## New bugs (ranked)
+
+### P2-E2E-11. Low — a sync with a real balance difference still shows a green "Synced" badge, and the mismatch is now a grey "Note"
+
+- **Page:** Connections, EVM card.
+- **Steps:** set an Etherscan key → add an EVM connection (chain 1, wallet B) → mock scenario `drift` → Sync now.
+- **Expected:** the USDC difference of 0.5 is a problem, so the card status should read as one (loss colour, as an
+  incomplete Binance sync with a gap now does). It should not look like a clean sync.
+- **Actual:**
+  - The job is `completed`, so the badge is the green (`--positive`) "Synced". There is no red anywhere on the card.
+  - Since `98286b1`, the mismatch notice "Phase 2 evm 1: USDC fetched 180.5, computed 180, difference 0.5" is listed
+    under "Notes (1)" in the same neutral style as harmless notes. It used to be an amber "Notices" box.
+  - The balance row itself is still amber with "Flagged · Review", and Review still lists it.
+  - The green badge is older than this round. The grey note is new.
+- **Screenshots:** `phase2/sync-drift-status.png`, `phase2/failure-drift-a-real-balance-difference-is-not-shown-as-a-clean-or-noted-sync.png`.
+- **Spec:** `phase2-regression.spec.ts` › "drift: a real balance difference is not shown as a clean or noted sync"
+  (fails: badge tone `positive`, expected `loss`).
+
+### Observation (no test)
+
+- After "Save changes", the transaction drawer stays open. The read-only summary and the list update ("Manual
+  (Binance)"), so this looks deliberate. The new test waits for the PATCH response instead of the drawer closing.
+
+## Tests added this round (`phase2-regression.spec.ts`, +12)
+
+- The zone label: "from the file name" (summary + Imports drawer) and "your answer" (no conflict warning).
+- An unknown statement operation is a Transfer with `unknown_type`, never an empty Fee row.
+- bad_signature stays red; drift is not green (P2-E2E-11).
+- A serial group sharing one normal Binance sync:
+  - "Synced with notes" in amber;
+  - Counts toward edits open and close the gap;
+  - imported rows have no Counts toward control;
+  - the notes card and the edit drawer at 375/1280 × light/dark: every control labelled, the drawer fits, no
+    horizontal page scroll, "Save changes" reachable, WCAG AA text contrast.
+- The file-level `beforeEach` reset skips that group, so the sync is done once.
+- `tone()` compares an element's computed colour with `--loss`/`--warning`/`--positive`. The status badge is found as a
+  `span`, because the streams table has a column header that is also called "Incomplete".
+
+---
+
 # Phase 2 regression round — browser E2E, 2026-11-18
 
 Image `tax-tracker-app:local` built from `main` at `50c248b`, not rebuilt for this round. It includes:
@@ -211,7 +315,7 @@ Phase 2 ran on Compose project `taxe2e2` (port **3112**, mock-sync **11602**), w
 
 ## New bugs (ranked)
 
-### P2-E2E-7. Low — same-code flags are merged on the server, so the new "×N" chip never shows and the Review message list is gone
+### P2-E2E-7. Low (FIXED 2026-11-18, 7426d76 + 98286b1) — same-code flags are merged on the server, so the new "×N" chip never shows and the Review message list is gone
 
 - **Page:** Transactions (flag chips), Transactions drawer ("N reasons"), Review (Details column).
 - **Steps:** create a transaction with two `parse_warning` flags that have different messages (`POST /api/transactions`, or import `coindcx-report.xlsx`, whose swap carries two notes) → open /transactions?flagged=true → open Review.
@@ -225,7 +329,7 @@ Phase 2 ran on Compose project `taxe2e2` (port **3112**, mock-sync **11602**), w
 - **Spec:** `phase2-regression.spec.ts` › "repeated flags of one code are one chip with a ×N count" (fails at "×2"). `round3.spec.ts` › "Review lists every flag message…" now checks that both sentences are present, not that they are list items.
 - **Note:** report-warning grouping works. Review shows one "Missing INR valuation" report-warning row with "(×2)" for two income rows outside the selected year (`phase2-regression` › "Review groups repeated report warnings…", screenshot `review-grouped-report-warning`).
 
-### P2-E2E-8. Low — an unknown statement operation is still an empty "Fee" row
+### P2-E2E-8. Low (FIXED 2026-11-18, 7426d76) — an unknown statement operation is still an empty "Fee" row
 
 - **Page:** Transactions (`?type=fee`), Review (`unknown_type`).
 - **Steps:** import `binance-transaction-statement.csv`, with or without `binance-trade-history.csv` → Transactions → Type: Fee.
@@ -234,7 +338,7 @@ Phase 2 ran on Compose project `taxe2e2` (port **3112**, mock-sync **11602**), w
 - **Screenshots:** `phase2/statement-fee-rows.png`, `phase2/failure-no-amount-free-Fee-rows-after-importing-the-statement-unknown-operation-.png`.
 - **Spec:** `phase2-regression.spec.ts` › "no amount-free Fee rows after importing the statement (unknown operation)".
 
-### P2-E2E-9. Cosmetic — zone source says "from the file name" when it came from the header
+### P2-E2E-9. Cosmetic (FIXED 2026-11-18, 2b7d028 + 98286b1) — zone source says "from the file name" when it came from the header
 
 - **Page:** Import summary.
 - **Steps:** upload `binance-trade-history.csv` with Binance and IST selected.
@@ -243,7 +347,7 @@ Phase 2 ran on Compose project `taxe2e2` (port **3112**, mock-sync **11602**), w
 - **Screenshots:** `phase2/import-timezone-conflict.png`, `phase2/failure-the-zone-source-label-agrees-with-the-warning-header-not-file-name.png`.
 - **Spec:** `phase2-regression.spec.ts` › "the zone source label agrees with the warning: header, not file name". `import.spec.ts` now accepts "from the file", "from the file name" or "from the file header", so it will not break when this is fixed.
 
-### P2-E2E-10. Low — every normal Binance sync shows "Incomplete" and a red "Last sync error"
+### P2-E2E-10. Low (FIXED 2026-11-18, 98286b1) — every normal Binance sync shows "Incomplete" and a red "Last sync error"
 
 - **Page:** Connections, Binance card.
 - **Steps:** mock `normal` → Sync now → wait for completion.

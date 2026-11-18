@@ -1,9 +1,28 @@
 import path from "node:path";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { FIXTURES } from "./support/env";
-import { expect, reset, settled, shot, test } from "./support/phase2";
+import { AppApi, setTheme } from "./support/fixtures";
+import {
+	card,
+	connection,
+	expect,
+	PASS,
+	provider,
+	reset,
+	scenario,
+	settled,
+	shot,
+	sync,
+	test,
+	WALLET_B,
+} from "./support/phase2";
+import { textContrastFailures } from "./support/phase2-contrast";
 
-test.beforeEach(async ({ api }) => reset(api, false));
+const SYNCED_GROUP = "normal Binance sync (one sync for the group)";
+
+test.beforeEach(async ({ api }, info) => {
+	if (!info.titlePath.includes(SYNCED_GROUP)) await reset(api, false);
+});
 
 const rows = (page: Page) => page.getByRole("table").locator("tbody tr");
 
@@ -215,4 +234,339 @@ test("Review groups repeated report warnings into one row with a ×N count", asy
 	await expect(warning).toHaveCount(1);
 	await expect(warning).toContainText("(×2)");
 	await shot(page, "review-grouped-report-warning");
+});
+
+test("the zone source label identifies the file name", async ({ page }) => {
+	await upload(
+		page,
+		path.join(FIXTURES, "binance-spot-order-history(UTC+5).csv"),
+		/^IST /,
+	);
+	await expect(
+		page.getByText(/Time zone: \+05:00 \(from the file name\)/),
+	).toBeVisible();
+	await expect(
+		page.getByText(
+			"Used +05:00 from the file name instead of the selected IST.",
+			{
+				exact: true,
+			},
+		),
+	).toHaveCount(1);
+	await shot(page, "import-timezone-file-name");
+	await page.goto("/imports");
+	await page
+		.getByRole("button", {
+			name: "Inspect binance-spot-order-history(UTC+5).csv",
+		})
+		.click();
+	const drawer = page.getByRole("dialog");
+	await expect(drawer).toContainText("+05:00 (from the file name)");
+	await expect(drawer).toContainText(
+		"Used +05:00 from the file name instead of the selected IST.",
+	);
+});
+
+test("a file without a zone says the zone is the user's answer and warns about nothing", async ({
+	page,
+}) => {
+	await upload(
+		page,
+		path.join(FIXTURES, "report-kinds", "binance-convert.csv"),
+		/^IST /,
+	);
+	await expect(page.getByText(/Time zone: IST \(your answer\)/)).toBeVisible();
+	await expect(page.getByText(/instead of the selected/)).toHaveCount(0);
+	await expect(
+		page.getByText(/from the (column header|file name)/),
+	).toHaveCount(0);
+});
+
+test("an unknown statement operation is an unclassified transfer, not an empty Fee row", async ({
+	page,
+	api,
+}) => {
+	await api.importFile(
+		path.join(FIXTURES, "binance-transaction-statement.csv"),
+		"binance",
+		"UTC",
+	);
+	await api.importFile(
+		path.join(FIXTURES, "report-kinds", "binance-statement-all-operations.csv"),
+		"binance",
+		"UTC",
+	);
+	await page.goto("/transactions?type=fee&pageSize=100");
+	await settled(page);
+	await expect(rows(page).getByText("unknown_type")).toHaveCount(0);
+	await page.goto("/transactions?taxYear=2025-26&type=transfer&flagged=true");
+	await settled(page);
+	const future = rows(page).filter({ hasText: "02 Feb 2026" });
+	await expect(future).toHaveCount(1);
+	await expect(future).toContainText("Transfer");
+	await expect(future).not.toContainText("Fee");
+	await expect(future.getByText("unknown_type")).toBeVisible();
+	await shot(page, "statement-unknown-operation-transfer");
+});
+
+const statusBadge = (article: Locator) =>
+	article
+		.locator("span")
+		.filter({ hasText: /^(Synced|Synced with notes|Incomplete|Failed)$/ });
+
+async function tone(locator: Locator) {
+	return locator.evaluate((el) => {
+		const resolve = (name: string) => {
+			const probe = document.createElement("span");
+			probe.style.color = `var(${name})`;
+			el.append(probe);
+			const color = getComputedStyle(probe).color;
+			probe.remove();
+			return color;
+		};
+		const color = getComputedStyle(el).color;
+		for (const name of ["loss", "warning", "positive"])
+			if (color === resolve(`--${name}`)) return name;
+		return color;
+	});
+}
+
+test("bad_signature: the Failed badge and the last sync error stay red", async ({
+	page,
+	api,
+}) => {
+	await api.json("POST", "/api/vault/setup", { passphrase: PASS });
+	const c = await connection(api);
+	await scenario("bad_signature");
+	await page.goto("/connections");
+	const article = card(page, c.label);
+	await article.getByRole("button", { name: "Sync now", exact: true }).click();
+	const badge = article.getByText("Failed", { exact: true });
+	await expect(badge).toBeVisible({ timeout: 90_000 });
+	await page.reload();
+	await expect(badge).toBeVisible();
+	expect(await tone(badge)).toBe("loss");
+	const error = article.getByText(/^Last sync error:/);
+	await expect(error).toContainText("Binance -1022");
+	expect(await tone(error)).toBe("loss");
+	await expect(article.getByText("Synced with notes")).toHaveCount(0);
+	await shot(page, "sync-failed-red");
+});
+
+test("drift: a real balance difference is not shown as a clean or noted sync", async ({
+	page,
+	api,
+}) => {
+	await api.json("POST", "/api/vault/setup", { passphrase: PASS });
+	await provider(api);
+	const c = await connection(api, "evm", 1, WALLET_B);
+	await scenario("drift");
+	const article = await sync(page, c.label);
+	const usdc = article
+		.getByRole("table")
+		.last()
+		.getByRole("row")
+		.filter({ has: page.getByRole("cell", { name: "USDC", exact: true }) });
+	await expect(usdc.getByRole("cell").nth(3)).toHaveText("0.5");
+	await expect(article.getByText("Synced with notes")).toHaveCount(0);
+	await shot(page, "sync-drift-status");
+	// A 0.5 USDC mismatch must read as a problem (loss colour), never as a green "Synced".
+	const badge = statusBadge(article);
+	await expect(badge).toHaveCount(1);
+	expect(await tone(badge)).toBe("loss");
+});
+
+test.describe(SYNCED_GROUP, () => {
+	test.describe.configure({ mode: "serial" });
+	const LABEL = "Phase 2 binance account";
+	const REF = "e2e-counts-toward-withdrawal";
+	const GAP = "50";
+
+	test.beforeAll(async ({ request }) => {
+		test.setTimeout(900_000);
+		const api = new AppApi(request);
+		await reset(api);
+		const c = await connection(api);
+		const job = await api.json<{ jobId: string }>(
+			"POST",
+			`/api/connections/${c.id}/sync`,
+		);
+		await expect
+			.poll(
+				async () =>
+					(await api.json<{ status: string }>("GET", `/api/jobs/${job.jobId}`))
+						.status,
+				{ timeout: 840_000, intervals: [2000] },
+			)
+			.toBe("completed");
+		await api.json("POST", "/api/transactions", {
+			importId: null,
+			raw: { manualEntry: true, seededBy: "e2e" },
+			reviewFlags: [],
+			sourceRef: REF,
+			timestamp: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+			type: "withdrawal",
+			assetOut: "USDT",
+			amountOut: GAP,
+		});
+	});
+
+	async function binanceCard(page: Page) {
+		await page.goto("/connections");
+		const article = card(page, LABEL);
+		await expect(
+			article.getByRole("heading", { name: "Sync Streams" }),
+		).toBeVisible();
+		await settled(page);
+		return article;
+	}
+	const usdtRow = (article: Locator) =>
+		article
+			.getByRole("table")
+			.last()
+			.getByRole("row")
+			.filter({
+				has: article.page().getByRole("cell", { name: "USDT", exact: true }),
+			});
+	async function expectNotes(article: Locator) {
+		const badge = statusBadge(article);
+		await expect(badge).toHaveText("Synced with notes");
+		expect(await tone(badge)).toBe("warning");
+		await expect(article.getByText(/^Last sync error/)).toHaveCount(0);
+		await expect(
+			article.getByRole("heading", { name: /^Notes( \(\d+\))?$/ }),
+		).toBeVisible();
+		await expect(article.getByRole("listitem").first()).toBeVisible();
+	}
+	async function setCountsToward(page: Page, label: string) {
+		await page.goto("/transactions?source=manual");
+		await settled(page);
+		await rows(page)
+			.filter({ hasText: "USDT" })
+			.getByRole("button")
+			.first()
+			.click();
+		const drawer = page.getByRole("dialog");
+		const select = drawer.getByLabel("Counts toward");
+		await expect(select).toBeEnabled();
+		await select.selectOption({ label });
+		const saved = page.waitForResponse(
+			(r) => r.request().method() === "PATCH" && r.ok(),
+		);
+		await drawer.getByRole("button", { name: "Save changes" }).click();
+		await saved;
+		await expect(
+			rows(page).filter({ hasText: "USDT" }).getByText(`Manual (${label})`),
+		).toHaveCount(label === "Binance" ? 1 : 0);
+	}
+
+	test("all differences zero: an amber 'Synced with notes' badge and a Notes list, no red error", async ({
+		page,
+	}) => {
+		const article = await binanceCard(page);
+		for (const r of await article
+			.getByRole("table")
+			.last()
+			.locator("tbody tr")
+			.all())
+			await expect(r.getByRole("cell").nth(3)).toHaveText(/^0(\.0+)?$/);
+		await expectNotes(article);
+		await shot(page, "sync-binance-notes");
+		await page.reload();
+		await expectNotes(card(page, LABEL));
+	});
+
+	test("Counts toward in the drawer: Binance opens a red gap, Manual closes it", async ({
+		page,
+	}) => {
+		await setCountsToward(page, "Binance");
+		let article = await binanceCard(page);
+		await expect(usdtRow(article).getByRole("cell").nth(3)).toHaveText(GAP);
+		await expect(
+			usdtRow(article).getByRole("link", { name: "Add missing transaction" }),
+		).toBeVisible();
+		const badge = statusBadge(article);
+		await expect(badge).toHaveText("Incomplete");
+		expect(await tone(badge)).toBe("loss");
+		const error = article.getByText(/^Last sync error:/);
+		await expect(error).toBeVisible();
+		expect(await tone(error)).toBe("loss");
+		await expect(article.getByText("Synced with notes")).toHaveCount(0);
+		await shot(page, "counts-toward-gap-open");
+
+		await setCountsToward(page, "Manual (no exchange)");
+		article = await binanceCard(page);
+		await expect(usdtRow(article).getByRole("cell").nth(3)).toHaveText(
+			/^0(\.0+)?$/,
+		);
+		await expect(usdtRow(article)).toContainText("Matched");
+		await expectNotes(article);
+		await shot(page, "counts-toward-gap-closed");
+	});
+
+	test("an imported (synced) row has no Counts toward control", async ({
+		page,
+	}) => {
+		await page.goto("/transactions?source=binance-api");
+		await settled(page);
+		await rows(page).first().getByRole("button").first().click();
+		const drawer = page.getByRole("dialog");
+		await expect(drawer.getByLabel("Counts toward")).toHaveCount(0);
+	});
+
+	for (const theme of ["light", "dark"] as const)
+		for (const width of [375, 1280])
+			test(`notes card and venue drawer ${width}px ${theme}: labelled, fit, readable`, async ({
+				page,
+			}) => {
+				await setTheme(page, theme);
+				await page.setViewportSize({ width, height: 812 });
+				const article = await binanceCard(page);
+				await expect(article.getByText("Synced with notes")).toBeVisible();
+				expect(
+					await page.evaluate(() => document.documentElement.scrollWidth),
+				).toBeLessThanOrEqual(width);
+				expect(
+					await textContrastFailures(page),
+					"connections contrast",
+				).toEqual([]);
+				await shot(page, `sync-notes-${width}-${theme}`);
+
+				await page.goto("/transactions?source=manual");
+				await settled(page);
+				await rows(page)
+					.filter({ hasText: "USDT" })
+					.getByRole("button")
+					.first()
+					.click();
+				const drawer = page.getByRole("dialog");
+				await expect(drawer.getByLabel("Counts toward")).toHaveValue("manual");
+				const unlabelled = await drawer
+					.locator("input:not([type=hidden]),select,textarea")
+					.evaluateAll((els) =>
+						els
+							.filter((el) => {
+								const e = el as HTMLInputElement;
+								return (
+									e.getBoundingClientRect().width > 0 &&
+									!e.labels?.length &&
+									!e.getAttribute("aria-label") &&
+									!e.getAttribute("aria-labelledby")
+								);
+							})
+							.map((el) => el.outerHTML.slice(0, 160)),
+					);
+				expect(unlabelled).toEqual([]);
+				expect((await drawer.boundingBox())?.width ?? 0).toBeLessThanOrEqual(
+					width,
+				);
+				expect(
+					await page.evaluate(() => document.documentElement.scrollWidth),
+				).toBeLessThanOrEqual(width);
+				const save = drawer.getByRole("button", { name: "Save changes" });
+				await save.scrollIntoViewIfNeeded();
+				await expect(save).toBeInViewport();
+				expect(await textContrastFailures(page), "drawer contrast").toEqual([]);
+				await shot(page, `edit-venue-drawer-${width}-${theme}`);
+			});
 });

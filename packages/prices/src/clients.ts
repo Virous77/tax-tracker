@@ -89,9 +89,11 @@ export async function coingeckoHistory(input: {
 	const data = (await input.request(url.toString(), {
 		headers: { "x-cg-demo-api-key": input.apiKey },
 	})) as { market_data?: { current_price?: { inr?: unknown } } };
-	const price = data?.market_data?.current_price?.inr;
-	if (typeof price !== "string" || !D(price).isFinite() || !D(price).gt("0"))
-		return null;
+	// CoinGecko sends prices as JSON numbers; String() keeps the shortest exact decimal form.
+	const raw = data?.market_data?.current_price?.inr;
+	if (typeof raw !== "string" && typeof raw !== "number") return null;
+	const price = String(raw);
+	if (!D(price).isFinite() || !D(price).gt("0")) return null;
 	return {
 		source: "coingecko",
 		sourceId: input.coinId,

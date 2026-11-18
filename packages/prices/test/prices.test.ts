@@ -176,4 +176,17 @@ describe("offline planning and cache lookup", () => {
 		expect(await coingeckoHistory({ ...args, date: "2020-01-01" })).toBeNull();
 		expect(calls).toBe(1);
 	});
+	it("accepts CoinGecko's numeric prices and rejects non-positive ones", async () => {
+		const history = (inr: unknown) =>
+			coingeckoHistory({
+				request: async () => ({ market_data: { current_price: { inr } } }),
+				apiKey: "k",
+				coinId: "ethereum",
+				date: "2026-05-01",
+				now: Date.parse("2026-05-05"),
+			});
+		expect((await history(254321.87))?.price).toBe("254321.87");
+		expect(await history(0)).toBeNull();
+		expect(await history(null)).toBeNull();
+	});
 });

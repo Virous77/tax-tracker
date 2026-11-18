@@ -551,6 +551,7 @@ export const api = {
 			inrValue?: string;
 			userNote?: string;
 			resolveFlags?: ReviewCode[];
+			venue?: ManualVenue;
 		},
 	): Promise<LedgerTx> {
 		const body = parseRequest(PatchTransactionRequestSchema, patch);

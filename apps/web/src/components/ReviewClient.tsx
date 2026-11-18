@@ -36,7 +36,7 @@ import {
 	isNegativeDecimal,
 	pluralise,
 } from "@/lib/client/format";
-import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
+import { groupReviewFlags, REVIEW_CODE_INFO } from "@/lib/client/review-codes";
 
 function reportItemActions(
 	code: keyof typeof REVIEW_CODE_INFO,
@@ -442,9 +442,11 @@ export function ReviewClient() {
 									</code>
 								</div>
 								<p className="mt-1.5 text-xs leading-relaxed text-[var(--text-secondary)]">
-									One or more API or wallet connections reported a failed or
-									incomplete last sync. Re-sync or check the connection settings
-									so no transactions are missed.
+									One or more API or wallet connections reported a failed sync
+									or partial API history (such as endpoints with a six-month or
+									history-start limit). Re-sync failed connections, or check
+									sync notes and balance comparisons in Connections to see if
+									older exports are needed.
 								</p>
 							</div>
 
@@ -497,14 +499,22 @@ export function ReviewClient() {
 														: "Never"}
 												</td>
 												<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
-													{conn.lastSyncError ?? "Last sync did not complete."}
+													{conn.lastSyncStatus === "incomplete" &&
+													(!conn.lastSyncError ||
+														conn.lastSyncError ===
+															"One or more streams were incomplete; review the sync summary.")
+														? "Partial API history; check sync notes and balance check in Connections."
+														: (conn.lastSyncError ??
+															"Last sync did not complete.")}
 												</td>
 												<td className="px-4 py-2.5 text-right whitespace-nowrap">
 													<Link
 														href="/connections"
 														className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
 													>
-														Fix in Connections
+														{conn.lastSyncStatus === "failed"
+															? "Fix in Connections"
+															: "Review in Connections"}
 														<ArrowRight
 															className="h-3 w-3"
 															aria-hidden="true"
@@ -568,13 +578,10 @@ export function ReviewClient() {
 										</thead>
 										<tbody>
 											{group.items.map((tx) => {
-												const matchingMessages = [
-													...new Set(
-														tx.reviewFlags
-															.filter((f) => f.code === group.code)
-															.map((f) => f.message),
-													),
-												];
+												const matchingMessages =
+													groupReviewFlags(
+														tx.reviewFlags.filter((f) => f.code === group.code),
+													)[0]?.messages ?? [];
 												return (
 													<tr
 														key={`${group.code}-${tx.id}`}

@@ -28,7 +28,7 @@ test("a file whose header names UTC, imported as IST, warns and names both zones
 	await expect(page.getByText(/Time zone: UTC/)).toBeVisible();
 	await expect(
 		page.getByText(
-			"Used UTC from the file header instead of the selected IST.",
+			"Used UTC from the column header instead of the selected IST.",
 			{
 				exact: true,
 			},
@@ -40,7 +40,7 @@ test("a file whose header names UTC, imported as IST, warns and names both zones
 		.getByRole("button", { name: "Inspect binance-trade-history.csv" })
 		.click();
 	await expect(page.getByRole("dialog")).toContainText(
-		"Used UTC from the file header instead of the selected IST.",
+		"Used UTC from the column header instead of the selected IST.",
 	);
 });
 
@@ -136,7 +136,7 @@ test("no amount-free Fee rows after importing the statement (unknown operation)"
 	expect(emptyFees, "amount-free rows typed Fee").toEqual([]);
 });
 
-test("repeated flags of one code are one chip with a ×N count", async ({
+test("repeated flags of one code merge into one chip without a count and list their reasons", async ({
 	page,
 	api,
 }) => {
@@ -159,13 +159,33 @@ test("repeated flags of one code are one chip with a ×N count", async ({
 	await expect(row.getByText("tds_not_deducted", { exact: true })).toHaveCount(
 		1,
 	);
+	await expect(row.getByText(/×\d+/)).toHaveCount(0);
 	await shot(page, "grouped-flag-chips");
-	await expect(row.getByText("×2", { exact: true })).toBeVisible();
 	await row.getByRole("button").first().click();
 	const drawer = page.getByRole("dialog");
-	await expect(drawer).toContainText("first note about this row");
-	await expect(drawer).toContainText("second note about this row");
 	await expect(drawer.getByText("2 reasons")).toBeVisible();
+	const drawerItems = drawer.getByRole("listitem");
+	await expect(drawerItems).toHaveCount(2);
+	await expect(drawerItems.nth(0)).toContainText("first note about this row");
+	await expect(drawerItems.nth(1)).toContainText("second note about this row");
+	await page.keyboard.press("Escape");
+
+	await page.goto("/review");
+	const parseRow = page
+		.locator("section")
+		.filter({
+			has: page.getByRole("heading", {
+				level: 2,
+				name: "Import parse warning",
+				exact: true,
+			}),
+		})
+		.locator("tbody tr")
+		.filter({ hasText: "BTC" });
+	const reviewItems = parseRow.getByRole("listitem");
+	await expect(reviewItems).toHaveCount(2);
+	await expect(reviewItems.nth(0)).toContainText("first note about this row");
+	await expect(reviewItems.nth(1)).toContainText("second note about this row");
 });
 
 test("Review groups repeated report warnings into one row with a ×N count", async ({

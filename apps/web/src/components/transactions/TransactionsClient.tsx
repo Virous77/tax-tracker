@@ -476,11 +476,6 @@ export function TransactionsClient() {
 																<span key={code} title={title}>
 																	<Badge tone={tone}>
 																		<span>{code}</span>
-																		{messages.length > 1 ? (
-																			<span className="opacity-75">
-																				×{messages.length}
-																			</span>
-																		) : null}
 																	</Badge>
 																</span>
 															);

@@ -7,6 +7,7 @@ import {
 	ChevronUp,
 	Coins,
 	Copy,
+	Info,
 	Key,
 	Pencil,
 	Plus,
@@ -23,7 +24,12 @@ import {
 	providerDisplayName,
 } from "@/components/connections/ProviderKeysCard";
 import { SymbolTagInput } from "@/components/connections/SymbolTagInput";
-import { SyncSummaryPanel } from "@/components/connections/SyncSummaryPanel";
+import {
+	classifyIncompleteSync,
+	collectSyncNotes,
+	type IncompleteSyncKind,
+	SyncSummaryPanel,
+} from "@/components/connections/SyncSummaryPanel";
 import { VaultCard } from "@/components/connections/VaultCard";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -69,7 +75,11 @@ function connectionSourceKey(conn: Connection): string {
 	return `${conn.kind}-api`;
 }
 
-function syncStatusBadge(status: string | null, running: boolean) {
+function syncStatusBadge(
+	status: string | null,
+	running: boolean,
+	incompleteKind: IncompleteSyncKind | null,
+) {
 	if (running || status === "running") {
 		return <Badge tone="accent">Syncing</Badge>;
 	}
@@ -77,6 +87,12 @@ function syncStatusBadge(status: string | null, running: boolean) {
 		return <Badge tone="positive">Synced</Badge>;
 	}
 	if (status === "incomplete") {
+		if (incompleteKind === "synced_with_notes") {
+			return <Badge tone="warning">Synced with notes</Badge>;
+		}
+		if (incompleteKind === "incomplete_with_diff") {
+			return <Badge tone="loss">Incomplete</Badge>;
+		}
 		return <Badge tone="warning">Incomplete</Badge>;
 	}
 	if (status === "failed") {
@@ -342,6 +358,8 @@ export function ConnectionsClient() {
 			) {
 				const jobId = conn.lastSyncJobId;
 				const connId = conn.id;
+				const shouldFetchIncompleteBalances =
+					conn.lastSyncStatus === "incomplete";
 				fetchedLastJobIdsRef.current.add(jobId);
 				void api
 					.getJob(jobId)
@@ -358,14 +376,34 @@ export function ConnectionsClient() {
 							}));
 							setExpandedPanels((prev) => ({ ...prev, [connId]: true }));
 							void fetchBalances(connId);
+						} else if (shouldFetchIncompleteBalances) {
+							void fetchBalances(connId);
 						}
 					})
 					.catch(() => {
-						// ignore stale or expired job lookup on initial hydration
+						if (mountedRef.current && shouldFetchIncompleteBalances) {
+							void fetchBalances(connId);
+						}
 					});
+			} else if (
+				!conn.runningJobId &&
+				!conn.lastSyncJobId &&
+				conn.lastSyncStatus === "incomplete" &&
+				!balancesById[conn.id] &&
+				!balancesLoading[conn.id] &&
+				!balancesErrors[conn.id]
+			) {
+				void fetchBalances(conn.id);
 			}
 		}
-	}, [connections, fetchBalances, pollSyncJob]);
+	}, [
+		balancesById,
+		balancesErrors,
+		balancesLoading,
+		connections,
+		fetchBalances,
+		pollSyncJob,
+	]);
 
 	async function handleSyncNow(conn: Connection) {
 		setSyncErrors((prev) => {
@@ -627,6 +665,16 @@ export function ConnectionsClient() {
 									const syncErr = syncErrors[conn.id];
 									const checkState = keyChecks[conn.id];
 									const summary = syncSummaries[conn.id];
+									const balances = balancesById[conn.id];
+									const incompleteKind =
+										conn.lastSyncStatus === "incomplete"
+											? classifyIncompleteSync(summary, balances)
+											: null;
+									const syncNotes = collectSyncNotes(summary);
+									const showRedLastSyncError =
+										Boolean(conn.lastSyncError) &&
+										(conn.lastSyncStatus === "failed" ||
+											incompleteKind === "incomplete_with_diff");
 									const isPanelOpen = Boolean(expandedPanels[conn.id]);
 									const KindIcon = conn.kind === "evm" ? Wallet : Coins;
 									const canViewSummary =
@@ -659,7 +707,11 @@ export function ConnectionsClient() {
 																	? "Key set"
 																	: "Key missing"}
 														</Badge>
-														{syncStatusBadge(conn.lastSyncStatus, isRunning)}
+														{syncStatusBadge(
+															conn.lastSyncStatus,
+															isRunning,
+															incompleteKind,
+														)}
 													</div>
 
 													<div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--text-secondary)]">
@@ -717,10 +769,32 @@ export function ConnectionsClient() {
 														) : null}
 													</div>
 
-													{conn.lastSyncError ? (
+													{showRedLastSyncError ? (
 														<p className="text-xs text-[var(--loss)]">
 															Last sync error: {conn.lastSyncError}
 														</p>
+													) : !isPanelOpen &&
+														incompleteKind === "synced_with_notes" &&
+														syncNotes.length > 0 ? (
+														<div className="space-y-1 pt-0.5 text-xs">
+															<h4 className="font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
+																Notes
+															</h4>
+															<ul className="space-y-1 text-[var(--text-secondary)]">
+																{syncNotes.map((note) => (
+																	<li
+																		key={note}
+																		className="flex items-start gap-1.5"
+																	>
+																		<Info
+																			className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--warning)]"
+																			aria-hidden="true"
+																		/>
+																		<span>{note}</span>
+																	</li>
+																))}
+															</ul>
+														</div>
 													) : null}
 												</div>
 

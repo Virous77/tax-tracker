@@ -215,11 +215,15 @@ export function groupReviewFlags(
 ): GroupedReviewFlag[] {
 	const groups = new Map<ReviewCode, string[]>();
 	for (const flag of flags) {
-		const list = groups.get(flag.code);
-		if (!list) {
-			groups.set(flag.code, [flag.message]);
-		} else if (!list.includes(flag.message)) {
-			list.push(flag.message);
+		const list = groups.get(flag.code) ?? [];
+		for (const part of flag.message.split("\n")) {
+			const reason = part.trim();
+			if (reason && !list.includes(reason)) {
+				list.push(reason);
+			}
+		}
+		if (!groups.has(flag.code)) {
+			groups.set(flag.code, list);
 		}
 	}
 	return Array.from(groups, ([code, messages]) => ({ code, messages }));

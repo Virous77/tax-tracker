@@ -29,6 +29,7 @@ import {
 	formatQty,
 	formatReportKindLabel,
 	formatSourceLabel,
+	formatTimezoneSourceLabel,
 } from "@/lib/client/format";
 
 type SourceChoice = "auto" | "binance" | "coindcx" | "generic";
@@ -351,9 +352,10 @@ export function ImportClient() {
 										{result.detectedTimezone ?? result.timezone}
 									</span>{" "}
 									(
-									{result.timezoneSource === "file"
-										? "from the file name"
-										: "your answer"}
+									{formatTimezoneSourceLabel(
+										result.timezoneSource,
+										result.timezoneOrigin,
+									)}
 									)
 								</p>
 							</div>

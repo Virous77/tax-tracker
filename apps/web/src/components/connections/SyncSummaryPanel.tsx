@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Info } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import type {
@@ -9,6 +9,48 @@ import type {
 	SyncSummary,
 } from "@/lib/client/api";
 import { formatIstDateTime, isZeroDecimal } from "@/lib/client/format";
+
+export type IncompleteSyncKind =
+	| "synced_with_notes"
+	| "incomplete_with_diff"
+	| "incomplete_unverified";
+
+export function collectSyncNotes(
+	summary: SyncSummary | null | undefined,
+): string[] {
+	if (!summary) return [];
+	const seen = new Set<string>();
+	const notes: string[] = [];
+	for (const notice of summary.notices) {
+		const trimmed = notice.trim();
+		if (trimmed && !seen.has(trimmed)) {
+			seen.add(trimmed);
+			notes.push(trimmed);
+		}
+	}
+	for (const st of summary.streams) {
+		const trimmed = st.incomplete?.trim();
+		if (trimmed && !seen.has(trimmed)) {
+			seen.add(trimmed);
+			notes.push(trimmed);
+		}
+	}
+	return notes;
+}
+
+export function classifyIncompleteSync(
+	summary: SyncSummary | null | undefined,
+	balances: ConnectionBalances | null | undefined,
+): IncompleteSyncKind {
+	const rows = balances ? balances.rows : summary?.balanceCheck;
+	const balanceChecked = Boolean(
+		(balances && balances.fetchedAt !== null) ||
+			(summary && summary.balanceCheck.length > 0),
+	);
+	if (!balanceChecked || !rows) return "incomplete_unverified";
+	const hasDiff = rows.some((r) => !isZeroDecimal(r.difference));
+	return hasDiff ? "incomplete_with_diff" : "synced_with_notes";
+}
 
 function hasIncompleteHistory(
 	summary: SyncSummary | null | undefined,
@@ -51,6 +93,7 @@ export function SyncSummaryPanel({
 		summary,
 		connectionLastSyncStatus,
 	);
+	const notes = collectSyncNotes(summary);
 
 	return (
 		<div className="space-y-4 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-4 text-xs">
@@ -146,23 +189,23 @@ export function SyncSummaryPanel({
 						</div>
 					</div>
 
-					{/* Notices */}
-					{summary.notices.length > 0 ? (
+					{/* Notes */}
+					{notes.length > 0 ? (
 						<div className="space-y-1.5">
-							<h4 className="font-semibold tracking-wide text-[var(--warning)] uppercase">
-								Notices ({summary.notices.length})
+							<h4 className="font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
+								Notes ({notes.length})
 							</h4>
 							<ul className="space-y-1">
-								{summary.notices.map((notice) => (
+								{notes.map((note) => (
 									<li
-										key={notice}
-										className="flex items-start gap-2 rounded border border-[var(--warning)]/35 bg-[var(--warning-soft)] px-3 py-2 text-[var(--text-primary)]"
+										key={note}
+										className="flex items-start gap-2 rounded border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-2 text-[var(--text-primary)]"
 									>
-										<AlertTriangle
+										<Info
 											className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--warning)]"
 											aria-hidden="true"
 										/>
-										<span>{notice}</span>
+										<span>{note}</span>
 									</li>
 								))}
 							</ul>

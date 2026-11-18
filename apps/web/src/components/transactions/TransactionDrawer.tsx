@@ -4,6 +4,7 @@ import {
 	type IncomeKind,
 	IncomeKindSchema,
 	type LedgerTx,
+	ManualVenueSchema,
 	type ReviewCode,
 	type TxType,
 	TxTypeSchema,
@@ -14,7 +15,12 @@ import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { api, getErrorMessage, ValidationError } from "@/lib/client/api";
+import {
+	api,
+	getErrorMessage,
+	type ManualVenue,
+	ValidationError,
+} from "@/lib/client/api";
 import { resolveTxExplorer } from "@/lib/client/chains";
 import {
 	formatIncomeKind,
@@ -41,6 +47,7 @@ export function TransactionDrawer({
 }) {
 	const [type, setType] = useState<TxType>("buy");
 	const [incomeKind, setIncomeKind] = useState<IncomeKind | "">("");
+	const [venue, setVenue] = useState<ManualVenue>("manual");
 	const [inrValue, setInrValue] = useState("");
 	const [userNote, setUserNote] = useState("");
 	const [resolveFlags, setResolveFlags] = useState<Set<ReviewCode>>(new Set());
@@ -52,6 +59,7 @@ export function TransactionDrawer({
 
 	const typeId = useId();
 	const incomeKindId = useId();
+	const venueId = useId();
 	const inrId = useId();
 	const noteId = useId();
 	const flagsId = useId();
@@ -60,6 +68,7 @@ export function TransactionDrawer({
 		if (!tx) return;
 		setType(tx.type);
 		setIncomeKind(tx.incomeKind ?? "");
+		setVenue(tx.venue ?? "manual");
 		setInrValue(tx.inrValue ?? "");
 		setUserNote(tx.userNote ?? "");
 		setResolveFlags(new Set());
@@ -80,10 +89,14 @@ export function TransactionDrawer({
 				inrValue?: string;
 				userNote?: string;
 				resolveFlags?: ReviewCode[];
+				venue?: ManualVenue;
 			} = {};
 			if (type !== tx.type) patch.type = type;
 			if (type === "income" && incomeKind && incomeKind !== tx.incomeKind) {
 				patch.incomeKind = incomeKind;
+			}
+			if (tx.source === "manual" && venue !== (tx.venue ?? "manual")) {
+				patch.venue = venue;
 			}
 			const trimmedInr = inrValue.trim();
 			if (trimmedInr !== "" && trimmedInr !== (tx.inrValue ?? "")) {
@@ -315,6 +328,29 @@ export function TransactionDrawer({
 									</div>
 								) : null}
 
+								{tx.source === "manual" ? (
+									<div>
+										<label
+											htmlFor={venueId}
+											className="block text-xs font-medium text-[var(--text-secondary)]"
+										>
+											Counts toward
+										</label>
+										<select
+											id={venueId}
+											value={venue}
+											onChange={(e) => setVenue(e.target.value as ManualVenue)}
+											className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+										>
+											{ManualVenueSchema.options.map((opt) => (
+												<option key={opt} value={opt}>
+													{formatManualVenueLabel(opt)}
+												</option>
+											))}
+										</select>
+									</div>
+								) : null}
+
 								<div>
 									<label
 										htmlFor={inrId}
@@ -408,11 +444,11 @@ export function TransactionDrawer({
 																			<span className="text-[var(--text-primary)]">
 																				{group.messages[0]}
 																			</span>
-																		) : (
+																		) : group.messages.length > 1 ? (
 																			<span className="text-[var(--text-secondary)]">
 																				{group.messages.length} reasons
 																			</span>
-																		)}
+																		) : null}
 																	</label>
 																	{group.messages.length > 1 ? (
 																		<ul className="mt-1 list-disc space-y-0.5 pl-4 text-[var(--text-primary)]">

@@ -22,6 +22,7 @@ import {
 	formatReportKindLabel,
 	formatSignStyle,
 	formatSourceLabel,
+	formatTimezoneSourceLabel,
 } from "@/lib/client/format";
 
 export function ImportsClient() {
@@ -488,9 +489,10 @@ export function ImportsClient() {
 									{detail.detectedTimezone ?? detail.timezone}{" "}
 									<span className="font-normal text-[var(--text-secondary)]">
 										(
-										{detail.timezoneSource === "file"
-											? "from the file name"
-											: "your answer"}
+										{formatTimezoneSourceLabel(
+											detail.timezoneSource,
+											detail.timezoneOrigin,
+										)}
 										)
 									</span>
 								</dd>

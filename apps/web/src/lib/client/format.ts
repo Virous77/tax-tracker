@@ -398,3 +398,13 @@ export function formatManualVenueLabel(venue: string): string {
 	if (venue === "manual") return "Manual (no exchange)";
 	return venue;
 }
+
+export function formatTimezoneSourceLabel(
+	timezoneSource: "file" | "user",
+	timezoneOrigin?: "header" | "file_name" | null,
+): string {
+	if (timezoneSource !== "file") return "your answer";
+	if (timezoneOrigin === "header") return "from the column header";
+	if (timezoneOrigin === "file_name") return "from the file name";
+	return "from the file";
+}

@@ -187,6 +187,8 @@ export const ImportSummarySchema = z.object({
 	reportKindLabel: z.string().nullable().default(null),
 	detectedTimezone: z.string().nullable().default(null),
 	timezoneSource: z.enum(["file", "user"]).default("user"),
+	/** Where a file zone was found; null when the user's selection was used. */
+	timezoneOrigin: z.enum(["header", "file_name"]).nullable().optional(),
 	coverage: z
 		.array(
 			z.object({
@@ -368,6 +370,8 @@ export const PatchTransactionRequestSchema = z
 		inrValue: NonNegativeDecimalSchema.optional(),
 		userNote: z.string().optional(),
 		resolveFlags: z.array(ReviewCodeSchema).optional(),
+		/** Manual rows only. */
+		venue: ManualVenueSchema.optional(),
 	})
 	.strict();
 export const PatchTransactionResponseSchema = LedgerTxSchema;

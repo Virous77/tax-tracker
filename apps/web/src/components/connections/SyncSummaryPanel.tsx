@@ -3,8 +3,26 @@
 import { AlertTriangle, ArrowRight, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
-import type { ConnectionBalances, SyncSummary } from "@/lib/client/api";
+import type {
+	Connection,
+	ConnectionBalances,
+	SyncSummary,
+} from "@/lib/client/api";
 import { formatIstDateTime, isZeroDecimal } from "@/lib/client/format";
+
+function hasIncompleteHistory(
+	summary: SyncSummary | null | undefined,
+	lastSyncStatus: string | null | undefined,
+): boolean {
+	if (lastSyncStatus === "incomplete") return true;
+	if (!summary) return false;
+	if (summary.streams.some((st) => Boolean(st.incomplete))) return true;
+	return summary.notices.some((notice) =>
+		/incomplete|no deposit\/withdrawal|import .*export|older .*file/i.test(
+			notice,
+		),
+	);
+}
 
 export function SyncSummaryPanel({
 	summary,
@@ -12,14 +30,27 @@ export function SyncSummaryPanel({
 	balancesLoading = false,
 	balancesError,
 	connectionSource,
+	connectionKind,
+	connectionLastSyncStatus,
 }: {
 	summary?: SyncSummary | null;
 	balances?: ConnectionBalances | null;
 	balancesLoading?: boolean;
 	balancesError?: string | null;
 	connectionSource?: string;
+	connectionKind?: Connection["kind"];
+	connectionLastSyncStatus?: string | null;
 }) {
 	if (!summary && !balances && !balancesLoading && !balancesError) return null;
+
+	const manualVenue =
+		connectionKind === "binance" || connectionKind === "coindcx"
+			? connectionKind
+			: null;
+	const incompleteHistory = hasIncompleteHistory(
+		summary,
+		connectionLastSyncStatus,
+	);
 
 	return (
 		<div className="space-y-4 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-4 text-xs">
@@ -187,6 +218,11 @@ export function SyncSummaryPanel({
 									balances.rows.map((row) => {
 										const nonZero = !isZeroDecimal(row.difference);
 										const highlight = row.flagged || nonZero;
+										const showAddMissing =
+											highlight && manualVenue !== null && incompleteHistory;
+										const addMissingHref = manualVenue
+											? `/transactions?add=buy&asset=${encodeURIComponent(row.asset)}&venue=${encodeURIComponent(manualVenue)}`
+											: null;
 										return (
 											<tr
 												key={row.asset}
@@ -212,18 +248,38 @@ export function SyncSummaryPanel({
 												</td>
 												<td className="px-3 py-2 text-right whitespace-nowrap">
 													{row.flagged ? (
-														<Link
-															href="/review"
-															className="inline-flex items-center gap-1 rounded bg-[var(--warning-soft)] px-2 py-0.5 font-medium text-[var(--warning)] hover:underline"
-														>
-															Flagged · Review
-															<ArrowRight
-																className="h-3 w-3"
-																aria-hidden="true"
-															/>
-														</Link>
+														<div className="inline-flex flex-wrap items-center justify-end gap-2">
+															{showAddMissing && addMissingHref ? (
+																<Link
+																	href={addMissingHref}
+																	className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2 py-0.5 font-medium text-[var(--accent-text)] hover:underline"
+																>
+																	Add missing transaction
+																</Link>
+															) : null}
+															<Link
+																href="/review"
+																className="inline-flex items-center gap-1 rounded bg-[var(--warning-soft)] px-2 py-0.5 font-medium text-[var(--warning)] hover:underline"
+															>
+																Flagged · Review
+																<ArrowRight
+																	className="h-3 w-3"
+																	aria-hidden="true"
+																/>
+															</Link>
+														</div>
 													) : nonZero ? (
-														<Badge tone="warning">Difference</Badge>
+														<div className="inline-flex flex-wrap items-center justify-end gap-2">
+															{showAddMissing && addMissingHref ? (
+																<Link
+																	href={addMissingHref}
+																	className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2 py-0.5 font-medium text-[var(--accent-text)] hover:underline"
+																>
+																	Add missing transaction
+																</Link>
+															) : null}
+															<Badge tone="warning">Difference</Badge>
+														</div>
 													) : (
 														<span className="inline-flex items-center gap-1 text-[var(--positive)]">
 															<CheckCircle2

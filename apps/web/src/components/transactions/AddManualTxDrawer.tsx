@@ -10,7 +10,12 @@ import { Plus } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { api, getErrorMessage, ValidationError } from "@/lib/client/api";
+import {
+	api,
+	getErrorMessage,
+	type ManualVenue,
+	ValidationError,
+} from "@/lib/client/api";
 import { formatIncomeKind } from "@/lib/client/format";
 
 export type ManualPreset = "buy" | "gift" | "income" | "sell";
@@ -19,16 +24,19 @@ export function AddManualTxDrawer({
 	open,
 	initialPreset = "buy",
 	initialAsset = "",
+	initialVenue = "manual",
 	onClose,
 	onCreated,
 }: {
 	open: boolean;
 	initialPreset?: ManualPreset;
 	initialAsset?: string;
+	initialVenue?: ManualVenue;
 	onClose: () => void;
 	onCreated: (tx: LedgerTx) => void;
 }) {
 	const [type, setType] = useState<TxType>(initialPreset);
+	const [venue, setVenue] = useState<ManualVenue>(initialVenue);
 	const [istDateTime, setIstDateTime] = useState("2026-04-01T12:00");
 	const [assetIn, setAssetIn] = useState(initialAsset);
 	const [amountIn, setAmountIn] = useState("");
@@ -42,6 +50,8 @@ export function AddManualTxDrawer({
 	const [error, setError] = useState<string | null>(null);
 	const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+	const venueId = useId();
+	const venueHintId = useId();
 	const dtId = useId();
 	const assetInId = useId();
 	const amountInId = useId();
@@ -64,6 +74,7 @@ export function AddManualTxDrawer({
 	useEffect(() => {
 		if (!open) return;
 		setType(initialPreset);
+		setVenue(initialVenue);
 		if (initialPreset === "sell") {
 			setAssetOut(initialAsset.toUpperCase());
 			setAssetIn("");
@@ -78,7 +89,7 @@ export function AddManualTxDrawer({
 		setUserNote("");
 		setError(null);
 		setFieldErrors({});
-	}, [open, initialPreset, initialAsset]);
+	}, [open, initialPreset, initialAsset, initialVenue]);
 
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault();
@@ -105,6 +116,7 @@ export function AddManualTxDrawer({
 				importId: null,
 				timestamp: iso,
 				type,
+				venue,
 				...(type === "income" ? { incomeKind } : {}),
 				...(normAssetIn ? { assetIn: normAssetIn } : {}),
 				...(trimmedAmountIn ? { amountIn: trimmedAmountIn } : {}),
@@ -124,6 +136,7 @@ export function AddManualTxDrawer({
 					manualEntry: true,
 					istDateTime,
 					type,
+					venue,
 					assetIn: normAssetIn || undefined,
 					amountIn: trimmedAmountIn || undefined,
 					assetOut: normAssetOut || undefined,
@@ -200,6 +213,36 @@ export function AddManualTxDrawer({
 							</button>
 						))}
 					</div>
+				</div>
+
+				<div>
+					<label
+						htmlFor={venueId}
+						className="block text-xs font-medium text-[var(--text-secondary)]"
+					>
+						Counts toward
+					</label>
+					<select
+						id={venueId}
+						value={venue}
+						aria-describedby={venueHintId}
+						onChange={(e) => {
+							setVenue(e.target.value as ManualVenue);
+							clearFieldError("venue");
+						}}
+						className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+					>
+						<option value="manual">Manual (no exchange)</option>
+						<option value="binance">Binance</option>
+						<option value="coindcx">CoinDCX</option>
+					</select>
+					<p
+						id={venueHintId}
+						className="mt-1 text-[11px] text-[var(--text-muted)]"
+					>
+						Assigning an exchange lets a missing event (e.g. an old P2P buy)
+						close that exchange&apos;s balance gap.
+					</p>
 				</div>
 
 				<div>

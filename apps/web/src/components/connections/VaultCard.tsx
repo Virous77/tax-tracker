@@ -269,6 +269,7 @@ export function VaultCard({
 
 			{!vault.initialized ? (
 				<form
+					noValidate
 					onSubmit={handleSetup}
 					className="grid grid-cols-1 gap-3 border-t border-[var(--border)] pt-4 sm:grid-cols-3 sm:items-end"
 				>
@@ -320,6 +321,7 @@ export function VaultCard({
 				</form>
 			) : !vault.unlocked ? (
 				<form
+					noValidate
 					onSubmit={handleUnlock}
 					className="flex flex-col gap-3 border-t border-[var(--border)] pt-4 sm:flex-row sm:items-end"
 				>
@@ -351,6 +353,7 @@ export function VaultCard({
 
 			{vault.initialized && showChangeForm ? (
 				<form
+					noValidate
 					onSubmit={handleChangePassphrase}
 					className="grid grid-cols-1 gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-4 sm:grid-cols-3"
 				>

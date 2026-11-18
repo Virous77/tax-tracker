@@ -58,6 +58,8 @@ export function KeyCheckBanner({
 	}
 
 	if (result.readOnly === true) {
+		const title = "Read-only key verified";
+		const detail = result.message.trim();
 		return (
 			<div className="flex items-start gap-2 rounded-md border border-[var(--positive)]/40 bg-[var(--positive-soft)] px-3 py-2 text-xs">
 				<CheckCircle2
@@ -65,11 +67,9 @@ export function KeyCheckBanner({
 					aria-hidden="true"
 				/>
 				<div className="space-y-0.5">
-					<p className="font-semibold text-[var(--positive)]">
-						Read-only key verified
-					</p>
-					{result.message ? (
-						<p className="text-[var(--text-primary)]">{result.message}</p>
+					<p className="font-semibold text-[var(--positive)]">{title}</p>
+					{detail && detail !== title ? (
+						<p className="text-[var(--text-primary)]">{detail}</p>
 					) : null}
 				</div>
 			</div>

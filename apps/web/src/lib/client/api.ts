@@ -37,6 +37,7 @@ import {
 	ListRecipesResponseSchema,
 	ListTransactionsResponseSchema,
 	LoginResponseSchema,
+	type ManualVenueSchema,
 	PatchConnectionRequestSchema,
 	PatchTransactionRequestSchema,
 	PatchTransactionResponseSchema,
@@ -106,6 +107,7 @@ const FIELD_LABELS: Record<string, string> = {
 	tdsInr: "TDS deducted",
 	incomeKind: "Income kind",
 	type: "Transaction type",
+	venue: "Counts toward",
 	"ai.baseUrl": "OpenAI-compatible base URL",
 	"ai.model": "Model name",
 	transferMatchWindowHours: "Transfer match window",
@@ -858,6 +860,7 @@ export type KeyCheck = z.infer<typeof KeyCheckSchema>;
 export type ConnectionBalances = z.infer<typeof ConnectionBalancesSchema>;
 export type JobStatus = z.infer<typeof JobSchema>;
 export type PricesStatus = z.infer<typeof PricesStatusSchema>;
+export type ManualVenue = z.infer<typeof ManualVenueSchema>;
 
 export type {
 	AppSettings,

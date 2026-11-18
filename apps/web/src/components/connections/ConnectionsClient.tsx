@@ -42,7 +42,11 @@ import {
 	type VaultStatus,
 } from "@/lib/client/api";
 import { getEvmChainName, shortenAddress } from "@/lib/client/chains";
-import { formatIstDateTime } from "@/lib/client/format";
+import {
+	formatIstDateTime,
+	formatLocalTime,
+	formatSyncStreamLabel,
+} from "@/lib/client/format";
 
 interface ActiveSyncState {
 	jobId: string;
@@ -823,22 +827,42 @@ export function ConnectionsClient() {
 													className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--accent)]/30 bg-[var(--accent-soft)] px-3 py-2 text-xs text-[var(--accent-text)]"
 												>
 													{activeSync?.job?.progress ? (
-														<>
-															<span>
-																Syncing stream{" "}
-																<code className="font-mono-code font-semibold">
-																	{activeSync.job.progress.stream}
-																</code>
-															</span>
-															<span className="num font-medium">
-																Streams: {activeSync.job.progress.streamsDone}
-																{activeSync.job.progress.streamsTotal !== null
-																	? `/${activeSync.job.progress.streamsTotal}`
-																	: ""}{" "}
-																· {activeSync.job.progress.rowsFetched} rows
-																fetched
-															</span>
-														</>
+														(() => {
+															const progress = activeSync.job.progress;
+															const streamLabel = formatSyncStreamLabel(
+																progress.stream,
+															);
+															const vendor = connectionKindLabel(conn);
+															const resumeAt = progress.waitingUntil
+																? formatLocalTime(progress.waitingUntil)
+																: null;
+															return (
+																<>
+																	<span>
+																		{progress.waitingUntil ? (
+																			<>
+																				Waiting for {vendor} rate limit —{" "}
+																				{resumeAt
+																					? `resumes at ${resumeAt}`
+																					: "resuming shortly"}{" "}
+																				<span className="text-[var(--text-secondary)]">
+																					({streamLabel})
+																				</span>
+																			</>
+																		) : (
+																			<>Syncing {streamLabel}…</>
+																		)}
+																	</span>
+																	<span className="num font-medium">
+																		Streams: {progress.streamsDone}
+																		{progress.streamsTotal !== null
+																			? `/${progress.streamsTotal}`
+																			: ""}{" "}
+																		· {progress.rowsFetched} rows fetched
+																	</span>
+																</>
+															);
+														})()
 													) : (
 														<span>
 															Sync in progress… polling status every second.
@@ -1037,6 +1061,8 @@ export function ConnectionsClient() {
 													balancesLoading={Boolean(balancesLoading[conn.id])}
 													balancesError={balancesErrors[conn.id]}
 													connectionSource={connectionSourceKey(conn)}
+													connectionKind={conn.kind}
+													connectionLastSyncStatus={conn.lastSyncStatus}
 												/>
 											) : null}
 										</article>

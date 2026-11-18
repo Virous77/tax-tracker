@@ -1251,12 +1251,13 @@ export function RecipeWizard({
 													</div>
 													{row.converted.reviewFlags.length > 0 ? (
 														<div className="flex flex-wrap gap-1 pt-0.5">
-															{row.converted.reviewFlags.map((f) => (
-																<Badge
-																	key={`${f.code}:${f.message}`}
-																	tone="warning"
-																>
-																	{f.code}
+															{[
+																...new Set(
+																	row.converted.reviewFlags.map((f) => f.code),
+																),
+															].map((code) => (
+																<Badge key={code} tone="warning">
+																	{code}
 																</Badge>
 															))}
 														</div>

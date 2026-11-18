@@ -21,6 +21,7 @@ import {
 import {
 	api,
 	getErrorMessage,
+	type ManualVenue,
 	type TaxYearInfo,
 	type TransactionsPage,
 } from "@/lib/client/api";
@@ -28,11 +29,12 @@ import { EVM_CHAINS } from "@/lib/client/chains";
 import {
 	formatInrNullable,
 	formatIstDateTime,
+	formatManualVenueLabel,
 	formatQty,
 	formatSourceLabel,
 	formatTxType,
 } from "@/lib/client/format";
-import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
+import { groupReviewFlags, REVIEW_CODE_INFO } from "@/lib/client/review-codes";
 
 const SOURCE_FILTER_OPTIONS: readonly string[] = [
 	"binance",
@@ -62,6 +64,7 @@ export function TransactionsClient() {
 		| "source:desc";
 	const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
 	const addParam = searchParams.get("add");
+	const venueParam = searchParams.get("venue");
 
 	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
 	const [data, setData] = useState<TransactionsPage | null>(null);
@@ -138,6 +141,7 @@ export function TransactionsClient() {
 	) {
 		const params = new URLSearchParams(searchParams.toString());
 		params.delete("add");
+		params.delete("venue");
 		for (const [k, v] of Object.entries(updates)) {
 			if (v === null || v === "") params.delete(k);
 			else params.set(k, v);
@@ -159,6 +163,10 @@ export function TransactionsClient() {
 		addParam === "gift" || addParam === "income" || addParam === "sell"
 			? addParam
 			: "buy";
+	const initialVenue: ManualVenue =
+		venueParam === "binance" || venueParam === "coindcx"
+			? venueParam
+			: "manual";
 
 	return (
 		<div className="space-y-5">
@@ -384,6 +392,7 @@ export function TransactionsClient() {
 									const supersededBy =
 										(tx as LedgerTx & { supersededBy?: string | null })
 											.supersededBy ?? null;
+									const txVenue = (tx as LedgerTx & { venue?: string }).venue;
 									return (
 										<tr
 											key={tx.id}
@@ -413,6 +422,10 @@ export function TransactionsClient() {
 											</td>
 											<td className="px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
 												{formatSourceLabel(tx.source)}
+												{tx.source === "manual" &&
+												(txVenue === "binance" || txVenue === "coindcx")
+													? ` (${formatManualVenueLabel(txVenue)})`
+													: ""}
 											</td>
 											<td className="num-right px-4 py-2.5 whitespace-nowrap">
 												{tx.assetIn ? (
@@ -446,22 +459,33 @@ export function TransactionsClient() {
 											</td>
 											<td className="px-4 py-2.5">
 												<div className="flex flex-wrap gap-1">
-													{[
-														...new Set(tx.reviewFlags.map((flag) => flag.code)),
-													].map((code) => {
-														const info = REVIEW_CODE_INFO[code];
-														const tone =
-															info?.severity === "error"
-																? "loss"
-																: info?.severity === "info"
-																	? "accent"
-																	: "warning";
-														return (
-															<span key={code} title={info?.title ?? code}>
-																<Badge tone={tone}>{code}</Badge>
-															</span>
-														);
-													})}
+													{groupReviewFlags(tx.reviewFlags).map(
+														({ code, messages }) => {
+															const info = REVIEW_CODE_INFO[code];
+															const tone =
+																info?.severity === "error"
+																	? "loss"
+																	: info?.severity === "info"
+																		? "accent"
+																		: "warning";
+															const title =
+																messages.length > 0
+																	? `${info?.title ?? code}: ${messages.join(" · ")}`
+																	: (info?.title ?? code);
+															return (
+																<span key={code} title={title}>
+																	<Badge tone={tone}>
+																		<span>{code}</span>
+																		{messages.length > 1 ? (
+																			<span className="opacity-75">
+																				×{messages.length}
+																			</span>
+																		) : null}
+																	</Badge>
+																</span>
+															);
+														},
+													)}
 												</div>
 											</td>
 										</tr>
@@ -497,13 +521,18 @@ export function TransactionsClient() {
 				open={addOpen}
 				initialPreset={manualPreset}
 				initialAsset={asset}
+				initialVenue={initialVenue}
 				onClose={() => {
 					setAddOpen(false);
-					if (addParam) updateParams({ add: null }, false);
+					if (addParam || venueParam) {
+						updateParams({ add: null, venue: null }, false);
+					}
 				}}
 				onCreated={() => {
 					setAddOpen(false);
-					if (addParam) updateParams({ add: null }, false);
+					if (addParam || venueParam) {
+						updateParams({ add: null, venue: null }, false);
+					}
 					loadTransactions();
 				}}
 			/>

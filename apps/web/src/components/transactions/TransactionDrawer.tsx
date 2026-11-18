@@ -21,10 +21,12 @@ import {
 	formatInrNullable,
 	formatInrRateSource,
 	formatIstDateTime,
+	formatManualVenueLabel,
 	formatQty,
 	formatSourceLabel,
 	formatTxType,
 } from "@/lib/client/format";
+import { groupReviewFlags } from "@/lib/client/review-codes";
 
 export function TransactionDrawer({
 	tx,
@@ -52,6 +54,7 @@ export function TransactionDrawer({
 	const incomeKindId = useId();
 	const inrId = useId();
 	const noteId = useId();
+	const flagsId = useId();
 
 	useEffect(() => {
 		if (!tx) return;
@@ -215,6 +218,17 @@ export function TransactionDrawer({
 									</dd>
 								</div>
 							) : null}
+							{(() => {
+								const venue = (tx as LedgerTx & { venue?: string }).venue;
+								return tx.source === "manual" && venue ? (
+									<div>
+										<dt className="text-[var(--text-muted)]">Counts toward</dt>
+										<dd className="mt-0.5 font-medium">
+											{formatManualVenueLabel(venue)}
+										</dd>
+									</div>
+								) : null;
+							})()}
 							{tx.txHash ? (
 								<div className="col-span-2">
 									<dt className="text-[var(--text-muted)]">Transaction Hash</dt>
@@ -350,44 +364,72 @@ export function TransactionDrawer({
 								/>
 							</div>
 
-							{tx.reviewFlags.length > 0 ? (
-								<div className="space-y-2 rounded-md border border-[var(--warning)]/40 bg-[var(--warning-soft)] p-3">
-									<p className="text-xs font-semibold text-[var(--warning)]">
-										Review Flags ({tx.reviewFlags.length}) — check to mark
-										resolved
-									</p>
-									<div className="space-y-1.5">
-										{tx.reviewFlags.map((flag) => (
-											<label
-												key={`${flag.code}:${flag.message}`}
-												className="flex items-start gap-2 text-xs"
-											>
-												<input
-													type="checkbox"
-													checked={resolveFlags.has(flag.code)}
-													onChange={(e) => {
-														setResolveFlags((prev) => {
-															const next = new Set(prev);
-															if (e.target.checked) next.add(flag.code);
-															else next.delete(flag.code);
-															return next;
-														});
-													}}
-													className="mt-0.5"
-												/>
-												<span>
-													<Badge tone="warning" className="mr-1.5">
-														{flag.code}
-													</Badge>
-													<span className="text-[var(--text-primary)]">
-														{flag.message}
-													</span>
-												</span>
-											</label>
-										))}
-									</div>
-								</div>
-							) : null}
+							{tx.reviewFlags.length > 0
+								? (() => {
+										const groupedFlags = groupReviewFlags(tx.reviewFlags);
+										return (
+											<div className="space-y-2 rounded-md border border-[var(--warning)]/40 bg-[var(--warning-soft)] p-3">
+												<p className="text-xs font-semibold text-[var(--warning)]">
+													Review Flags ({groupedFlags.length}) — check to mark
+													resolved
+												</p>
+												<div className="space-y-2">
+													{groupedFlags.map((group) => {
+														const inputId = `${flagsId}-${group.code}`;
+														return (
+															<div
+																key={group.code}
+																className="flex items-start gap-2 text-xs"
+															>
+																<input
+																	id={inputId}
+																	type="checkbox"
+																	checked={resolveFlags.has(group.code)}
+																	onChange={(e) => {
+																		setResolveFlags((prev) => {
+																			const next = new Set(prev);
+																			if (e.target.checked)
+																				next.add(group.code);
+																			else next.delete(group.code);
+																			return next;
+																		});
+																	}}
+																	className="mt-0.5"
+																/>
+																<div className="min-w-0 flex-1">
+																	<label
+																		htmlFor={inputId}
+																		className="cursor-pointer"
+																	>
+																		<Badge tone="warning" className="mr-1.5">
+																			{group.code}
+																		</Badge>
+																		{group.messages.length === 1 ? (
+																			<span className="text-[var(--text-primary)]">
+																				{group.messages[0]}
+																			</span>
+																		) : (
+																			<span className="text-[var(--text-secondary)]">
+																				{group.messages.length} reasons
+																			</span>
+																		)}
+																	</label>
+																	{group.messages.length > 1 ? (
+																		<ul className="mt-1 list-disc space-y-0.5 pl-4 text-[var(--text-primary)]">
+																			{group.messages.map((msg) => (
+																				<li key={msg}>{msg}</li>
+																			))}
+																		</ul>
+																	) : null}
+																</div>
+															</div>
+														);
+													})}
+												</div>
+											</div>
+										);
+									})()
+								: null}
 
 							<div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] pt-3">
 								{tx.source === "manual" ? (

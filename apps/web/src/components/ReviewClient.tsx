@@ -568,9 +568,13 @@ export function ReviewClient() {
 										</thead>
 										<tbody>
 											{group.items.map((tx) => {
-												const matchingFlags = tx.reviewFlags.filter(
-													(f) => f.code === group.code,
-												);
+												const matchingMessages = [
+													...new Set(
+														tx.reviewFlags
+															.filter((f) => f.code === group.code)
+															.map((f) => f.message),
+													),
+												];
 												return (
 													<tr
 														key={`${group.code}-${tx.id}`}
@@ -600,14 +604,14 @@ export function ReviewClient() {
 															{formatInrNullable(tx.inrValue)}
 														</td>
 														<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
-															{matchingFlags.length === 0 ? (
+															{matchingMessages.length === 0 ? (
 																"—"
-															) : matchingFlags.length === 1 ? (
-																<span>{matchingFlags[0]?.message}</span>
+															) : matchingMessages.length === 1 ? (
+																<span>{matchingMessages[0]}</span>
 															) : (
 																<ul className="list-disc space-y-1 pl-4">
-																	{matchingFlags.map((flag) => (
-																		<li key={flag.message}>{flag.message}</li>
+																	{matchingMessages.map((msg) => (
+																		<li key={msg}>{msg}</li>
 																	))}
 																</ul>
 															)}

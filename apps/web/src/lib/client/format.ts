@@ -333,3 +333,68 @@ export function formatExcludedReason(reason: string): string {
 	}
 	return reason;
 }
+
+const localTimeFormatter = new Intl.DateTimeFormat(undefined, {
+	hour: "2-digit",
+	minute: "2-digit",
+	hourCycle: "h23",
+});
+
+export function formatLocalTime(utcIso: string): string | null {
+	const d = new Date(utcIso);
+	if (!Number.isFinite(d.getTime())) return null;
+	return localTimeFormatter.format(d);
+}
+
+export function formatSyncStreamLabel(stream: string): string {
+	if (stream === "binance:deposits") return "Binance deposit history";
+	if (stream === "binance:withdrawals") return "Binance withdrawal history";
+	if (stream === "binance:convert") return "Binance convert history";
+	if (stream === "binance:dividends") return "Binance dividend history";
+	if (stream === "binance:dust") return "Binance dust conversions";
+	if (stream === "binance:symbols") return "Binance trading pairs";
+	if (stream === "binance:fiat:0") return "Binance fiat history (deposits)";
+	if (stream === "binance:fiat:1") return "Binance fiat history (withdrawals)";
+	if (stream.startsWith("binance:fiat:")) return "Binance fiat history";
+	if (stream === "binance:fiatpay:0") return "Binance fiat payments (buys)";
+	if (stream === "binance:fiatpay:1") return "Binance fiat payments (sells)";
+	if (stream.startsWith("binance:fiatpay:")) {
+		return "Binance fiat payment history";
+	}
+	if (stream === "binance:p2p:BUY") return "Binance P2P buys";
+	if (stream === "binance:p2p:SELL") return "Binance P2P sells";
+	if (stream.startsWith("binance:p2p:")) return "Binance P2P history";
+	if (stream === "binance:earn:flexible") {
+		return "Binance Simple Earn (flexible)";
+	}
+	if (stream === "binance:earn:locked") return "Binance Simple Earn (locked)";
+	if (stream.startsWith("binance:earn:")) return "Binance Earn history";
+	if (stream.startsWith("binance:myTrades:")) {
+		const pair = stream.slice("binance:myTrades:".length);
+		return pair ? `Binance ${pair} trades` : "Binance spot trades";
+	}
+	if (stream === "coindcx:trades") return "CoinDCX trades";
+	if (stream.startsWith("coindcx:")) return "CoinDCX history";
+	if (stream.startsWith("evm:")) {
+		const parts = stream.split(":");
+		const chainId = Number(parts[1]);
+		const chainName = Number.isInteger(chainId)
+			? (getEvmChain(chainId)?.name ?? `Chain ${chainId}`)
+			: "EVM";
+		const action = parts[3];
+		if (action === "txlist") return `${chainName} transactions`;
+		if (action === "txlistinternal") {
+			return `${chainName} internal transactions`;
+		}
+		if (action === "tokentx") return `${chainName} token transfers`;
+		return `${chainName} history`;
+	}
+	return stream;
+}
+
+export function formatManualVenueLabel(venue: string): string {
+	if (venue === "binance") return "Binance";
+	if (venue === "coindcx") return "CoinDCX";
+	if (venue === "manual") return "Manual (no exchange)";
+	return venue;
+}

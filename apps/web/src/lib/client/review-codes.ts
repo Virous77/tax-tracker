@@ -204,3 +204,23 @@ export const REVIEW_CODE_INFO: Record<ReviewCode, ReviewCodeInfo> = {
 		},
 	},
 };
+
+export interface GroupedReviewFlag {
+	code: ReviewCode;
+	messages: string[];
+}
+
+export function groupReviewFlags(
+	flags: readonly { code: ReviewCode; message: string }[],
+): GroupedReviewFlag[] {
+	const groups = new Map<ReviewCode, string[]>();
+	for (const flag of flags) {
+		const list = groups.get(flag.code);
+		if (!list) {
+			groups.set(flag.code, [flag.message]);
+		} else if (!list.includes(flag.message)) {
+			list.push(flag.message);
+		}
+	}
+	return Array.from(groups, ([code, messages]) => ({ code, messages }));
+}

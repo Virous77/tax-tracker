@@ -2,12 +2,15 @@ import path from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { FIXTURES, GENERATED } from "./support/env";
 import { expect, settled, snap, test } from "./support/fixtures";
+import { statement } from "./support/statements";
 
 // Regressions for the fixes in 70566bc (server) and 9fe338e (UI).
 
-const STATEMENT = path.join(FIXTURES, "binance-transaction-statement.csv");
+// Phase 2 rebuilds statement trades; the legs folded into a rebuilt trade are kept as skipped
+// rows that point at the grouped transaction (packages/importers/README.md).
+const STATEMENT_NAME = "statement-grouped-legs.csv";
 const SKIP_REASON =
-	"Statement row overlaps trade/deposit/withdrawal exports; import the dedicated history file. This row is preserved but not applied.";
+	"Statement leg is preserved in the grouped transaction raw rows.";
 const CLEARED_AT = String.raw`on \d{2} \w{3} \d{4}, \d{2}:\d{2} IST`;
 
 function stat(scope: Page | Locator, label: string) {
@@ -30,44 +33,44 @@ test.beforeEach(async ({ api }) => {
 	await api.reset();
 });
 
-test.describe("statement overlap rows are skips, not errors", () => {
+test.describe("grouped statement legs are skips, not errors", () => {
 	test("import summary shows a neutral skipped section and the count equation", async ({
 		page,
 	}) => {
 		await page.goto("/import");
 		await page
 			.getByLabel(/Drop your exchange export here/)
-			.setInputFiles(STATEMENT);
+			.setInputFiles(statement(STATEMENT_NAME));
 		await page.getByRole("radio", { name: /^Binance / }).check();
 		await page.getByRole("radio", { name: /^UTC / }).check();
 		await page.getByRole("button", { name: "Upload & import" }).click();
 		await expect(
 			page.getByRole("heading", {
-				name: "binance-transaction-statement.csv — Import complete",
+				name: `${STATEMENT_NAME} — Import complete`,
 			}),
 		).toBeVisible();
-		await expect(stat(page, "Rows read")).toHaveText("32");
-		await expect(stat(page, "Inserted")).toHaveText("2");
+		await expect(stat(page, "Rows read")).toHaveText("10");
+		await expect(stat(page, "Inserted")).toHaveText("4");
 		await expect(stat(page, "Duplicates skipped")).toHaveText("0");
-		await expect(stat(page, "Skipped")).toHaveText("27");
-		await expect(stat(page, "Row errors")).toHaveText("3");
+		await expect(stat(page, "Skipped")).toHaveText("4");
+		await expect(stat(page, "Row errors")).toHaveText("2");
 		await expect(
 			page.getByText(
-				"32 read = 2 inserted + 0 duplicates + 27 skipped + 3 errors",
+				"10 read = 4 inserted + 0 duplicates + 4 skipped + 2 errors",
 			),
 		).toBeVisible();
 
 		const skipped = page.getByRole("heading", {
-			name: /Skipped — covered by another export \(27\)/,
+			name: /^Skipped — .*\(4\)/,
 		});
 		await expect(skipped).toBeVisible();
 		const skipTable = skipped.locator("xpath=following-sibling::div[1]");
-		await expect(skipTable.locator("tbody tr")).toHaveCount(27);
+		await expect(skipTable.locator("tbody tr")).toHaveCount(4);
 		await expect(
 			skipTable.locator("tbody tr").first().getByRole("cell").last(),
 		).toHaveText(SKIP_REASON);
 		await expect(
-			page.getByRole("heading", { name: "Row Errors (3)" }),
+			page.getByRole("heading", { name: "Row Errors (2)" }),
 		).toBeVisible();
 
 		// Skips are informational: not styled with the loss/error colour the row errors use.
@@ -82,16 +85,13 @@ test.describe("statement overlap rows are skips, not errors", () => {
 			page
 				.getByRole("heading", { name })
 				.evaluate((el) => getComputedStyle(el).color);
-		expect(await headingColour(/^Skipped — covered/)).not.toBe(
+		expect(await headingColour(/^Skipped — /)).not.toBe(
 			await headingColour(/^Row Errors/),
 		);
-		// The one import warning is about the 3 row errors; overlap skips add none.
-		await expect(page.getByText("Warnings (1)")).toBeVisible();
+		// Grouped legs add no warning of their own; invalid rows are reported once (P2-API-7).
 		await expect(
 			page.getByRole("listitem").filter({ hasText: /^parse_warning:/ }),
-		).toHaveText([
-			"parse_warning: Some source rows require review; inspect row errors before computing tax.",
-		]);
+		).toHaveCount(0);
 		await snap(page, "import-statement-skips");
 	});
 
@@ -99,37 +99,32 @@ test.describe("statement overlap rows are skips, not errors", () => {
 		page,
 		api,
 	}) => {
-		await api.importFile(STATEMENT, "binance", "UTC");
-		await api.importFile(STATEMENT, "binance", "UTC");
+		const file = statement(STATEMENT_NAME);
+		await api.importFile(file, "binance", "UTC");
+		await api.importFile(file, "binance", "UTC");
 		await page.goto("/imports");
 		const rows = page.getByRole("table").first().locator("tbody tr");
 		await expect(rows).toHaveCount(2);
 		for (const row of await rows.all())
-			await expect(row).toContainText("27 skipped (overlap)");
+			await expect(row).toContainText("4 skipped");
 
 		await page
-			.getByRole("button", {
-				name: "Inspect binance-transaction-statement.csv",
-			})
+			.getByRole("button", { name: `Inspect ${STATEMENT_NAME}` })
 			.first()
 			.click();
-		const drawer = page.getByRole("dialog", {
-			name: "binance-transaction-statement.csv",
-		});
+		const drawer = page.getByRole("dialog", { name: STATEMENT_NAME });
 		await expect(drawer).toBeVisible();
 		await expect(
 			drawer.getByText(
-				/^32 read = (2 inserted \+ 0 duplicates|0 inserted \+ 2 duplicates) \+ 27 skipped \+ 3 errors$/,
+				/^10 read = (4 inserted \+ 0 duplicates|0 inserted \+ 4 duplicates) \+ 4 skipped \+ 2 errors$/,
 			),
 		).toBeVisible();
 		await expect(
-			drawer.getByRole("heading", {
-				name: /Skipped — covered by another export \(27\)/,
-			}),
+			drawer.getByRole("heading", { name: /^Skipped — .*\(4\)/ }),
 		).toBeVisible();
-		await expect(drawer.getByText(SKIP_REASON)).toHaveCount(27);
+		await expect(drawer.getByText(SKIP_REASON)).toHaveCount(4);
 		await expect(
-			drawer.getByRole("heading", { name: "Row Errors (3)" }),
+			drawer.getByRole("heading", { name: "Row Errors (2)" }),
 		).toBeVisible();
 
 		const summaries = await api.json<
@@ -144,8 +139,8 @@ test.describe("statement overlap rows are skips, not errors", () => {
 		expect(
 			summaries.map((s) => [s.rowsInserted, s.rowsDuplicate]).sort(),
 		).toEqual([
-			[0, 2],
-			[2, 0],
+			[0, 4],
+			[4, 0],
 		]);
 		for (const s of summaries)
 			expect(
@@ -404,11 +399,13 @@ test("Review lists every flag message of a transaction, not only the first", asy
 	const g = group(page, "Import parse warning");
 	const swap = g.locator("tbody tr").filter({ hasText: "Swap" });
 	await expect(swap).toHaveCount(1);
-	const messages = swap.getByRole("listitem");
-	await expect(messages).toHaveText([
+	// Since d9b6170 the server merges same-code flags into one message (BUGS.md P2-E2E-7), so
+	// both notes arrive as one sentence pair instead of a list; both must still be shown.
+	for (const message of [
 		"Gross INR value is derived from the export's indicative net INR conversion; verify with the trade report.",
 		"Export does not separate GST from fees; GST has not been inferred. Verify whether fees include GST.",
-	]);
+	])
+		await expect(swap).toContainText(message);
 	const sell = g.locator("tbody tr").filter({ hasText: "Sell" }).first();
 	await expect(sell.getByRole("listitem")).toHaveCount(0);
 	await expect(sell).toContainText("Export does not separate GST from fees");

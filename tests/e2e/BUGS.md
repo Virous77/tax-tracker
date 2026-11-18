@@ -145,6 +145,168 @@ Still noted, not changed: ledger edits invalidate every year (safe but broad); u
 
 ---
 
+# Phase 2 regression round — browser E2E, 2026-11-18
+
+Image `tax-tracker-app:local` built from `main` at `50c248b`, not rebuilt for this round. It includes:
+
+- `8bedb99`: contract changes;
+- `2bfa8e0`: UI fixes;
+- `3506d72`: mock fixes;
+- `d9b6170`: server fixes;
+- `50c248b`: CoinGecko numeric prices.
+
+Phase 2 ran on Compose project `taxe2e2` (port **3112**, mock-sync **11602**), with the same command and harness as below. Phase 1 ran with `pnpm test:e2e` (stacks `taxe2e*` on 3102–3104). The API agent's stack (`taxapi3`, 3111/11601/11511) was not touched.
+
+## Results
+
+- **Phase 2: 85 tests, 81 pass, 4 fail, 0 skipped (10.7 min).**
+  - 3 failures are new bug tests: P2-E2E-7, P2-E2E-8 and P2-E2E-9. Each asserts the correct behaviour and fails.
+  - 1 failure was a one-off `ECONNRESET` on `POST /api/reports/2026-27/compute` in the Ethereum test. The app did not restart (RestartCount 0, no error in the log). Compute answers 200 in 0.05 s. The test then passed 2/2 with `--repeat-each=2`, so it is not a product bug.
+- **Phase 1: **124 tests, 124 pass, 0 fail (1.4 min).** The 10 redesigned specs and the 3 selector fixes that had not been re-run all pass.**
+
+| Phase 2 spec                     | Pass | Fail                      | Skip |
+| -------------------------------- | ---- | ------------------------- | ---- |
+| `phase2-connections.spec.ts`     | 16   | 0                         | 0    |
+| `phase2-import.spec.ts`          | 9    | 0                         | 0    |
+| `phase2-regression.spec.ts` new  | 4    | 3 (P2-E2E-7/8/9)          | 0    |
+| `phase2-report-settings.spec.ts` | 3    | 0                         | 0    |
+| `phase2-responsive-a11y.spec.ts` | 34   | 0                         | 0    |
+| `phase2-sync.spec.ts`            | 9    | 1 (transient, passes 2/2) | 0    |
+| `phase2-venue.spec.ts` new       | 6    | 0                         | 0    |
+
+| Phase 1 spec              | Pass | Fail |
+| ------------------------- | ---- | ---- |
+| `empty-states.spec.ts`    | 7    | 0    |
+| `import.spec.ts`          | 10   | 0    |
+| `imports-list.spec.ts`    | 3    | 0    |
+| `password.spec.ts`        | 11   | 0    |
+| `recipe-wizard.spec.ts`   | 7    | 0    |
+| `report.spec.ts`          | 6    | 0    |
+| `responsive-a11y.spec.ts` | 32   | 0    |
+| `review.spec.ts`          | 11   | 0    |
+| `round3.spec.ts`          | 13   | 0    |
+| `screenshots.spec.ts`     | 4    | 0    |
+| `settings.spec.ts`        | 5    | 0    |
+| `shell.spec.ts`           | 9    | 0    |
+| `transactions.spec.ts`    | 6    | 0    |
+
+**Full Binance sync timing (P2-E2E-2):**
+
+- The first sync of the `normal` fixture account takes **238 s** through the browser. This is recorded as the test annotation `full-binance-sync-seconds`, and the same figure came from a separate API-driven run.
+- It used to take 80+ minutes. The opt-in `PHASE2_BINANCE_FULL=1` test is now a normal test, with a 10-minute ceiling.
+- During the sync the live region shows "Waiting for Binance rate limit — resumes at hh:mm" for most of the run (160 of ~238 one-second polls had `waitingUntil` set). The `rate_limit_once` scenario was not needed.
+
+## Status of earlier findings
+
+| #        | Finding                                          | Status            | Evidence                                                                                                                                                                                                                                                                                                                                                        |
+| -------- | ------------------------------------------------ | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P2-E2E-1 | Sync errors drop the vendor message              | **FIXED**         | `phase2-sync` › "bad_signature persists…" and › "binance: live progress…" assert "Binance -1022: Signature for this request is not valid." on the card, after reload ("Last sync error: …") and in Review. These were soft checks; they are now hard.                                                                                                           |
+| P2-E2E-2 | First Binance sync takes over an hour            | **FIXED**         | `phase2-sync` › "binance normal full sync…" runs by default: 238 s, the "Waiting for Binance rate limit — resumes at" line was seen, every balance matched. Screenshots: `sync-binance-complete`, `sync-binance-reloaded`.                                                                                                                                      |
+| P2-E2E-3 | No inline short-passphrase error                 | **FIXED**         | `phase2-connections` › "vault rejects short passphrases inline" and › "vault change-passphrase rejects a short new passphrase inline" pass (`role=alert` "Passphrase must be at least 12 characters.").                                                                                                                                                         |
+| P2-E2E-4 | "catalogue §" in user-facing messages            | **FIXED**         | `phase2-import` › "order-history flag messages shown to the user carry no internal catalogue references" passes. Screenshot: `order-history-fee-flag-drawer`.                                                                                                                                                                                                   |
+| P2-E2E-5 | "Read-only key verified" printed twice           | **FIXED**         | New assertion in `phase2-connections` › Binance add-connection: exactly one `Read-only key verified` text in the dialog. Screenshot: `binance-key-check`.                                                                                                                                                                                                       |
+| P2-E2E-6 | Ambiguous statement legs shown as empty Fee rows | **FIXED**         | `phase2-regression` › "statement + Trade History: covered same-second legs leave no empty rows" (15 Jun 2025 and 10 May 2026 each show exactly the 2 Trade History swaps, no `unknown_type`, and Review has no "non-unique or incomplete trade legs" item). › "statement alone: …" shows ambiguous groups as unclassified (no "Fee"). One leftover is P2-E2E-8. |
+| M1       | `normal` Binance USDT off by 5000                | **FIXED**         | The full-sync test asserts zero differences and "Matched" for BNB, ETH, USDC and USDT (XRP is 0 as well).                                                                                                                                                                                                                                                       |
+| M2–M5    | Mock gaps                                        | Fixed (`3506d72`) | Not browser-visible. The full sync, prices and spam checks pass on the new mock.                                                                                                                                                                                                                                                                                |
+
+## New bugs (ranked)
+
+### P2-E2E-7. Low — same-code flags are merged on the server, so the new "×N" chip never shows and the Review message list is gone
+
+- **Page:** Transactions (flag chips), Transactions drawer ("N reasons"), Review (Details column).
+- **Steps:** create a transaction with two `parse_warning` flags that have different messages (`POST /api/transactions`, or import `coindcx-report.xlsx`, whose swap carries two notes) → open /transactions?flagged=true → open Review.
+- **Expected:** `2bfa8e0` groups repeated flags into one chip with "×2", the drawer says "2 reasons" and lists both, and Review shows both as a list.
+- **Actual:** `d9b6170` added `mergeReviewFlags` to `LedgerTxFieldsSchema.reviewFlags` (`packages/core/src/ledger.ts`). It joins all messages of one code into a single flag ("first note about this row. second note about this row."). The UI therefore only ever sees one message per code:
+  - no "×2" on the chip;
+  - no "2 reasons" in the drawer;
+  - Review prints the two CoinDCX notes as one run-on sentence instead of the `<ul>` it used to show.
+    The text is all still there, so this is cosmetic or structural, not data loss. The server and UI should agree on one model: either keep separate flags and group them in the UI, or drop the ×N/list UI code.
+- **Screenshots:** `phase2/grouped-flag-chips.png`, `phase2/failure-repeated-flags-of-one-code-are-one-chip-with-a-N-count.png`.
+- **Spec:** `phase2-regression.spec.ts` › "repeated flags of one code are one chip with a ×N count" (fails at "×2"). `round3.spec.ts` › "Review lists every flag message…" now checks that both sentences are present, not that they are list items.
+- **Note:** report-warning grouping works. Review shows one "Missing INR valuation" report-warning row with "(×2)" for two income rows outside the selected year (`phase2-regression` › "Review groups repeated report warnings…", screenshot `review-grouped-report-warning`).
+
+### P2-E2E-8. Low — an unknown statement operation is still an empty "Fee" row
+
+- **Page:** Transactions (`?type=fee`), Review (`unknown_type`).
+- **Steps:** import `binance-transaction-statement.csv`, with or without `binance-trade-history.csv` → Transactions → Type: Fee.
+- **Expected:** like the ambiguous same-second groups (now amount-free `transfer` rows), an operation the importer does not know is shown as unclassified, not as a fee.
+- **Actual:** "Some Future Operation" (2 Feb 2026, `0.5 USDT`) becomes `type: "fee"` with no asset or amount, flagged `unknown_type` "Unknown or unpaired statement operation; original preserved for review". It shows as "02 Feb 2026, 07:32 IST · Fee · Binance · — · — · … unknown_type". No amount is booked (correct), but the row is labelled a fee.
+- **Screenshots:** `phase2/statement-fee-rows.png`, `phase2/failure-no-amount-free-Fee-rows-after-importing-the-statement-unknown-operation-.png`.
+- **Spec:** `phase2-regression.spec.ts` › "no amount-free Fee rows after importing the statement (unknown operation)".
+
+### P2-E2E-9. Cosmetic — zone source says "from the file name" when it came from the header
+
+- **Page:** Import summary.
+- **Steps:** upload `binance-trade-history.csv` with Binance and IST selected.
+- **Expected:** the summary label agrees with the warning, which correctly says the zone came from the header.
+- **Actual:** the summary says "Source: Binance · Time zone: UTC (from the file name)", but the notice right below says "Used UTC from the file header instead of the selected IST.". The file name has no zone; the API only returns `timezoneSource: "file"`.
+- **Screenshots:** `phase2/import-timezone-conflict.png`, `phase2/failure-the-zone-source-label-agrees-with-the-warning-header-not-file-name.png`.
+- **Spec:** `phase2-regression.spec.ts` › "the zone source label agrees with the warning: header, not file name". `import.spec.ts` now accepts "from the file", "from the file name" or "from the file header", so it will not break when this is fixed.
+
+### P2-E2E-10. Low — every normal Binance sync shows "Incomplete" and a red "Last sync error"
+
+- **Page:** Connections, Binance card.
+- **Steps:** mock `normal` → Sync now → wait for completion.
+- **Expected:** a sync whose balances all match reads as complete with notes, or at least not as an error. The standing API limits (P2P six-month window, `binance:history-start`, dust's 100-record cap, the delisted `ETHBTC` pair) could be shown as notes.
+- **Actual:** the card shows an "Incomplete" badge and, in the loss colour, "Last sync error: One or more streams were incomplete; review the sync summary.". This happens on every Binance account, because those streams are always marked incomplete. The flag itself is right: it is what enables "Add missing transaction". Only the wording and colour are wrong.
+- **Screenshot:** `phase2/venue-gap-add-missing-link.png` (the same header appears in `sync-binance-complete.png`).
+- **Spec:** none fails on it. It is documented here.
+
+## Assertion changes in this round
+
+| Spec                                                  | Change                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `phase2-sync.spec.ts`                                 | The live region now matches friendly labels ("Syncing Binance … history…" or "Waiting for Binance rate limit — resumes at hh:mm") and must never show raw `binance:` ids. The vendor-error soft checks are now hard. The full sync is no longer opt-in. Spam exclusion now computes the tax year of "40 days before today" (the mock is relative to the clock), not 2025-26. |
+| `phase2-connections.spec.ts`                          | Binance key check: "Read-only key verified" appears exactly once (P2-E2E-5).                                                                                                                                                                                                                                                                                                 |
+| `imports-list.spec.ts`                                | The `malformed.csv` drawer has no "Notices" heading. Since `d9b6170` (P2-API-7, lead decision) invalid rows are reported once: as row errors plus one `import_incomplete` item in Review, with no `parse_warning`.                                                                                                                                                           |
+| `round3.spec.ts` › "Review lists every flag message…" | Checks that both CoinDCX notes are present in the row, not that there are two list items (see P2-E2E-7).                                                                                                                                                                                                                                                                     |
+| `import.spec.ts`                                      | The zone label accepts "from the file", "from the file name" or "from the file header" (see P2-E2E-9).                                                                                                                                                                                                                                                                       |
+
+## Phase 1 redesign (the 10 specs from "Phase 1 specs that need a redesign")
+
+The new fixtures are generated by `tests/e2e/support/statements.ts` into `tests/data/out/` (gitignored, like every generated test file). They are written fresh on each use, so nothing outside `tests/e2e` changes. Both are synthetic Binance Transaction History statements in the Phase 2 format:
+
+- **`statement-without-eth.csv`** (review ×6, transactions ×2). It holds a USDT deposit, one unambiguous BNB trade (3 legs → 1 swap, 2 legs skipped), Simple Earn interest and the FIXT airdrop that has no INR value. It contains **no ETH and no BTC**, so the ETH sell in `sell-without-buy.csv` is still a sell the statement does not cover. That restores each test's original premise:
+  - the negative ETH holding of −0.01 plus the unresolved 0.01 ETH slice;
+  - "Add missing buy" pre-filled with ETH;
+  - "TDS not deducted" with 1 item;
+  - exactly one "Missing INR valuation" row (the airdrop);
+  - "BTC: computed 0, actual 2" for the balance mismatch.
+
+  The only number that changed: the flagged-only Transactions list is "1–3 of 3", because the statement's rebuilt BNB swap has a BNB fee and correctly carries `fee_review_required`. The test now names all three rows and checks that the unflagged USDT deposit is not listed.
+- **`statement-grouped-legs.csv`** (round3 ×2). It holds two unambiguous trades, a deposit, interest, and two broken rows (bad date, bad amount). It recreates "skips are neutral, errors are not" under Phase 2:
+  - "10 read = 4 inserted + 0 duplicates + 4 skipped + 2 errors", with 4 rows of "Statement leg is preserved in the grouped transaction raw rows.";
+  - the skip colour differs from the error colour;
+  - re-import: "0 inserted + 4 duplicates + 4 skipped + 2 errors";
+  - the Imports list and drawer agree.
+
+The 3 selector fixes from last round are re-run and pass: `import.spec.ts` › Binance trade history zone label and › CoinDCX workbook, and `imports-list.spec.ts` › detail drawer (once the P2-API-7 change was applied).
+
+Observation, not filed: the skipped section is titled "Skipped — covered by another export", and the Imports list says "N skipped (overlap)", even for statement legs that are folded into their own rebuilt trade. Accurate wording would be "grouped into a transaction". The tests match the heading prefix only (`/^Skipped — /`).
+
+## Coverage added this round
+
+- **Rate-limit wait line:** the full Binance sync records every live-region text and requires "Waiting for Binance rate limit — resumes at \d{2}:\d{2}". The client's own UID-weight pacing triggers it, so `rate_limit_once` (a 1-second `Retry-After`) was not needed.
+- **Add missing transaction** (`phase2-venue`):
+  - A Binance sync with a hand-recorded 50 USDT withdrawal (Counts toward: Binance) dated before the API's history start. The scan starts one year back ("scanned from 2025-11-18 onward"), and synced rows cannot be deleted, so this is how the gap is made.
+  - USDT shows difference 50, "Flagged · Review" and "Add missing transaction" → `/transactions?add=buy&asset=USDT&venue=binance`. Matched assets get no link.
+  - Clicking it opens the drawer with Asset received = USDT, Counts toward = Binance and the venue hint.
+- **Counts toward** (`phase2-venue`):
+  - A missing buy of 50 USDT added as "Manual (no exchange)" leaves the Binance gap at 50.
+  - The same buy added as "Binance" closes it (0, Matched, link gone). The live balance table recomputes without a re-sync.
+- **Grouped chips:** see P2-E2E-7.
+- **Timezone conflict:** `binance-trade-history.csv` imported as IST shows "Used UTC from the file header instead of the selected IST." exactly once on the summary and in the Imports drawer.
+- **Statement + Trade History:** no empty or ambiguous rows for covered groups (P2-E2E-6 fixed). Statement alone: ambiguous groups are unclassified, not fees.
+- **a11y/responsive:** the add-manual drawer with Counts toward was checked at 375 and 1280, light and dark: every control labelled, the drawer fits, no horizontal page scroll, "Add transaction" reachable, WCAG AA text contrast. The 34 earlier responsive and contrast tests also pass.
+
+New screenshots (`tests/e2e/screenshots/phase2/`):
+
+- Venue: `venue-gap-add-missing-link`, `venue-add-missing-prefilled`, `venue-gap-closed`, `venue-drawer-{375,1280}-{light,dark}`.
+- Regression: `grouped-flag-chips`, `review-grouped-report-warning`, `import-timezone-conflict`, `statement-trade-history-transactions`, `statement-alone-unclassified`, `statement-fee-rows`.
+- Failure shots for P2-E2E-7, 8 and 9.
+
+---
+
 # Phase 2 — browser E2E, 2026-11-17
 
 Run: `PHASE2_ONLY=1 pnpm exec playwright test -c tests/e2e/phase2.config.ts --project phase2` (Chromium) against
@@ -200,7 +362,7 @@ Screenshots: `tests/e2e/screenshots/phase2/` (gitignored).
 
 ## Bugs (ranked)
 
-### P2-E2E-1. Medium — sync errors drop the vendor message
+### P2-E2E-1. Medium (FIXED 2026-11-18) — sync errors drop the vendor message
 
 - **Page:** Connections (connection card, sync error banner, "Last sync error"), Review (connections group).
 - **Steps:** add Binance with the mock keys → mock scenario `bad_signature` → Sync now (or switch to
@@ -216,7 +378,7 @@ Screenshots: `tests/e2e/screenshots/phase2/` (gitignored).
   and › "binance: live progress updates, reload mid-sync resumes, a failure keeps checkpointed streams"
   (`expect.soft(...).toMatch(/signature/i)`; everything else in both tests passes).
 
-### P2-E2E-2. Medium — a first Binance sync can take over an hour
+### P2-E2E-2. Medium (FIXED 2026-11-18) — a first Binance sync can take over an hour
 
 - **Page:** Connections (Binance card stays "Syncing…").
 - **Steps:** add Binance (mock keys, `normal`) → Sync now → watch `GET http://localhost:11602/__requests`.
@@ -235,7 +397,7 @@ Screenshots: `tests/e2e/screenshots/phase2/` (gitignored).
 - **Screenshot:** `phase2/sync-live-progress.png` (stream line; the full-sync test timed out before its own shot).
 - **Spec:** `phase2-sync.spec.ts` › "binance normal full sync…" — opt-in with `PHASE2_BINANCE_FULL=1`, timeout 100 min.
 
-### P2-E2E-3. Low — short vault passphrase never shows the inline error (setup and change)
+### P2-E2E-3. Low (FIXED 2026-11-18) — short vault passphrase never shows the inline error (setup and change)
 
 - **Page:** Connections › Secrets Vault.
 - **Steps:** type a 5-character passphrase into "Passphrase (min 12 characters)" and "Confirm passphrase" →
@@ -249,7 +411,7 @@ Screenshots: `tests/e2e/screenshots/phase2/` (gitignored).
 - **Specs:** `phase2-connections.spec.ts` › "vault rejects short passphrases inline",
   › "vault change-passphrase rejects a short new passphrase inline".
 
-### P2-E2E-4. Low — internal "catalogue §" references in user-facing flag messages
+### P2-E2E-4. Low (FIXED 2026-11-18) — internal "catalogue §" references in user-facing flag messages
 
 - **Page:** Transactions drawer (and Review) after importing a Binance Spot Order History.
 - **Steps:** import `binance-spot-order-history(UTC+5).csv` → Transactions → open the 1INCH buy.
@@ -260,7 +422,7 @@ Screenshots: `tests/e2e/screenshots/phase2/` (gitignored).
 - **Screenshot:** `phase2/order-history-fee-flag-drawer.png`.
 - **Spec:** `phase2-import.spec.ts` › "order-history flag messages shown to the user carry no internal catalogue references".
 
-### P2-E2E-5. Cosmetic — "Read-only key verified" printed twice
+### P2-E2E-5. Cosmetic (FIXED 2026-11-18) — "Read-only key verified" printed twice
 
 - **Page:** Add connection › Binance, after Save (and "Check key" on the card).
 - **Expected:** the title once, then any extra detail.
@@ -269,7 +431,7 @@ Screenshots: `tests/e2e/screenshots/phase2/` (gitignored).
 - **Screenshot:** `phase2/binance-key-check.png`.
 - **Spec:** none asserts it (the test selects `.first()`).
 
-### P2-E2E-6. Low — ambiguous statement legs show as empty "Fee" rows, even when Trade History covers them
+### P2-E2E-6. Low (FIXED 2026-11-18) — ambiguous statement legs show as empty "Fee" rows, even when Trade History covers them
 
 - **Page:** Transactions, Review (`unknown_type` group).
 - **Steps:** import `binance-trade-history.csv` (UTC) → import `binance-transaction-statement.csv` (UTC) →
@@ -287,7 +449,7 @@ Screenshots: `tests/e2e/screenshots/phase2/` (gitignored).
 
 ## Mock problems (not product bugs)
 
-### M1. `normal` Binance balances cannot reconcile: P2P buy is outside the API window
+### M1 (FIXED in 3506d72). `normal` Binance balances cannot reconcile: P2P buy is outside the API window
 
 - The fixture's only USDT source is the 2025-04-08 P2P buy of 5,000 USDT (mock README timeline). The mock pins its
   own clock at `2026-04-01`, but the app uses the real clock (2026-11-17). The client correctly caps P2P history at
@@ -314,7 +476,7 @@ Screenshots: `tests/e2e/screenshots/phase2/` (gitignored).
 | `imports-list.spec.ts` (after final run)                                            | drawer heading "Warnings (1)"                                                     | "Notices (1)"                                                          | renamed in the drawer                                                                                                                                                                                               |
 | `support/env.ts`                                                                    | fixed ports/projects                                                              | `E2E_PORT_BASE`, `E2E_PROJECT_PREFIX` (defaults unchanged)             | lets a second e2e stack run beside another agent's                                                                                                                                                                  |
 
-## Phase 1 specs that need a redesign (left failing on purpose)
+## Phase 1 specs that need a redesign (DONE 2026-11-18, see the regression round above)
 
 Phase 2 made the Binance Transaction History statement a ledger source (`packages/importers/README.md`: trades are
 rebuilt from one received leg, one spent leg and at most one fee per second; ambiguous groups become `unknown_type`

@@ -60,9 +60,11 @@ test("detail drawer shows sheets, row errors and raw rows", async ({
 		malformed.getByRole("heading", { name: "Row Errors (11)" }),
 	).toBeVisible();
 	await expect(malformed.locator("pre")).toHaveCount(11);
+	// d9b6170 (P2-API-7): invalid rows are reported once — as these row errors and one
+	// import_incomplete item in Review — not again as a parse_warning notice.
 	await expect(
-		malformed.getByRole("heading", { name: "Notices (1)" }),
-	).toBeVisible();
+		malformed.getByRole("heading", { name: /^Notices/ }),
+	).toHaveCount(0);
 	await malformed.getByRole("button", { name: "Close drawer" }).click();
 	await expect(malformed).toBeHidden();
 });

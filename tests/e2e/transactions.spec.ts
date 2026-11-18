@@ -1,7 +1,8 @@
 import path from "node:path";
 import type { Page } from "@playwright/test";
-import { FIXTURES, GENERATED } from "./support/env";
+import { GENERATED } from "./support/env";
 import { expect, settled, snap, test } from "./support/fixtures";
+import { statement } from "./support/statements";
 
 const rows = (page: Page) => page.getByRole("table").locator("tbody tr");
 
@@ -100,7 +101,7 @@ test.describe("flags, drawer and editing", () => {
 			"UTC",
 		);
 		await api.importFile(
-			path.join(FIXTURES, "binance-transaction-statement.csv"),
+			statement("statement-without-eth.csv"),
 			"binance",
 			"UTC",
 		);
@@ -113,12 +114,22 @@ test.describe("flags, drawer and editing", () => {
 		await page.getByLabel("Flagged for review only").click();
 		await expect(page).toHaveURL(/flagged=true/);
 		await expect(page.getByLabel("Flagged for review only")).toBeChecked();
-		await expect(page.getByText("Showing 1–2 of 2")).toBeVisible();
-		const swap = rows(page).filter({ hasText: "Swap" });
+		// The ETH sell, the statement's rebuilt BNB buy (fee paid in BNB) and the airdrop. The
+		// statement's USDT deposit and interest are not flagged and must not be listed.
+		await expect(page.getByText("Showing 1–3 of 3")).toBeVisible();
+		await expect(rows(page).filter({ hasText: "Deposit" })).toHaveCount(0);
+		const swap = rows(page)
+			.filter({ hasText: "Swap" })
+			.filter({ hasText: "ETH" });
 		await expect(swap.getByText("tds_not_deducted")).toBeVisible();
 		// The crypto-fee note moved from parse_warning to its own code (70566bc).
 		await expect(swap.getByText("fee_review_required")).toBeVisible();
 		await expect(swap.getByText("parse_warning")).toHaveCount(0);
+		const bnb = rows(page)
+			.filter({ hasText: "Swap" })
+			.filter({ hasText: "BNB" });
+		await expect(bnb.getByText("fee_review_required")).toBeVisible();
+		await expect(bnb.getByText("tds_not_deducted")).toHaveCount(0);
 		await expect(
 			rows(page).filter({ hasText: "Income" }).getByText("missing_inr_value"),
 		).toBeVisible();

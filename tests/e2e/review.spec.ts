@@ -1,12 +1,15 @@
 import path from "node:path";
-import { FIXTURES, GENERATED } from "./support/env";
+import { GENERATED } from "./support/env";
 import { expect, settled, snap, test } from "./support/fixtures";
+import { statement } from "./support/statements";
 
 const group = (page: import("@playwright/test").Page, title: string) =>
 	page.locator("section").filter({
 		has: page.getByRole("heading", { level: 2, name: title, exact: true }),
 	});
 
+// The statement is a ledger source since Phase 2, so it must not cover the ETH sold here: it
+// holds no ETH (and no BTC) and keeps the income row without an INR value.
 test.beforeEach(async ({ api }) => {
 	await api.reset();
 	await api.importFile(
@@ -15,7 +18,7 @@ test.beforeEach(async ({ api }) => {
 		"UTC",
 	);
 	await api.importFile(
-		path.join(FIXTURES, "binance-transaction-statement.csv"),
+		statement("statement-without-eth.csv"),
 		"binance",
 		"UTC",
 	);

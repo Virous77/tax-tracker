@@ -16,6 +16,17 @@ import {
 test.beforeEach(async ({ api }) => reset(api));
 test.setTimeout(300000);
 
+const FRIENDLY_LIVE =
+	/Syncing Binance [^…]+…|Waiting for Binance rate limit — resumes at \d{2}:\d{2}/;
+const VENDOR_ERROR = "Binance -1022: Signature for this request is not valid.";
+
+function taxYearOf(ms: number) {
+	const ist = new Date(ms + 330 * 60_000);
+	const start =
+		ist.getUTCMonth() >= 3 ? ist.getUTCFullYear() : ist.getUTCFullYear() - 1;
+	return `${start}-${String(start + 1).slice(2)}`;
+}
+
 async function watchLive(page: Page) {
 	const live: string[] = [];
 	await page.exposeFunction("recordSyncLive", (text: string) =>
@@ -60,19 +71,18 @@ test("binance: live progress updates, reload mid-sync resumes, a failure keeps c
 	const jobId = await startSync(page, article);
 	const region = article.locator("[aria-live]");
 	await expect(region).toHaveAttribute("aria-live", "polite");
-	await expect(region).toContainText(/Syncing stream\s*binance:/, {
-		timeout: 60000,
-	});
+	await expect(region).toContainText(FRIENDLY_LIVE, { timeout: 60000 });
 	await shot(page, "sync-live-progress");
 	// Counts and stream names change while the job runs (polled every second).
 	await expect
-		.poll(
-			() => new Set(live.filter((t) => t.includes("Syncing stream"))).size,
-			{
-				timeout: 120000,
-			},
-		)
+		.poll(() => new Set(live.filter((t) => FRIENDLY_LIVE.test(t))).size, {
+			timeout: 120000,
+		})
 		.toBeGreaterThan(1);
+	expect(
+		live.filter((t) => /Syncing stream|binance:/.test(t)),
+		"the live region names streams in plain words, never by internal id",
+	).toEqual([]);
 	expect(
 		(await api.json<{ status: string }>("GET", `/api/jobs/${jobId}`)).status,
 	).toMatch(/pending|running/);
@@ -80,17 +90,18 @@ test("binance: live progress updates, reload mid-sync resumes, a failure keeps c
 	await expect(
 		article.getByRole("button", { name: "Syncing…", exact: true }),
 	).toBeDisabled();
-	await expect(article.locator("[aria-live]")).toContainText(
-		/Syncing stream\s*binance:/,
-		{ timeout: 30000 },
-	);
+	await expect(article.locator("[aria-live]")).toContainText(FRIENDLY_LIVE, {
+		timeout: 30000,
+	});
 	await shot(page, "sync-reload-mid-sync");
 	await scenario("bad_signature");
 	await expect(article.getByText("Failed", { exact: true })).toBeVisible({
 		timeout: 120000,
 	});
 	// SPEC §9: upstream_auth carries the vendor message (Binance -1022 "Signature … not valid").
-	expect.soft(await article.textContent()).toMatch(/signature/i);
+	await expect(article).toContainText(
+		"Binance -1022: Signature for this request is not valid.",
+	);
 	const job = await api.json<{
 		status: string;
 		result?: { streams: Array<{ stream: string }> } | null;
@@ -100,23 +111,38 @@ test("binance: live progress updates, reload mid-sync resumes, a failure keeps c
 	await shot(page, "sync-binance-interrupted-failed");
 });
 
-test("binance normal full sync: streams with P2P window notice, balance table, summary after reload", async ({
+test("binance normal full sync: rate-limit wait line, streams, zero differences, summary after reload", async ({
 	page,
 	api,
-}) => {
-	// fiat/orders is paced at one call a minute back to 2017 (BUGS.md P2-E2E-2): opt in.
-	test.skip(
-		process.env.PHASE2_BINANCE_FULL !== "1",
-		"set PHASE2_BINANCE_FULL=1; a first Binance sync can take over an hour",
-	);
-	test.setTimeout(6_000_000);
+}, info) => {
+	// P2-E2E-2: was 80+ minutes; since d9b6170 history scans start at observed activity.
+	test.setTimeout(900_000);
 	const c = await connection(api);
 	await page.goto("/connections");
 	const article = card(page, c.label);
+	const live = await watchLive(page);
+	const started = Date.now();
 	await startSync(page, article);
 	await expect(
 		article.getByRole("heading", { name: "Sync Streams" }),
-	).toBeVisible({ timeout: 5_900_000 });
+	).toBeVisible({ timeout: 840_000 });
+	const seconds = Math.round((Date.now() - started) / 1000);
+	info.annotations.push({
+		type: "full-binance-sync-seconds",
+		description: String(seconds),
+	});
+	console.log(`full Binance sync: ${seconds} s`);
+	expect(seconds, "a first sync of a small account takes minutes").toBeLessThan(
+		600,
+	);
+	// The client paces the UID-weighted endpoints and says so instead of looking stuck.
+	expect(
+		live.some((t) =>
+			/Waiting for Binance rate limit — resumes at \d{2}:\d{2}/.test(t),
+		),
+		"live region shows the rate-limit pause with a resume time",
+	).toBe(true);
+	expect(live.some((t) => /Syncing Binance [^…]+…/.test(t))).toBe(true);
 	const streams = article.getByRole("table").first().locator("tbody tr");
 	await expect(
 		streams.filter({ hasText: "binance:myTrades:ETHUSDT" }),
@@ -124,23 +150,25 @@ test("binance normal full sync: streams with P2P window notice, balance table, s
 	await expect(streams.filter({ hasText: "binance:p2p:BUY" })).toContainText(
 		"P2P API only returns the past six months; import older orders from a file",
 	);
-	const balances = article.getByRole("table").last();
-	for (const asset of ["BNB", "ETH", "USDC"])
+	// M1 fixed (3506d72): the P2P buy is ~150 days old, inside the six-month window.
+	const balanceRows = article.getByRole("table").last().locator("tbody tr");
+	for (const asset of ["BNB", "ETH", "USDC", "USDT"])
 		await expect(
-			balances.getByRole("row").filter({
+			balanceRows.filter({
 				has: page.getByRole("cell", { name: asset, exact: true }),
 			}),
 		).toContainText("Matched");
-	// Mock clock: the fixture's 2025-04-08 P2P buy of 5,000 USDT is older than six months
-	// before the app's real clock, so the API cannot return it (tests/e2e/BUGS.md, mock M1).
-	const usdt = balances.getByRole("row").filter({
-		has: page.getByRole("cell", { name: "USDT", exact: true }),
-	});
-	await expect(usdt.getByRole("cell").nth(3)).toHaveText("5000");
-	await expect(usdt.getByRole("link", { name: /Review/ })).toHaveAttribute(
-		"href",
-		"/review",
-	);
+	const differences = await balanceRows
+		.locator("td:nth-child(4)")
+		.allTextContents();
+	expect(differences.length).toBeGreaterThanOrEqual(4);
+	expect(
+		differences.filter((d) => !/^[-+]?0(?:\.0+)?$/.test(d.trim())),
+		"normal fixture balances must reconcile",
+	).toEqual([]);
+	await expect(
+		article.getByRole("link", { name: "Add missing transaction" }),
+	).toHaveCount(0);
 	await shot(page, "sync-binance-complete");
 	await page.reload();
 	// The last completed job's summary re-opens by itself after a reload.
@@ -258,8 +286,10 @@ for (const [chainId, name, host, address] of CHAINS)
 			await expect(
 				page.getByText("suspected_spam", { exact: true }),
 			).toBeVisible();
-			await api.compute("2025-26");
-			await page.goto("/report?taxYear=2025-26");
+			// The spam transfer is 40 days before the mock's start (tools/mock-sync README).
+			const year = taxYearOf(Date.now() - 40 * 86_400_000);
+			await api.compute(year);
+			await page.goto(`/report?taxYear=${year}`);
 			await expect(page.locator("#excluded")).toContainText(/Suspected spam/i);
 			await shot(page, "report-spam-excluded");
 		}
@@ -303,19 +333,19 @@ test("bad_signature persists failed status and error on the connection and Revie
 		card(page, c.label).getByText("Failed", { exact: true }),
 	).toBeVisible({ timeout: 90000 });
 	await expect(card(page, c.label)).toContainText("Last sync error:");
-	expect.soft(await card(page, c.label).textContent()).toMatch(/signature/i);
+	await expect(card(page, c.label)).toContainText(VENDOR_ERROR);
 	await shot(page, "sync-bad-signature");
 	await page.reload();
-	expect
-		.soft(await card(page, c.label).textContent())
-		.toMatch(/Last sync error:.*signature/i);
+	await expect(card(page, c.label)).toContainText(
+		new RegExp(`Last sync error:.*${VENDOR_ERROR.replaceAll(".", "\\.")}`),
+	);
 	await page.goto("/review");
 	await expect(
 		page.getByText("Failed or incomplete connection syncs"),
 	).toBeVisible();
 	const issue = page.getByRole("row").filter({ hasText: c.label });
 	await expect(issue).toContainText("failed");
-	expect.soft(await issue.textContent()).toMatch(/signature/i);
+	await expect(issue).toContainText(VENDOR_ERROR);
 	await expect(
 		issue.getByRole("link", { name: /Fix in Connections/ }),
 	).toHaveAttribute("href", "/connections");

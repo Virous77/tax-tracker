@@ -276,6 +276,11 @@ for (const kind of ["binance", "coindcx"])
 			await expect(d).toContainText(
 				"CoinDCX keys cannot be restricted or verified as read-only; use IP binding.",
 			);
+		// P2-E2E-5: the title and an identical server message were both printed.
+		if (kind === "binance")
+			await expect(
+				d.getByText("Read-only key verified", { exact: true }),
+			).toHaveCount(1);
 		await noSecrets(page);
 		await shot(page, `${kind}-key-check`);
 		await d.getByRole("button", { name: "Done" }).click();

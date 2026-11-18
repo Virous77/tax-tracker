@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { allTx } from "./lib";
+import { addManual, allTx } from "./lib";
 import {
 	addBinance,
 	api,
@@ -10,6 +10,7 @@ import {
 	db,
 	expectNoSecrets,
 	fail,
+	mockDay,
 	ok,
 	readyVault,
 	requests,
@@ -103,11 +104,47 @@ describe("Binance sync", () => {
 	describe("full sync (normal)", () => {
 		let job: Awaited<ReturnType<typeof sync>>;
 		let summary: api.SyncSummary;
+		let elapsedMs = 0;
+		const waits: { seenAt: number; until: string }[] = [];
 		beforeAll(async () => {
 			await clearRequests();
-			job = await sync(id);
+			const started = Date.now();
+			const jobId = await startSync(id);
+			for (;;) {
+				const current = ok(
+					await call("GET", `/api/jobs/${jobId}`),
+					200,
+					api.JobSchema,
+				);
+				if (current.progress?.waitingUntil)
+					waits.push({
+						seenAt: Date.now(),
+						until: current.progress.waitingUntil,
+					});
+				if (current.status === "completed" || current.status === "failed") {
+					job = current;
+					break;
+				}
+				await new Promise((r) => setTimeout(r, 300));
+			}
+			elapsedMs = Date.now() - started;
 			summary = api.SyncSummarySchema.parse(job.result);
 		}, SYNC_TIMEOUT);
+
+		it("a first full sync of the fixture account finishes in under 6 minutes (P2-API-1)", () => {
+			expect(elapsedMs).toBeLessThan(360_000);
+		});
+		it("while paced for the SAPI weight limit the job exposes progress.waitingUntil, about a minute ahead", () => {
+			expect(waits.length).toBeGreaterThan(0);
+			for (const w of waits) {
+				const ahead = Date.parse(w.until) - w.seenAt;
+				expect(ahead, w.until).toBeGreaterThan(-5_000);
+				expect(ahead, w.until).toBeLessThanOrEqual(65_000);
+			}
+		});
+		it("waitingUntil is cleared once the job ends", () => {
+			expect(job.progress?.waitingUntil ?? null).toBeNull();
+		});
 
 		it("completes; the job records progress and the summary", () => {
 			expect(job).toMatchObject({
@@ -213,6 +250,63 @@ describe("Binance sync", () => {
 		});
 	});
 
+	describe("manual rows assigned to the binance venue", () => {
+		const usdt = async () =>
+			(await balances(id)).rows.find((r) => r.asset === "USDT");
+		const added: string[] = [];
+		const add = async (tx: Record<string, unknown>) => {
+			const row = await addManual(tx);
+			added.push(row.id);
+			return row;
+		};
+		it("a manual row keeps source manual and reports its venue", async () => {
+			const row = await add({
+				timestamp: await mockDay(1, "10:00:00"),
+				type: "withdrawal",
+				venue: "binance",
+				assetOut: "USDT",
+				amountOut: "7",
+			});
+			expect(row).toMatchObject({ source: "manual", venue: "binance" });
+			const listed = (await allTx()).find((t) => t.id === row.id);
+			expect(listed).toMatchObject({ source: "manual", venue: "binance" });
+		});
+		it("it counts toward the Binance balance check: a 7 USDT withdrawal opens a 7 gap", async () => {
+			expect(await usdt()).toMatchObject({
+				fetched: "1977.433845",
+				difference: "7",
+				flagged: true,
+			});
+		});
+		it("a venue-manual row does not touch the Binance check", async () => {
+			const row = await add({
+				timestamp: await mockDay(1, "11:00:00"),
+				type: "deposit",
+				assetIn: "USDT",
+				amountIn: "7",
+			});
+			expect(row.venue).toBe("manual");
+			expect(await usdt()).toMatchObject({ difference: "7", flagged: true });
+		});
+		it("a binance-venue deposit closes the gap", async () => {
+			await add({
+				timestamp: await mockDay(1, "12:00:00"),
+				type: "deposit",
+				venue: "binance",
+				assetIn: "USDT",
+				amountIn: "7",
+			});
+			expect(await usdt()).toMatchObject({ difference: "0", flagged: false });
+		});
+		it("deleting the manual rows restores the synced state", async () => {
+			for (const txId of added)
+				expect((await call("DELETE", `/api/transactions/${txId}`)).status).toBe(
+					204,
+				);
+			expect(await usdt()).toMatchObject({ difference: "0", flagged: false });
+		});
+	});
+
 	describe("re-sync is idempotent and resumes from cursors", () => {
 		let summary: api.SyncSummary;
 		beforeAll(async () => {
@@ -297,6 +391,11 @@ describe("Binance sync", () => {
 				await scenario("normal");
 				expect(job.status).toBe("failed");
 				expect(job.error).toMatch(/Binance -1022:.*signature/i);
+				expect(job.error).not.toMatch(
+					/signature=|timestamp=|recvWindow=|\?\w+=|https?:\/\/|mock-binance/i,
+				);
+				const c = (await connections()).find((x) => x.id === id);
+				expect(c?.lastSyncError).toBe(job.error);
 				expectNoSecrets(JSON.stringify(job), "job");
 			},
 			SYNC_TIMEOUT,

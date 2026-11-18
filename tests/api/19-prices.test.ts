@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { taxYearOf } from "../../packages/core/dist/time.js";
 import { addManual, allTx, compute } from "./lib";
 import {
 	addEvm,
@@ -8,6 +9,10 @@ import {
 	clearRequests,
 	fail,
 	HASH,
+	istDay,
+	MOCK_SYNC,
+	mockDay,
+	mockTxTime,
 	ok,
 	requests,
 	syncOk,
@@ -16,10 +21,17 @@ import {
 	wipeP2,
 } from "./p2";
 
-const YEAR = "2025-26";
-const status = async () =>
+// Fixture dates follow the mock's clock: the year under test is the one holding the mainnet ETH
+// swap, and OLD_YEAR holds a date more than 365 days back (beyond CoinGecko's demo window). 500
+// days keeps the two in different tax years.
+let YEAR = "";
+let OLD_YEAR = "";
+let swapDay = "";
+let oldDay = "";
+const ddmmyyyy = (day: string) => day.split("-").reverse().join("-");
+const status = async (year = YEAR) =>
 	ok(
-		await call("GET", `/api/prices/status?taxYear=${YEAR}`),
+		await call("GET", `/api/prices/status?taxYear=${year}`),
 		200,
 		api.PricesStatusSchema,
 	);
@@ -29,9 +41,9 @@ const setPrices = async (patch: Record<string, unknown>) =>
 		200,
 		api.PutSettingsResponseSchema,
 	);
-async function fill() {
+async function fill(year = YEAR) {
 	const { jobId } = ok(
-		await call("POST", "/api/prices/fill", { json: { taxYear: YEAR } }),
+		await call("POST", "/api/prices/fill", { json: { taxYear: year } }),
 		202,
 		api.JobStartedSchema,
 	);
@@ -49,15 +61,24 @@ const priceHosts = (log: Awaited<ReturnType<typeof requests>>) =>
 let base8453 = "";
 let ethSwapId = "";
 let xrpRecentId = "";
+let usdcSwapId = "";
+const enabledLog: Awaited<ReturnType<typeof requests>> = [];
 
 describe("prices", () => {
 	beforeAll(async () => {
 		await wipeP2();
+		const swapTime = await mockTxTime(HASH.swap);
+		YEAR = taxYearOf(swapTime);
+		swapDay = istDay(swapTime);
+		const oldTime = await mockDay(500);
+		OLD_YEAR = taxYearOf(oldTime);
+		oldDay = istDay(oldTime);
+		expect(OLD_YEAR).not.toBe(YEAR);
 		await allProviders();
 		await syncOk((await addEvm(WALLET_A, 1)).id);
 		base8453 = (await addEvm(WALLET_A, 8453)).id;
 		await addManual({
-			timestamp: "2025-05-01T06:00:00.000Z",
+			timestamp: oldTime,
 			type: "swap",
 			source: "binance",
 			assetOut: "XRP",
@@ -67,13 +88,25 @@ describe("prices", () => {
 		});
 		xrpRecentId = (
 			await addManual({
-				timestamp: "2026-02-10T06:00:00.000Z",
+				timestamp: `${swapDay}T06:00:00.000Z`,
 				type: "swap",
 				source: "binance",
 				assetOut: "XRP",
 				amountOut: "20",
 				assetIn: "ETH",
 				amountIn: "0.01",
+			})
+		).id;
+		// USDC has no USDCUSDT kline pair on the mock, so only CoinGecko (usd-coin) can price it.
+		usdcSwapId = (
+			await addManual({
+				timestamp: `${swapDay}T07:00:00.000Z`,
+				type: "swap",
+				source: "binance",
+				assetOut: "USDC",
+				amountOut: "50",
+				assetIn: "ETH",
+				amountIn: "0.02",
 			})
 		).id;
 		ethSwapId =
@@ -87,13 +120,18 @@ describe("prices", () => {
 			const s = await status();
 			expect(s.enabled).toBe(false);
 			// The price cache is global and outlives a ledger wipe, so earlier files may have filled some dates.
-			expect(s.needed).toBe(3);
+			// Prices before the year still count: earlier lots need a cost (the old XRP date).
+			expect(s.needed).toBe(4);
 			expect(s.missing).toEqual(
 				expect.arrayContaining([
-					{ asset: "XRP", date: "2025-05-01" },
-					{ asset: "XRP", date: "2026-02-10" },
+					{ asset: "XRP", date: swapDay },
+					{ asset: "XRP", date: oldDay },
 				]),
 			);
+			expect((await status(OLD_YEAR)).missing).toContainEqual({
+				asset: "XRP",
+				date: oldDay,
+			});
 			expect(s.cached + s.missing.length).toBe(s.needed);
 			expect(s.sources).toEqual({
 				binanceKlines: true,
@@ -152,9 +190,11 @@ describe("prices", () => {
 
 		it("fill → completed job with requested/fetched/fromCache/missing", async () => {
 			await new Promise((r) => setTimeout(r, 3000));
+			enabledLog.push(...(await requests()));
 			await clearRequests();
 			const s = await fill();
-			expect(s.missing).toContainEqual({ asset: "XRP", date: "2025-05-01" });
+			enabledLog.push(...(await requests()));
+			expect(s.missing).toContainEqual({ asset: "XRP", date: swapDay });
 			expect(s.missing.some((m) => m.asset === "ETH")).toBe(false);
 			expect(s.requested).toBe((await status()).needed);
 		});
@@ -173,17 +213,45 @@ describe("prices", () => {
 				cg.some(
 					(r) =>
 						r.path.includes("/coins/ripple/history") &&
-						r.params.date === "10-02-2026",
+						r.params.date === ddmmyyyy(swapDay),
 				),
 			).toBe(true);
 			for (const r of cg) expect(r.params.x_cg_demo_api_key).toBeUndefined();
 		});
+		it("CoinGecko numeric INR is cached: the USDC swap is valued at the mock's 1 USD × 88", async () => {
+			// The automatic fill after the sync or the explicit fill asks for it (on a fresh price cache).
+			expect(
+				enabledLog.some(
+					(r) =>
+						r.path === "/coingecko/api/v3/coins/usd-coin/history" &&
+						r.params.date === ddmmyyyy(swapDay),
+				),
+			).toBe(true);
+			expect((await status()).missing).not.toContainEqual({
+				asset: "USDC",
+				date: swapDay,
+			});
+			const report = await compute(YEAR);
+			const usdc = report.valuations.find((v) => v.txId === usdcSwapId);
+			expect(usdc).toMatchObject({ inrRateSource: "market_price_cache" });
+			expect(usdc?.marketPrice).toMatchObject({
+				source: "coingecko",
+				sourceId: "usd-coin",
+				quote: "INR",
+				date: swapDay,
+				price: "88",
+			});
+			expect(usdc?.valueInr).toBe("4400.00");
+		});
 		it("CoinGecko is not asked for a date older than 365 days; it stays missing", async () => {
+			await clearRequests();
+			const s = await fill(OLD_YEAR);
+			expect(s.missing).toContainEqual({ asset: "XRP", date: oldDay });
 			const cg = (await requests()).filter((r) => r.path.includes("/history"));
-			expect(cg.some((r) => r.params.date === "01-05-2025")).toBe(false);
-			expect((await status()).missing).toContainEqual({
+			expect(cg.some((r) => r.params.date === ddmmyyyy(oldDay))).toBe(false);
+			expect((await status(OLD_YEAR)).missing).toContainEqual({
 				asset: "XRP",
-				date: "2025-05-01",
+				date: oldDay,
 			});
 		});
 		it("status counts the cache", async () => {
@@ -200,11 +268,11 @@ describe("prices", () => {
 			expect(eth).toMatchObject({ inrRateSource: "market_price_cache" });
 			expect(eth?.marketPrice).toMatchObject({
 				sourceId: "ETHUSDT",
-				date: "2025-06-10",
+				date: swapDay,
 				quote: expect.stringMatching(/USD/),
 			});
 			expect(eth?.marketPrice?.source).toMatch(/binance/i);
-			// The CoinGecko cache path cannot be shown: the mock's /history has no INR price (mock issue M2).
+			// The mock knows `ripple` but serves it no price series, so XRP stays unpriced.
 			expect(
 				report.valuations.find((v) => v.txId === xrpRecentId)?.inrRateSource,
 			).not.toBe("market_price_cache");
@@ -252,19 +320,44 @@ describe("prices", () => {
 			);
 			expect(err?.details).toMatchObject({ cause: "settings_changed" });
 		});
-		it("vwap is a separate cache entry: the kline dates are missing again and fill requests them", async () => {
-			const before = await status();
-			expect(before.missing.some((m) => m.asset === "ETH")).toBe(true);
+		it("vwap needs no new fetch: the close fill already cached the VWAP from the same klines", async () => {
+			expect((await status()).missing.some((m) => m.asset === "ETH")).toBe(
+				false,
+			);
 			await clearRequests();
-			await fill();
+			const s = await fill();
+			expect(s.fetched).toBe(0);
 			expect(
 				(await requests()).some(
 					(r) =>
 						r.path === "/binance-data/api/v3/klines" &&
 						r.params.symbol === "ETHUSDT",
 				),
-			).toBe(true);
-			// Whether a VWAP row is then cached cannot be shown: mock klines have zero base volume (mock issue M3).
+			).toBe(false);
+		});
+		it("the VWAP row is cached and used: quote volume / base volume of the IST day's kline", async () => {
+			const start = Date.parse(`${swapDay}T00:00:00+05:30`);
+			const [kline] = (await (
+				await fetch(
+					`${MOCK_SYNC}/binance-data/api/v3/klines?symbol=ETHUSDT&interval=1d&timeZone=5:30&startTime=${start}&limit=1`,
+				)
+			).json()) as string[][];
+			expect(Number(kline?.[0])).toBe(start);
+			const vwap = Number(kline?.[7]) / Number(kline?.[5]);
+			expect(vwap).toBeGreaterThan(0);
+			const report = await compute(YEAR);
+			const eth = report.valuations.find((v) => v.txId === ethSwapId);
+			expect(eth).toMatchObject({ inrRateSource: "market_price_cache" });
+			expect(eth?.marketPrice).toMatchObject({
+				sourceId: "ETHUSDT",
+				date: swapDay,
+				kind: "vwap",
+			});
+			expect(Number(eth?.marketPrice?.price)).toBeCloseTo(vwap, 6);
+			expect(Number(eth?.marketPrice?.price)).not.toBeCloseTo(
+				Number(kline?.[4]),
+				2,
+			);
 		});
 		it("saving the same basis again does not invalidate", async () => {
 			await compute(YEAR);

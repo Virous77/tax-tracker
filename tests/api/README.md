@@ -22,10 +22,11 @@ Environment: `BASE_URL` (default `http://localhost:3101`), `APP_PORT`, `COMPOSE_
 
 Known app defects are kept as failing tests and listed in `BUGS.md`.
 
-## Phase 2 (`14-*` … `23-*`)
+## Phase 2 (`14-*` … `24-*`)
 
-Sync tests need `tools/mock-sync/server.mjs` and `weight-proxy.mjs` (Binance only; see `BUGS.md`
-P2-API-1), and the env in `phase2.env` (compose project `taxapi2`, port 3111, all `*_API_BASE`
-overrides). Load it with `set -a && . tests/api/phase2.env && set +a` before `docker compose up` and
-`pnpm test:api`. `API_BASE_URL` replaces `BASE_URL`, which Vite overwrites. The full suite takes about
-35 minutes, mostly Binance syncs walking history from 2017.
+Sync tests need `tools/mock-sync/server.mjs` and the env in `phase2.env` (compose project `taxapi3`, port
+3111, all `*_API_BASE` overrides pointing at the mock on 11601). Load it with
+`set -a && . tests/api/phase2.env && set +a` before `docker compose up` and `pnpm test:api`. `API_BASE_URL`
+replaces `BASE_URL`, which Vite overwrites. Fixture dates are offsets from the mock's data clock
+(`GET /__control`), so tests derive expected dates from the mock (`mockNow`, `mockDay`, `mockTxTime` in
+`p2.ts`) and never pin it. Run on a fresh data dir: the price cache is global and outlives a ledger wipe.

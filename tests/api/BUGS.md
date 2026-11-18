@@ -114,6 +114,137 @@ Still noted, not changed: ledger edits invalidate every year (safe but broad); u
 
 # Phase 2
 
+## Regression round — 2026-11-18
+
+Run on 2026-11-18 against image `tax-tracker-app:local` from `main` at `50c248b`, compose project `taxapi3` on
+port 3111 (`tests/api/phase2.env`), mock-sync on 11601 (data clock = the real day), mock LLM on 11511, fresh
+data dir. **No weight proxy** (`weight-proxy.mjs` is deleted): Binance talks straight to the mock, which now
+sends `X-SAPI-USED-*` headers.
+
+```sh
+node tools/mock-sync/server.mjs                         # MOCK_SYNC_PORT=11601
+node tools/mock-llm/server.mjs --port 11511
+set -a && . tests/api/phase2.env && set +a
+DATA_HOST_DIR=$(mktemp -d /private/tmp/taxapi3-XXXX) docker compose -p taxapi3 up -d --no-build
+pnpm test:api
+```
+
+**Result: 766 tests, 763 pass, 3 fail** (25 files, 35 minutes). The 3 failures are the new bug P2-API-8.
+Phase 1 files (01–13): 401/401. Phase 2 files (14–24): 365 tests, 362 pass.
+
+| File                       | Tests   | Pass    | Fail  |
+| -------------------------- | ------- | ------- | ----- |
+| `01-health-settings`       | 34      | 34      | 0     |
+| `02-imports`               | 36      | 36      | 0     |
+| `03-edge-data`             | 14      | 14      | 0     |
+| `04-recipes`               | 24      | 24      | 0     |
+| `05-transactions`          | 54      | 54      | 0     |
+| `06-review`                | 11      | 11      | 0     |
+| `07-reports`               | 29      | 29      | 0     |
+| `08-exports`               | 19      | 19      | 0     |
+| `09-auth`                  | 56      | 56      | 0     |
+| `10-security`              | 32      | 32      | 0     |
+| `11-research`              | 8       | 8       | 0     |
+| `12-server-round2`         | 13      | 13      | 0     |
+| `13-round3`                | 11      | 11      | 0     |
+| `14-vault`                 | 41      | 41      | 0     |
+| `15-providers-connections` | 74      | 74      | 0     |
+| `16-sync-binance`          | 51      | 51      | 0     |
+| `17-sync-coindcx`          | 13      | 13      | 0     |
+| `18-sync-evm`              | 45      | 45      | 0     |
+| `18b-gate`                 | 32      | 32      | 0     |
+| `19-prices`                | 22      | 22      | 0     |
+| `20-import-kinds`          | 54      | 54      | 0     |
+| `21-pdf-snapshots`         | 27      | 27      | 0     |
+| `22-dedupe-supersede`      | 16      | 16      | 0     |
+| `23-phase2-security`       | 37      | 37      | 0     |
+| `24-regression-round`      | 13      | 10      | 3     |
+| **Total**                  | **766** | **763** | **3** |
+
+**Gate (`18b-gate`):** every asset on Binance, CoinDCX and all ten EVM connections (A/B × chains 1, 8453,
+42161, 137, 56) has `difference: "0"`, `flagged: false`. Binance USDT now reconciles (the P2P buy is
+~150 days old, inside the C2C window). `18-sync-evm › drift` still gives USDC `difference: "0.5"`,
+`flagged: true` and a `balance_mismatch`.
+
+**First Binance sync timing (P2-API-1):** measured by hand on a new connection with no proxy: **237 s**
+(previously 80+ minutes; ~170 s even with the proxy). The job paused three times, each exposed as
+`progress.waitingUntil` about a minute ahead (`fiat/orders` costs 45,000 UID weight per call). Histories
+are now scanned from one year back (`binance:history-start` is marked incomplete with "Import earlier
+exports to cover any older activity"). `16-sync-binance › a first full sync … under 6 minutes` asserts it.
+
+### Fixed (verified this round)
+
+| Bug                                    | Evidence (passing test)                                                                                                                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P2-API-1 first Binance sync 80+ min    | 237 s without the proxy; `16 › full sync (normal) › first full sync … under 6 minutes`, `… exposes progress.waitingUntil …`, `… waitingUntil is cleared once the job ends`                                         |
+| P2-API-2 interrupted import pending    | `16 › interrupted by a restart … › the interrupted sync's import is marked failed (not left pending)`                                                                                                              |
+| P2-API-3 EVM incomplete history fails  | `18 › provider choice … › Arbitrum through Alchemy alone is marked incomplete …` (job completes, `balanceCheck: []`, "balance check skipped" notice)                                                               |
+| P2-API-4 no way to close a venue gap   | `16 › manual rows assigned to the binance venue` (a 7 USDT `venue: binance` withdrawal opens a 7 gap, a venue-manual row does not touch it, a `venue: binance` deposit closes it); `24 › manual transaction venue` |
+| P2-API-5 same PDF twice                | `21 › account statement snapshot › re-importing the same PDF is a duplicate, not a second snapshot`                                                                                                                |
+| P2-API-6 no timezone-conflict warning  | `02 › a UTC-headed file imported as IST … warns about the conflicting selection` and `03 › year-boundary.csv as IST …` (the warning names both UTC and IST)                                                        |
+| P2-API-7 invalid row reported twice    | `12 › CA verification and incomplete imports have distinct codes …` (lead decision: once, as `import_incomplete`)                                                                                                  |
+| P2-E2E-1 vendor error dropped (API)    | `16 › bad_signature …`: `Binance -1022: …signature…`, no `signature=`/`timestamp=`/query string/URL/key, and `lastSyncError` equals the job error; `23 › failed sync errors carry the vendor meaning …`            |
+| P2-E2E-4 "catalogue §" in messages     | `24 › no 'catalogue' or '§' reaches any API message` (every report-kinds fixture, statement, broken file, CoinDCX and Arbitrum syncs, reports, Review, imports, jobs, ledger; `raw` rows skipped)                  |
+| P2-E2E-6 empty Fee rows (trade groups) | same-second trade legs covered by Trade History are linked; `24 › fills covered by Trade History are not duplicated …` (only the statement-only dust swap remains). Unknown operations are not fixed: P2-API-8     |
+| M1–M5 (mock)                           | P2P reconciles (gate); CoinGecko INR cached (`19 › CoinGecko numeric INR is cached …`, ₹88 × 50 USDC = 4400.00); VWAP cached (`19 › the VWAP row is cached and used …`); weight headers; 20,000-entry log          |
+
+### Tests changed this round
+
+- `p2.ts`: `wipeP2` no longer pins the mock clock to 2026-04-01. New helpers `mockNow`, `mockDay` and
+  `mockTxTime` (reads the mock's Etherscan) derive every expected date from the mock.
+- `19-prices`: the tax year is the year of the mainnet ETH swap per the mock; the old XRP date is 500 days
+  back (outside CoinGecko's 365 days, in another tax year). `needed` is 4 because earlier-year acquisitions
+  count. Close fills now also cache VWAP (the klines have volume), so switching to `vwap` fetches nothing:
+  the old "vwap is a separate cache entry … fill requests them" became "vwap needs no new fetch …", and a
+  new test checks the VWAP value against the mock's kline (quote volume / base volume).
+- `03-edge-data › malformed.csv`: `parse_warning` count 1 → 0, following the lead's P2-API-7 decision.
+  Rows are still 11 row errors with raw rows.
+- `16-sync-binance`: timing, `waitingUntil`, manual venue and vendor-message tests added.
+- `23-phase2-security`: the request-detail regex also rejects a query string (`?x=`).
+- New `24-regression-round.test.ts`. `README.md` and `phase2.env` updated (project `taxapi3`, no proxy).
+
+### P2-API-8. Medium — unknown statement operations are still amount-free `fee` rows
+
+- **Endpoint:** `POST /api/imports` (Binance Transaction History / statement), `GET /api/transactions`.
+- **Steps:** import `binance-trade-history.csv`, then `binance-transaction-statement.csv` (or the statement
+  alone, or `report-kinds/binance-statement-all-operations.csv`).
+- **Expected:** no amount-free `fee` rows (P2-E2E-6). An operation the importer cannot classify is an
+  amount-free `transfer` flagged `unknown_type`, like the unresolved same-second trade groups now are.
+- **Actual:** the "Some Future Operation" row (2026-02-02 02:02:02, +0.5 USDT) is `type: "fee"` with no
+  amounts and `unknown_type`. `binance-statement-all-operations.csv` gives ten such rows (00:01:03–00:01:12).
+  In `packages/importers/src/binance/transaction-history.ts`, `review()` sets `type = "transfer"` only for
+  `unclassifiedTrade`; the unknown-operation, wrong-sign and derivative paths keep `base()`'s `fee` type.
+  The UI therefore still shows empty Fee rows.
+- **Tests:** `24-regression-round.test.ts › Binance statement legs next to Trade History (P2-E2E-6) › no
+  statement row is an amount-free fee row`, `› every amount-free statement row is a transfer flagged
+  unknown_type`, `› no fee row anywhere in the ledger lacks a fee amount` (all fail).
+
+### P2-API-9. Low — one "§" message is left in the EVM fee code
+
+- **Where:** `packages/evm/src/fees.ts`. An OP-stack receipt with `operatorFeeScalar`/`operatorFeeConstant`
+  but no `operatorFee` adds a `fee_review_required` flag: "…review the additional fee (research §1.8)".
+- **Expected:** no research references in user messages (P2-E2E-4).
+- **Actual:** found by reading the code. The mock never sends operator-fee fields, so no API test can reach
+  it.
+- **Test:** none; the `24` scan would catch it if the mock sent those fields.
+
+### Observations
+
+- Binance history is scanned from one year back on a first sync. The gap is flagged
+  (`binance:history-start` incomplete), so a user with older activity is told to import files. This is a
+  product trade-off, not a wrong number.
+- `11-research › statement after dedicated histories …` still allows `fee` rows flagged `unknown_type`. It
+  will need tightening once P2-API-8 is fixed.
+- `18b-gate › Polygon native balances use the POL asset ID` (edited in `d9b6170`) no longer checks the
+  MATIC→POL rename warning. The relative fixture puts the "MATIC era" after the real rename date, so no
+  warning is expected against this mock. Real pre-September-2024 MATIC rows are not covered by an API test.
+- The global price cache outlives a ledger wipe. `19-prices` asserts the CoinGecko request only on a fresh
+  data dir, which is how the suite is meant to run.
+
+---
+
+## Round 1 (2026-11-17)
+
 Run on 2026-11-17 against image `tax-tracker-app:local` rebuilt from `main` at `3baa51b`, compose project
 `taxapi2` on port 3111 (`tests/api/phase2.env`), mock-sync on 11601, mock LLM on 11511.
 

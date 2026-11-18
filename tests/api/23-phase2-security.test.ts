@@ -104,7 +104,7 @@ describe("no secret leaves the app", () => {
 		const bin = (await connections()).find((c) => c.kind === "binance");
 		expect(bin?.lastSyncError).toBeTruthy();
 		expect(bin?.lastSyncError).not.toMatch(
-			/timestamp=|signature|recvWindow|https?:\/\//,
+			/timestamp=|signature|recvWindow|https?:\/\/|\?\w+=/,
 		);
 	});
 

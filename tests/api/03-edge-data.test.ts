@@ -92,7 +92,7 @@ describe("tests/data edge-case pack (tests/data/README.md)", () => {
 		expect((await allTx()).length).toBe(12);
 	});
 
-	it("malformed.csv: 15 read, 4 inserted, 11 row errors with raw rows, one parse_warning", async () => {
+	it("malformed.csv: 15 read, 4 inserted, 11 row errors with raw rows, no duplicate parse_warning", async () => {
 		const s = await importOk(edge("malformed.csv"), "malformed.csv", {
 			source: "binance",
 			timezone: "UTC",
@@ -104,8 +104,10 @@ describe("tests/data edge-case pack (tests/data/README.md)", () => {
 			rowsDuplicate: 0,
 			rowsError: 11,
 		});
+		// Lead decision on P2-API-7: invalid rows are reported once (row errors → import_incomplete),
+		// so the import no longer adds a parse_warning that repeats them.
 		expect(s.warnings.filter((w) => w.code === "parse_warning")).toHaveLength(
-			1,
+			0,
 		);
 		const d = ok(
 			await call("GET", `/api/imports/${s.id}`),

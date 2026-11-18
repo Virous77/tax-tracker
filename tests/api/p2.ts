@@ -78,6 +78,38 @@ export async function scenario(name: string, now?: string) {
 	});
 	expect(res.ok).toBe(true);
 }
+/** The mock's data clock. Fixture dates are offsets from it, so expected dates are derived, never pinned. */
+export async function mockNow(): Promise<number> {
+	const body = (await (await fetch(`${MOCK_SYNC}/__control`)).json()) as {
+		now: string;
+	};
+	return Date.parse(body.now);
+}
+/** `daysAgo` days before the mock's data clock, at `time` UTC, as an ISO instant. */
+export async function mockDay(daysAgo: number, time = "06:00:00") {
+	const day = new Date((await mockNow()) - daysAgo * 86_400_000)
+		.toISOString()
+		.slice(0, 10);
+	return `${day}T${time}.000Z`;
+}
+/** The instant the mock's Etherscan reports for a fixture transaction. */
+export async function mockTxTime(
+	hash: string,
+	address = WALLET_A,
+	chainId = 1,
+) {
+	const url = `${MOCK_SYNC}/etherscan/v2/api?chainid=${chainId}&module=account&action=txlist&address=${address}&apikey=${KEYS.etherscanPaid}&page=1&offset=1000`;
+	const body = (await (await fetch(url)).json()) as {
+		result: { hash: string; timeStamp: string }[];
+	};
+	const tx = body.result.find((t) => t.hash === hash);
+	if (!tx) throw new Error(`mock has no transaction ${hash}`);
+	return new Date(Number(tx.timeStamp) * 1000).toISOString();
+}
+/** The IST calendar day of an instant: the day a daily price is looked up for. */
+export function istDay(iso: string) {
+	return new Date(Date.parse(iso) + 330 * 60_000).toISOString().slice(0, 10);
+}
 export async function clearRequests() {
 	await fetch(`${MOCK_SYNC}/__requests`, { method: "DELETE" });
 }
@@ -242,7 +274,7 @@ async function waitIdle() {
 }
 /** Phase 1 wipe plus: no connections, no provider keys, a fresh unlocked vault, prices off, mock normal. */
 export async function wipeP2() {
-	await scenario("normal", "2026-04-01T00:00:00Z");
+	await scenario("normal");
 	await readyVault();
 	await waitIdle();
 	for (const c of await connections())

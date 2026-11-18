@@ -32,6 +32,8 @@ export interface ConnectorProgress {
 	streamsDone: number;
 	streamsTotal: number | null;
 	rowsFetched: number;
+	/** Epoch ms when a rate-limit pause ends; absent when not waiting. */
+	waitingUntil?: number;
 }
 
 export interface FetchedBalance {

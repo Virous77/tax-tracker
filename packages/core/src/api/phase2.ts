@@ -166,6 +166,8 @@ export const JobProgressSchema = z.object({
 	streamsDone: count,
 	streamsTotal: count.nullable(),
 	rowsFetched: count,
+	/** Set while the connector is paused for a vendor rate limit; the UI shows when it resumes. */
+	waitingUntil: z.iso.datetime().nullable().optional(),
 });
 export const JobSchema = z.object({
 	id: z.string(),

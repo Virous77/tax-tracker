@@ -13,12 +13,20 @@ string, `recvWindow`/timestamp checks, CoinDCX HMAC over the raw JSON body, Ethe
 fixture user across Binance, CoinDCX and five EVM chains, so a sync can be tested end to end and
 the reported balances can be compared with what the ledger implies.
 
+A real client applies Binance C2C's six-month cap and CoinGecko's 365-day cap to the **wall
+clock**, not to the mock's data clock, so every fixture event is an offset from the day the server
+starts rather than a fixed calendar day. The whole story spans the last ~9 months, which keeps it
+inside every lookback window on any day the mock runs (see [Two clocks](#two-clocks)).
+
 ## Run it
 
 ```sh
 node tools/mock-sync/server.mjs              # MOCK_SYNC_PORT or 11601
 node tools/mock-sync/server.mjs --port 11700
 ```
+
+Environment variables: `MOCK_SYNC_PORT` (default `11601`) and
+`MOCK_SYNC_REQUEST_LOG_LIMIT` (calls kept in `/__requests`, default `20000`).
 
 It listens on `0.0.0.0`. On start it prints the base URLs to paste into the app:
 
@@ -68,7 +76,15 @@ It starts the server on a free port and, with its own BigInt arithmetic:
   Base receipts carrying `l1Fee`, Arbitrum receipts carrying `gasUsedForL1`, and the documented
   absence of the internal category on Alchemy for Arbitrum;
 - asserts the NodeReal 100,000-block window error, the scenario behaviour on each prefix, the
-  kline coverage, and that no secret reaches the request log.
+  kline coverage and positive volume (quote/base is within 0.5% of the close), and that no secret
+  reaches the request log;
+- asserts the fixture still fits the wall clock: no event in the future, none older than 365 days,
+  the P2P buy inside Binance's six-month C2C cap and served by the C2C feed, and USDT never
+  negative in time order (P2P funding precedes every spend);
+- asserts CoinGecko answers `usd` and `inr` together at the fixture rate, serves a known coin with
+  no price series with empty market data, and 404s an unknown id;
+- asserts `X-SAPI-USED-IP-WEIGHT-1M` / `X-SAPI-USED-UID-WEIGHT-1M` accumulate on `/sapi`, the log
+  records response headers, and `/__requests?since=` and `DELETE` behave.
 
 It exits non-zero with a list of differences. Etherscan and Blockscout calls are paced at ~3/s,
 the real client's free-tier pace.
@@ -95,42 +111,46 @@ Alchemy/NodeReal key is `401` with a JSON-RPC error.
 
 ## Fixture user
 
-All dates fall in FY 2025-26 except the Polygon MATIC-era pair, which is deliberately earlier so
-the POL redenomination is covered. The story, in order:
+Every date is an offset from the day the server starts (`timeline()` in `fixtures.mjs`), so the
+story always sits inside Binance's six-month C2C window and CoinGecko's 365-day window. The
+Polygon MATIC-era pair is deliberately older than the rest so the POL rename is covered; its
+rename boundary moves with the timeline too. The story, in order:
 
-| When (UTC)              | Event                                                                                                                                           |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2024-07-15              | MATIC era: 5 MATIC into wallet B on Polygon PoS.                                                                                                |
-| 2024-08-01              | MATIC era: wallet B sends 2 MATIC.                                                                                                              |
-| 2025-04-08              | P2P buy of 5,000 USDT for ₹4,42,500 (₹88.50/USDT). Lands in the **funding** wallet; 4,990 USDT is then moved to spot with an internal transfer. |
-| 2025-04-15              | Buy 1.8 ETH on `ETHUSDT` in three fills: fees 0.0008 ETH, 1.75973 USDT, 0.751425 USDT.                                                          |
-| 2025-05-02              | Withdraw 0.5 ETH to wallet A, `transactionFee` 0.0018 ETH charged **on top**: spot loses 0.5018 ETH and exactly 0.5 ETH arrives.                |
-| 2025-05-20              | Withdraw 0.02 ETH to wallet A on **Base** (fee 0.0005), 250 USDT on **BSC** (fee 1) and 0.05 BNB on **BSC** (fee 0.0005).                       |
-| 2025-05-20              | POL era: 14 POL into wallet B on Polygon PoS.                                                                                                   |
-| 2025-06-02              | POL era: wallet B sends 4 POL.                                                                                                                  |
-| 2025-06-10              | Wallet A swaps 0.2 ETH for 480 USDC on mainnet (gas 0.001420824 ETH).                                                                           |
-| 2025-06-18              | Wallet A swaps 0.005 ETH for 12.5 USDC on Base (gas + `l1Fee`).                                                                                 |
-| 2025-06-20              | Asset dividend: 0.06 BNB ("BNB Vault rewards").                                                                                                 |
-| 2025-07-08              | 0.01 ETH into wallet A on Arbitrum One (gas money).                                                                                             |
-| 2025-07-09              | Wallet A receives 100 USDC.e and 50 native USDC on Arbitrum One.                                                                                |
-| 2025-07-30              | Wallet B is funded with 0.01 ETH from an outside address (gas money).                                                                           |
-| 2025-08-14              | Wallet A sends 300 USDC to wallet B on mainnet (gas 0.000358463 ETH, paid by A).                                                                |
-| 2025-08-20              | Wallet A sends 40 USDC.e on Arbitrum One.                                                                                                       |
-| 2025-08-25              | Wallet A bridges 0.002 ETH from Base to Ethereum through `L2StandardBridge`.                                                                    |
-| 2025-08-28              | Wallet A sends 20 native USDC on Arbitrum One.                                                                                                  |
-| 2025-09-03              | Wallet A receives 50,000 lookalike "USDT" from a fake contract — spam.                                                                          |
-| 2025-09-15              | Subscribe 100 USDT to Simple Earn flexible (spot → earn).                                                                                       |
-| 2025-10-01              | Deposit 2.1 XRP to Binance from an outside exchange.                                                                                            |
-| 2025-10-02              | Wallet A sends 25 USDT on BSC (gas 0.000153 BNB).                                                                                               |
-| 2025-10-07              | Wallet A's mainnet swap fails (`isError=1`): gas 0.000345708 ETH, no value moved.                                                               |
-| 2025-11-05              | Dust conversion: 2.1 XRP → 0.000132 BNB (net of 0.0000027 BNB service charge).                                                                  |
-| 2025-11-19              | Wallet A approves USDC: gas 0.0003003065 ETH, nothing else moves.                                                                               |
-| 2025-11-28              | Convert 25 USDT → 24.98 USDC.                                                                                                                   |
-| 2025-12-01              | Simple Earn flexible reward: 0.42 USDT, credited to spot.                                                                                       |
-| 2025-12-12              | Wallet B sends 120 USDC to the user's Binance deposit address.                                                                                  |
-| 2026-01-20              | Sell 0.6 ETH for 1,776.60 USDT in two fills, fees 0.000078 BNB.                                                                                 |
-| 2026-02-01              | Subscribe 0.02 ETH to Simple Earn locked (spot → earn, 120-day position).                                                                       |
-| 2025-05-20 … 2025-11-03 | CoinDCX: four BTCINR/ETHINR trades (see `COINDCX_TRADES`).                                                                                      |
+| Days before start | Event                                                                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 280               | MATIC era: 5 MATIC into wallet B on Polygon PoS.                                                                                                |
+| 265               | MATIC era: wallet B sends 2 MATIC.                                                                                                              |
+| 152               | Fiat deposit of ₹2,50,000 (the money the P2P buy is paid from).                                                                                 |
+| 150               | P2P buy of 5,000 USDT for ₹4,42,500 (₹88.50/USDT). Lands in the **funding** wallet; 4,990 USDT is then moved to spot with an internal transfer. |
+| 143, 142          | Buy 1.8 ETH on `ETHUSDT` in three fills: fees 0.0008 ETH, 1.75973 USDT, 0.751425 USDT.                                                          |
+| 130               | Withdraw 0.5 ETH to wallet A, `transactionFee` 0.0018 ETH charged **on top**: spot loses 0.5018 ETH and exactly 0.5 ETH arrives.                |
+| 120               | Asset dividend: 0.06 BNB ("BNB Vault rewards").                                                                                                 |
+| 115               | Withdraw 0.02 ETH to wallet A on **Base** (fee 0.0005), 250 USDT on **BSC** (fee 1) and 0.05 BNB on **BSC** (fee 0.0005).                       |
+| 114               | POL era: 14 POL into wallet B on Polygon PoS.                                                                                                   |
+| 105               | POL era: wallet B sends 4 POL.                                                                                                                  |
+| 97                | Wallet A swaps 0.2 ETH for 480 USDC on mainnet (gas 0.001420824 ETH).                                                                           |
+| 91                | Wallet A swaps 0.005 ETH for 12.5 USDC on Base (gas + `l1Fee`).                                                                                 |
+| 80                | 0.01 ETH into wallet A on Arbitrum One (gas money).                                                                                             |
+| 79                | Wallet A receives 100 USDC.e and 50 native USDC on Arbitrum One.                                                                                |
+| 68                | Wallet B is funded with 0.01 ETH from an outside address (gas money).                                                                           |
+| 58                | Wallet A sends 300 USDC to wallet B on mainnet (gas 0.000358463 ETH, paid by A).                                                                |
+| 52                | Wallet A sends 40 USDC.e on Arbitrum One.                                                                                                       |
+| 48                | Wallet A bridges 0.002 ETH from Base to Ethereum through `L2StandardBridge`.                                                                    |
+| 45                | Wallet A sends 20 native USDC on Arbitrum One.                                                                                                  |
+| 40                | Wallet A receives 50,000 lookalike "USDT" from a fake contract — spam.                                                                          |
+| 33                | Subscribe 100 USDT to Simple Earn flexible (spot → earn); wallet A swaps 10 USDC.e for 0.0035 ETH on Arbitrum.                                  |
+| 26                | Deposit 2.1 XRP to Binance from an outside exchange.                                                                                            |
+| 24                | Wallet A sends 25 USDT on BSC (gas 0.000153 BNB).                                                                                               |
+| 21                | Wallet A's mainnet swap fails (`isError=1`): gas 0.000345708 ETH, no value moved.                                                               |
+| 18                | Fiat withdrawal of ₹50,000 (fee ₹5).                                                                                                            |
+| 16                | Dust conversion: 2.1 XRP → 0.000132 BNB (net of 0.0000027 BNB service charge).                                                                  |
+| 11                | Wallet A approves USDC: gas 0.0003003065 ETH, nothing else moves.                                                                               |
+| 8                 | Convert 25 USDT → 24.98 USDC; Simple Earn flexible reward 0.42 USDT credited to spot.                                                           |
+| 6                 | Wallet B sends 120 USDC to the user's Binance deposit address; sell 0.6 ETH for 1,776.60 USDT in two fills, fees 0.000078 BNB.                  |
+| 5                 | Subscribe 0.02 ETH to Simple Earn locked (spot → earn, 120-day position).                                                                       |
+| 3                 | Pending USDC deposit (status `0`); pending USDT withdrawal (status `4`).                                                                        |
+| 2                 | Failed convert of 10 USDT → BNB.                                                                                                                |
+| 115, 85, 39, 22   | CoinDCX: four BTCINR/ETHINR trades (see `COINDCX_TRADES`).                                                                                      |
 
 One Binance withdrawal (`100 USDT`, status `4`, processing) and one USDC deposit (status `0`,
 pending) are in the histories on purpose: both are visible to the client and neither moves a
@@ -334,19 +354,30 @@ on every chain and through every provider.
 
 Signed requests need `X-MBX-APIKEY`, `timestamp` and `signature = HMAC-SHA256(secret, query+body)`
 in hex. `recvWindow` defaults to 5000 and is capped at 60000. Too old/too far ahead →
-`400 {"code":-1021,...}`, wrong signature → `-1022`, bad key → `-2015`/`-2014`. Weight headers
-(`X-MBX-USED-WEIGHT-1M`, `X-SAPI-...`) are sent. Coded errors for the request mistakes the
-research lists: `-1102` missing parameter, `-1121` invalid symbol, `-1127` window too wide,
-`-1128` invalid parameter combination, `-1130` invalid parameter value.
+`400 {"code":-1021,...}`, wrong signature → `-1022`, bad key → `-2015`/`-2014`.
+
+Weight headers are sent on every answer: `/api/v3` responses carry `X-MBX-USED-WEIGHT-1M` (the
+request's own weight, plus `X-MBX-ORDER-COUNT-10S`), and `/sapi` responses carry
+`X-SAPI-USED-IP-WEIGHT-1M` and `X-SAPI-USED-UID-WEIGHT-1M`, which count the calls to that endpoint
+in the last rolling minute. Real Binance splits endpoints between the two SAPI budgets; the mock
+reports the same per-endpoint count under both names so a client can read whichever it tracks.
+Coded errors for the request mistakes the research lists: `-1102` missing parameter, `-1121`
+invalid symbol, `-1127` window too wide, `-1128` invalid parameter combination, `-1130` invalid
+parameter value.
 
 ### Binance public data — `/binance-data` (data-api.binance.vision)
 
 `GET /api/v3/klines` with `symbol`, `interval=1d`, `startTime`, `endTime`, `limit` (≤ 1000),
 `timeZone`. `timeZone=5:30` opens each candle at IST midnight, otherwise UTC midnight. Prices are
 strings with 8 decimals; the payload is Binance's array form. `ETHUSDT`, `BTCUSDT` and `BNBUSDT`
-have one candle for every day of FY 2025-26; the series starts on 2024-01-01 and stops at the
-pinned "now". Prices come from a deterministic trend + wobble, so the same day always gives the
-same close.
+serve one candle for every requested day up to the data clock; the series is a deterministic trend
+
+- wobble anchored at `PRICE_FIRST_DAY` (2025-04-01) and clamped at the edges, so the same day always
+  gives the same close.
+
+Base volume is 1,000–9,999 whole coins a day, and quote volume is that × the close with a
+deterministic ±0.3% nudge, so `quoteVolume / volume` (the VWAP the client derives) always exists and
+stays within 0.5% of the close.
 
 ### CoinDCX — `/coindcx` (api.coindcx.com)
 
@@ -459,23 +490,33 @@ marks this difference from Alchemy); `decimal` is hex for tokens and `null` for 
 | GET    | `/coins/{id}/history`               | `date=dd-mm-yyyy`, `market_data.current_price.{usd,inr}`        |
 | GET    | `/coins/{id}/market_chart/range`    | `vs_currency=usd\|inr`, `from`, `to`, daily points at 00:00 UTC |
 
-`bitcoin`, `ethereum`, `binancecoin`, `usd-coin`, `tether` and `ripple` exist. A missing or wrong
-`x-cg-demo-api-key` is `401` / `10002`. A date older than 365 days before the pinned "now" is
-`401` / `10005` (the body text is invented; the code and the 365-day rule are real). Over 100
-calls a minute → `429`.
+`bitcoin`, `ethereum`, `binancecoin`, `usd-coin`, `tether` and `ripple` exist. History answers in
+both `usd` and `inr` at once, as the real endpoint does, with numbers (the fixture rate is ₹88/USD);
+`usd-coin` and `tether` are a flat $1. A missing or wrong `x-cg-demo-api-key` is `401` / `10002`. A
+date older than 365 days before the data clock is `401` / `10005` (the body text is invented; the
+code and the 365-day rule are real). Over 100 calls a minute → `429`.
+
+`ripple` has no daily price series in the fixture: it is listed, but `history` returns `200` with
+an empty `market_data` and `market_chart/range` returns empty arrays instead of inventing a USDT
+price. An id that is not in the list is `404` / `10004`.
 
 ## Control endpoints
 
-| Method | Path          | Purpose                                                          |
-| ------ | ------------- | ---------------------------------------------------------------- |
-| GET    | `/__control`  | current scenario, pinned `now`, pending one-shot flags           |
-| POST   | `/__control`  | `{"scenario": "..."}`, `{"now": "2026-04-01T00:00:00Z"}` or both |
-| GET    | `/__requests` | recent requests: `{method, path, params, status}`                |
-| DELETE | `/__requests` | clear the log                                                    |
+| Method | Path          | Purpose                                                                                                 |
+| ------ | ------------- | ------------------------------------------------------------------------------------------------------- |
+| GET    | `/__control`  | current scenario, pinned `now`, pending one-shot flags                                                  |
+| POST   | `/__control`  | `{"scenario": "..."}`, `{"now": "2026-04-01T00:00:00Z"}` or both                                        |
+| GET    | `/__requests` | recent requests: `{method, path, params, status, headers?}`; `?since=N` returns entries after index `N` |
+| DELETE | `/__requests` | clear the log                                                                                           |
 
-`/__requests` keeps the last 500 calls and replaces the value of `apikey`, `signature`, `api_key`
-and `x_cg_demo_api_key` with `***`, and the key segment of `/alchemy/<network>/v2/<key>` and
-`/nodereal/<key>` with `***`, so tests can assert pagination and that no secret leaked.
+`/__requests` keeps the last `MOCK_SYNC_REQUEST_LOG_LIMIT` calls (default 20,000, enough for a
+ten-wallet sync) and replaces the value of `apikey`, `signature`, `api_key` and
+`x_cg_demo_api_key` with `***`, and the key segment of `/alchemy/<network>/v2/<key>` and
+`/nodereal/<key>` with `***`, so tests can assert pagination and that no secret leaked. Response
+headers passed by the route (weight headers, `Retry-After`, `x-credits-remaining`) are recorded
+too. `?since=N` is an index into the log as it stands, which lets a test poll for new calls
+without clearing; `DELETE` empties it, though the control call itself is then recorded like any
+other request.
 
 ### Scenarios
 
@@ -503,10 +544,22 @@ scenario clears the pending flags, the rate-limit windows and the outstanding `p
 
 - **HTTP clock** (`/api/v3/time`, Binance `timestamp`, CoinDCX `timestamp`) is the real clock,
   plus 60 s under `clock_skew`. A client that signs with its own time works in `normal`.
-- **Data clock** (`state.now`, pinned to `2026-04-01T00:00:00Z`) decides which klines exist, the
-  CoinGecko 365-day limit and the default window of every history call. Pinning it keeps price
-  answers deterministic and puts the whole FY inside CoinGecko's window. Change it with
-  `POST /__control {"now": "..."}`.
+- **Data clock** (`state.now`) defaults to **00:00 UTC on the day the server started** (`DATA_NOW`
+  is computed at module load). It decides which klines exist, CoinGecko's 365-day limit and the
+  default window of every history call. Because the fixture dates are offsets from the same
+  anchor, the data clock and the fixture move together: the newest event is 2 days old and the
+  oldest (the MATIC pair) 280 days, so nothing is ever in the future or outside CoinGecko's free
+  365-day window. The P2P buy sits 150 days back, leaving more than a month of margin under
+  Binance's six-month C2C cap even in a 31-day month.
+- The client applies those caps to its **own** clock, not to `state.now`. Pinning the data clock
+  far from real time still works for direct API calls, klines and CoinGecko, but a real client
+  will then hide the C2C rows: keep the data clock near today when testing a full sync. Use
+  `POST /__control {"now": "..."}` to pin it for deterministic unit-level checks.
+
+CoinGecko's 365-day limit for free demo keys is a real constraint, not a mock bug; older dates
+answer `401` / `10005` exactly as the live API does. The fixture stays inside it by construction —
+only the price _series_ anchor (`PRICE_FIRST_DAY`, 2025-04-01) is a fixed calendar day, so a given
+date always prices the same.
 
 ## Known gaps
 
@@ -519,6 +572,11 @@ scenario clears the pending flags, the rate-limit windows and the outstanding `p
 - No `module=logs`, no `eth_getBlockByNumber`, no NFT/1155 transfers, no Binance margin/futures,
   no `/coins/{id}/contract/{address}`, and no `eth_getLogs`/`eth_getCode`.
 - Binance `myTrades` has no documented history depth, so the mock returns the whole fixture.
+- SAPI weight headers count successful responses per endpoint; rejected calls and the one-shot
+  `429`/`418` branches report a limit value without advancing the counter. Both header names carry
+  the same count (real Binance splits endpoints between the IP and UID budgets).
+- `/__requests` is a ring buffer: once `MOCK_SYNC_REQUEST_LOG_LIMIT` calls are kept, `?since=`
+  indices shift as old entries are dropped.
 - Alchemy serves four networks (no BSC) and NodeReal serves BSC only, exactly as the research
   says; a chain with neither key is unreachable, by design.
 

@@ -4,7 +4,44 @@
 
 import { createHash } from "node:crypto";
 
-export const DATA_NOW = "2026-04-01T00:00:00.000Z";
+const DAY_MS = 86_400_000;
+
+// Event dates are offsets from the day the mock starts, never fixed calendar days. A real client
+// applies Binance C2C's six-month cap and CoinGecko's 365-day cap to the wall clock, so a fixture
+// pinned to a finished tax year can never be synced (issue M1). The whole story spans the last
+// ~9 months, which keeps every event inside every lookback window whenever the mock runs.
+const TIMELINE_ANCHOR = Date.parse(
+	`${new Date().toISOString().slice(0, 10)}T00:00:00Z`,
+);
+
+/** Start of the day the fixture was loaded, ISO-8601. The default data clock. */
+export const DATA_NOW = new Date(TIMELINE_ANCHOR).toISOString();
+
+function dayStamp(daysAgo) {
+	return new Date(TIMELINE_ANCHOR - daysAgo * DAY_MS)
+		.toISOString()
+		.slice(0, 10);
+}
+
+/** Instant `daysAgo` days before the anchor, at `timeOfDay` UTC, as epoch ms. */
+export function timeline(daysAgo, timeOfDay = "00:00:00") {
+	return Date.parse(`${dayStamp(daysAgo)}T${timeOfDay}Z`);
+}
+
+/** The same instant as `2026-01-01T00:00:00Z`. */
+export function timelineIso(daysAgo, timeOfDay = "00:00:00") {
+	return `${dayStamp(daysAgo)}T${timeOfDay}Z`;
+}
+
+/** The same instant in Binance's undated `2026-01-01 00:00:00` form (UTC). */
+export function timelineStamp(daysAgo, timeOfDay = "00:00:00") {
+	return `${dayStamp(daysAgo)} ${timeOfDay}`;
+}
+
+/** Parse a Binance `YYYY-MM-DD HH:MM:SS` stamp as UTC, which is what Binance means by it. */
+export function stampMs(stamp) {
+	return Date.parse(`${stamp.replace(" ", "T")}Z`);
+}
 
 export const FY = { start: "2025-04-01", end: "2026-03-31" };
 
@@ -181,8 +218,13 @@ export const CHAINS = {
 		nodereal: false,
 		arbitrumInternals: true,
 		l1Fee: false,
-		// POL replaced MATIC 1:1 on 2024-09-04T12:00:00Z with no transaction (§1.4).
-		nativeRename: { from: "MATIC", to: "POL", at: "2024-09-04T12:00:00Z" },
+		// POL replaced MATIC 1:1 with no transaction on 2024-09-04 (§1.4); the boundary is anchored
+		// to the fixture timeline so the two MATIC events still precede it and the two POL follow.
+		nativeRename: {
+			from: "MATIC",
+			to: "POL",
+			at: timelineIso(200, "12:00:00"),
+		},
 	},
 	56: {
 		chainId: 56,
@@ -307,8 +349,6 @@ export function shortUnits(units) {
 	return units < 0n ? `-${trimmed}` : trimmed;
 }
 
-const ms = (iso) => Date.parse(iso);
-
 export const BINANCE_SYMBOLS = [
 	{ symbol: "ETHUSDT", base: "ETH", quote: "USDT", status: "TRADING" },
 	{ symbol: "BTCUSDT", base: "BTC", quote: "USDT", status: "TRADING" },
@@ -326,7 +366,7 @@ export const EVM_TRANSACTIONS = [
 		label: "binance withdrawal: 0.5 ETH into wallet A",
 		hash: HASHES.binanceToWalletA,
 		blockNumber: 22310000,
-		time: "2025-05-02T08:14:23Z",
+		time: timelineIso(130, "08:14:23"),
 		from: ADDRESSES.binanceHotWallet,
 		to: ADDRESSES.walletA,
 		// Binance's `amount` is what arrives here; `transactionFee` is charged on top of it.
@@ -343,7 +383,7 @@ export const EVM_TRANSACTIONS = [
 		label: "wallet A swaps 0.2 ETH for 480 USDC",
 		hash: HASHES.swap,
 		blockNumber: 22380000,
-		time: "2025-06-10T14:32:05Z",
+		time: timelineIso(98, "14:32:05"),
 		from: ADDRESSES.walletA,
 		to: ADDRESSES.dexRouter,
 		valueWei: "200000000000000000",
@@ -377,7 +417,7 @@ export const EVM_TRANSACTIONS = [
 		label: "gas money for wallet B",
 		hash: HASHES.fundWalletB,
 		blockNumber: 22430000,
-		time: "2025-07-30T07:11:20Z",
+		time: timelineIso(68, "07:11:20"),
 		from: ADDRESSES.externalFunder,
 		to: ADDRESSES.walletB,
 		valueWei: "10000000000000000",
@@ -393,7 +433,7 @@ export const EVM_TRANSACTIONS = [
 		label: "wallet A sends 300 USDC to wallet B",
 		hash: HASHES.walletAToWalletB,
 		blockNumber: 22450000,
-		time: "2025-08-14T05:02:44Z",
+		time: timelineIso(58, "05:02:44"),
 		from: ADDRESSES.walletA,
 		to: ADDRESSES.walletB,
 		valueWei: "0",
@@ -417,7 +457,7 @@ export const EVM_TRANSACTIONS = [
 		label: "unsolicited lookalike USDT from a spam contract",
 		hash: HASHES.spam,
 		blockNumber: 22480000,
-		time: "2025-09-03T11:20:11Z",
+		time: timelineIso(40, "11:20:11"),
 		from: ADDRESSES.spamSender,
 		to: ADDRESSES.walletA,
 		valueWei: "0",
@@ -441,7 +481,7 @@ export const EVM_TRANSACTIONS = [
 		label: "failed swap, gas only",
 		hash: HASHES.failed,
 		blockNumber: 22520000,
-		time: "2025-10-07T09:47:02Z",
+		time: timelineIso(21, "09:47:02"),
 		from: ADDRESSES.walletA,
 		to: ADDRESSES.dexRouter,
 		valueWei: "50000000000000000",
@@ -457,7 +497,7 @@ export const EVM_TRANSACTIONS = [
 		label: "USDC approve, gas only",
 		hash: HASHES.approve,
 		blockNumber: 22580000,
-		time: "2025-11-19T17:05:39Z",
+		time: timelineIso(12, "17:05:39"),
 		from: ADDRESSES.walletA,
 		to: ADDRESSES.usdcContract,
 		valueWei: "0",
@@ -473,7 +513,7 @@ export const EVM_TRANSACTIONS = [
 		label: "wallet B sends 120 USDC to its Binance deposit address",
 		hash: HASHES.walletBToBinance,
 		blockNumber: 22630000,
-		time: "2025-12-12T12:31:08Z",
+		time: timelineIso(7, "12:31:08"),
 		from: ADDRESSES.walletB,
 		to: ADDRESSES.binanceDeposit,
 		valueWei: "0",
@@ -508,7 +548,7 @@ export function bigHistoryTransactions() {
 			label: `big history spam #${index}`,
 			hash: hashOf(`big-history-${index}`),
 			blockNumber,
-			time: new Date(ms("2026-02-01T00:00:00Z") + index * 60_000).toISOString(),
+			time: new Date(timeline(6) + index * 60_000).toISOString(),
 			from: ADDRESSES.spamSender,
 			to: ADDRESSES.walletA,
 			valueWei: "0",
@@ -542,7 +582,7 @@ export const BASE_TRANSACTIONS = [
 		label: "binance withdrawal: 0.02 ETH into wallet A on Base",
 		hash: HASHES.binanceToWalletABase,
 		blockNumber: 32_450_000,
-		time: "2025-05-20T09:12:44Z",
+		time: timelineIso(115, "09:12:44"),
 		from: ADDRESSES.binanceBaseHotWallet,
 		to: ADDRESSES.walletA,
 		valueWei: "20000000000000000",
@@ -560,7 +600,7 @@ export const BASE_TRANSACTIONS = [
 		label: "wallet A swaps 0.005 ETH for 12.5 USDC on Base",
 		hash: HASHES.baseSwap,
 		blockNumber: 33_100_000,
-		time: "2025-06-18T11:20:03Z",
+		time: timelineIso(91, "11:20:03"),
 		from: ADDRESSES.walletA,
 		to: ADDRESSES.baseRouter,
 		valueWei: "5000000000000000",
@@ -586,7 +626,7 @@ export const BASE_TRANSACTIONS = [
 		label: "wallet A bridges 0.002 ETH from Base to Ethereum",
 		hash: HASHES.baseBridge,
 		blockNumber: 33_880_000,
-		time: "2025-08-25T06:40:12Z",
+		time: timelineIso(48, "06:40:12"),
 		from: ADDRESSES.walletA,
 		to: ADDRESSES.baseStandardBridge,
 		valueWei: "2000000000000000",
@@ -614,7 +654,7 @@ export const ARBITRUM_TRANSACTIONS = [
 		label: "arbitrum gas money: 0.01 ETH into wallet A",
 		hash: HASHES.arbFundEth,
 		blockNumber: 350_000_000,
-		time: "2025-07-08T04:30:00Z",
+		time: timelineIso(80, "04:30:00"),
 		from: ADDRESSES.arbFunder,
 		to: ADDRESSES.walletA,
 		valueWei: "10000000000000000",
@@ -631,7 +671,7 @@ export const ARBITRUM_TRANSACTIONS = [
 		label: "100 USDC.e into wallet A on Arbitrum",
 		hash: HASHES.arbFundUsdce,
 		blockNumber: 352_100_000,
-		time: "2025-07-09T08:00:00Z",
+		time: timelineIso(79, "08:00:00"),
 		from: ADDRESSES.arbFunder,
 		to: ADDRESSES.walletA,
 		valueWei: "0",
@@ -656,7 +696,7 @@ export const ARBITRUM_TRANSACTIONS = [
 		label: "50 native USDC into wallet A on Arbitrum",
 		hash: HASHES.arbFundUsdc,
 		blockNumber: 352_100_500,
-		time: "2025-07-09T08:05:00Z",
+		time: timelineIso(79, "08:05:00"),
 		from: ADDRESSES.arbFunder,
 		to: ADDRESSES.walletA,
 		valueWei: "0",
@@ -681,7 +721,7 @@ export const ARBITRUM_TRANSACTIONS = [
 		label: "wallet A sends 40 USDC.e on Arbitrum",
 		hash: HASHES.arbSendUsdce,
 		blockNumber: 360_400_000,
-		time: "2025-08-20T10:15:00Z",
+		time: timelineIso(52, "10:15:00"),
 		from: ADDRESSES.walletA,
 		to: ADDRESSES.arbRecipient,
 		valueWei: "0",
@@ -706,7 +746,7 @@ export const ARBITRUM_TRANSACTIONS = [
 		label: "wallet A sends 20 native USDC on Arbitrum",
 		hash: HASHES.arbSendUsdc,
 		blockNumber: 361_000_000,
-		time: "2025-08-28T12:00:00Z",
+		time: timelineIso(45, "12:00:00"),
 		from: ADDRESSES.walletA,
 		to: ADDRESSES.arbRecipient,
 		valueWei: "0",
@@ -731,7 +771,7 @@ export const ARBITRUM_TRANSACTIONS = [
 		label: "wallet A swaps 10 USDC.e for 0.0035 ETH on Arbitrum",
 		hash: HASHES.arbSwap,
 		blockNumber: 365_200_000,
-		time: "2025-09-15T05:20:00Z",
+		time: timelineIso(33, "05:20:00"),
 		from: ADDRESSES.walletA,
 		to: ADDRESSES.arbRouter,
 		valueWei: "0",
@@ -766,15 +806,15 @@ export const ARBITRUM_TRANSACTIONS = [
 ];
 
 // --- Polygon PoS (137) -----------------------------------------------------
-// Wallet B holds POL. Two transfers predate the MATIC → POL redenomination of 2024-09-04T12:00:00Z
-// (research §1.4) and two follow it; both eras are native 18-dp units of the same chain balance.
+// Wallet B holds POL. Two transfers predate the MATIC → POL rename boundary and two follow it;
+// both eras are native 18-dp units of the same chain balance.
 
 export const POLYGON_TRANSACTIONS = [
 	{
 		label: "MATIC era: 5 MATIC into wallet B",
 		hash: HASHES.polyMaticIn,
 		blockNumber: 58_200_000,
-		time: "2024-07-15T09:00:00Z",
+		time: timelineIso(280, "09:00:00"),
 		from: ADDRESSES.polyFunder,
 		to: ADDRESSES.walletB,
 		valueWei: "5000000000000000000",
@@ -791,7 +831,7 @@ export const POLYGON_TRANSACTIONS = [
 		label: "MATIC era: wallet B sends 2 MATIC",
 		hash: HASHES.polyMaticOut,
 		blockNumber: 59_400_000,
-		time: "2024-08-01T07:30:00Z",
+		time: timelineIso(265, "07:30:00"),
 		from: ADDRESSES.walletB,
 		to: ADDRESSES.polyRecipient,
 		valueWei: "2000000000000000000",
@@ -808,7 +848,7 @@ export const POLYGON_TRANSACTIONS = [
 		label: "POL era: 14 POL into wallet B",
 		hash: HASHES.polyPolIn,
 		blockNumber: 71_500_000,
-		time: "2025-05-20T13:10:00Z",
+		time: timelineIso(115, "13:10:00"),
 		from: ADDRESSES.polyFunder,
 		to: ADDRESSES.walletB,
 		valueWei: "14000000000000000000",
@@ -825,7 +865,7 @@ export const POLYGON_TRANSACTIONS = [
 		label: "POL era: wallet B sends 4 POL",
 		hash: HASHES.polyPolOut,
 		blockNumber: 72_600_000,
-		time: "2025-06-02T09:45:00Z",
+		time: timelineIso(105, "09:45:00"),
 		from: ADDRESSES.walletB,
 		to: ADDRESSES.polyRecipient,
 		valueWei: "4000000000000000000",
@@ -849,7 +889,7 @@ export const BSC_TRANSACTIONS = [
 		label: "binance withdrawal: 250 USDT into wallet A on BSC",
 		hash: HASHES.binanceToWalletABscUsdt,
 		blockNumber: 46_800_000,
-		time: "2025-05-20T09:40:00Z",
+		time: timelineIso(115, "09:40:00"),
 		from: ADDRESSES.binanceBscHotWallet,
 		to: ADDRESSES.walletA,
 		valueWei: "0",
@@ -874,7 +914,7 @@ export const BSC_TRANSACTIONS = [
 		label: "binance withdrawal: 0.05 BNB into wallet A on BSC",
 		hash: HASHES.binanceToWalletABscBnb,
 		blockNumber: 46_800_100,
-		time: "2025-05-20T09:42:00Z",
+		time: timelineIso(115, "09:42:00"),
 		from: ADDRESSES.binanceBscHotWallet,
 		to: ADDRESSES.walletA,
 		valueWei: "50000000000000000",
@@ -891,7 +931,7 @@ export const BSC_TRANSACTIONS = [
 		label: "wallet A sends 25 USDT on BSC",
 		hash: HASHES.bscUsdtOut,
 		blockNumber: 52_100_000,
-		time: "2025-10-02T08:30:00Z",
+		time: timelineIso(24, "08:30:00"),
 		from: ADDRESSES.walletA,
 		to: ADDRESSES.bscRecipient,
 		valueWei: "0",
@@ -945,7 +985,7 @@ export const P2P_BUY = {
 	totalPrice: "442500.00000000",
 	unitPrice: "88.50",
 	orderStatus: "COMPLETED",
-	createTime: ms("2025-04-08T09:12:37Z"),
+	createTime: timeline(150, "09:12:37"),
 	commission: "0",
 	counterPartNickName: "mock-counterparty",
 	payMethodName: "UPI",
@@ -962,7 +1002,7 @@ export const INTERNAL_TRANSFERS = [
 		to: "spot",
 		asset: "USDT",
 		amount: "4990.00000000",
-		time: ms("2025-04-08T09:40:00Z"),
+		time: timeline(150, "09:40:00"),
 	},
 ];
 
@@ -980,7 +1020,7 @@ export const BINANCE_TRADES = [
 			quoteQty: "2009.92000000",
 			commission: "0.00080000",
 			commissionAsset: "ETH",
-			time: ms("2025-04-15T10:02:11.240Z"),
+			time: timeline(143, "10:02:11.240"),
 			isBuyer: true,
 			isMaker: false,
 			isBestMatch: true,
@@ -999,7 +1039,7 @@ export const BINANCE_TRADES = [
 			quoteQty: "1759.73000000",
 			commission: "1.75973000",
 			commissionAsset: "USDT",
-			time: ms("2025-04-15T10:02:11.612Z"),
+			time: timeline(143, "10:02:11.612"),
 			isBuyer: true,
 			isMaker: false,
 			isBestMatch: true,
@@ -1018,7 +1058,7 @@ export const BINANCE_TRADES = [
 			quoteQty: "751.42500000",
 			commission: "0.75142500",
 			commissionAsset: "USDT",
-			time: ms("2025-04-15T13:40:52.055Z"),
+			time: timeline(143, "13:40:52.055"),
 			isBuyer: true,
 			isMaker: false,
 			isBestMatch: true,
@@ -1037,7 +1077,7 @@ export const BINANCE_TRADES = [
 			quoteQty: "1184.22000000",
 			commission: "0.00005200",
 			commissionAsset: "BNB",
-			time: ms("2026-01-20T09:15:03.101Z"),
+			time: timeline(6, "09:15:03.101"),
 			isBuyer: false,
 			isMaker: true,
 			isBestMatch: true,
@@ -1056,7 +1096,7 @@ export const BINANCE_TRADES = [
 			quoteQty: "592.38000000",
 			commission: "0.00002600",
 			commissionAsset: "BNB",
-			time: ms("2026-01-20T09:15:03.487Z"),
+			time: timeline(6, "09:15:03.487"),
 			isBuyer: false,
 			isMaker: true,
 			isBestMatch: true,
@@ -1076,7 +1116,7 @@ export const BINANCE_WITHDRAWALS = [
 		status: 6,
 		address: ADDRESSES.walletA,
 		txId: HASHES.binanceToWalletA,
-		applyTime: "2025-05-02 08:11:40",
+		applyTime: timelineStamp(130, "08:11:40"),
 		network: "ETH",
 		transferType: 0,
 		withdrawOrderId: "mock-withdraw-1",
@@ -1084,7 +1124,7 @@ export const BINANCE_WITHDRAWALS = [
 		confirmNo: 12,
 		walletType: 0,
 		txKey: "",
-		completeTime: "2025-05-02 08:14:23",
+		completeTime: timelineStamp(130, "08:14:23"),
 	},
 	{
 		id: "b4e8d2a6c1f73950e8b4d2a6c1f73950",
@@ -1094,7 +1134,7 @@ export const BINANCE_WITHDRAWALS = [
 		status: 6,
 		address: ADDRESSES.walletA,
 		txId: HASHES.binanceToWalletABase,
-		applyTime: "2025-05-20 09:10:12",
+		applyTime: timelineStamp(115, "09:10:12"),
 		network: "BASE",
 		transferType: 0,
 		withdrawOrderId: "mock-withdraw-2",
@@ -1102,7 +1142,7 @@ export const BINANCE_WITHDRAWALS = [
 		confirmNo: 12,
 		walletType: 0,
 		txKey: "",
-		completeTime: "2025-05-20 09:12:44",
+		completeTime: timelineStamp(115, "09:12:44"),
 	},
 	{
 		id: "a7c2f9e4b8d13570a2c7f9e4b8d13570",
@@ -1112,7 +1152,7 @@ export const BINANCE_WITHDRAWALS = [
 		status: 6,
 		address: ADDRESSES.walletA,
 		txId: HASHES.binanceToWalletABscUsdt,
-		applyTime: "2025-05-20 09:38:02",
+		applyTime: timelineStamp(115, "09:38:02"),
 		network: "BSC",
 		transferType: 0,
 		withdrawOrderId: "mock-withdraw-3",
@@ -1120,7 +1160,7 @@ export const BINANCE_WITHDRAWALS = [
 		confirmNo: 15,
 		walletType: 0,
 		txKey: "",
-		completeTime: "2025-05-20 09:40:00",
+		completeTime: timelineStamp(115, "09:40:00"),
 	},
 	{
 		id: "c9d4a1f7e3b62580c9d4a1f7e3b62580",
@@ -1130,7 +1170,7 @@ export const BINANCE_WITHDRAWALS = [
 		status: 6,
 		address: ADDRESSES.walletA,
 		txId: HASHES.binanceToWalletABscBnb,
-		applyTime: "2025-05-20 09:40:31",
+		applyTime: timelineStamp(115, "09:40:31"),
 		network: "BSC",
 		transferType: 0,
 		withdrawOrderId: "mock-withdraw-4",
@@ -1138,7 +1178,7 @@ export const BINANCE_WITHDRAWALS = [
 		confirmNo: 15,
 		walletType: 0,
 		txKey: "",
-		completeTime: "2025-05-20 09:42:00",
+		completeTime: timelineStamp(115, "09:42:00"),
 	},
 	{
 		id: "7f3b8c1d5e2a4b6c8d0e2f4a6b8c0d2e",
@@ -1148,7 +1188,7 @@ export const BINANCE_WITHDRAWALS = [
 		status: 4,
 		address: ADDRESSES.walletA,
 		txId: "",
-		applyTime: "2026-03-02 19:04:11",
+		applyTime: timelineStamp(3, "19:04:11"),
 		network: "ETH",
 		transferType: 0,
 		info: "{}",
@@ -1168,8 +1208,8 @@ export const BINANCE_DEPOSITS = [
 		address: "rMOCKxrpFixture9Qd4fZ2Lk8Tn6Vb3Ws",
 		addressTag: "",
 		txId: HASHES.xrpDeposit,
-		insertTime: ms("2025-10-01T06:15:00Z"),
-		completeTime: ms("2025-10-01T06:16:10Z"),
+		insertTime: timeline(26, "06:15:00"),
+		completeTime: timeline(26, "06:16:10"),
 		transferType: 0,
 		confirmTimes: "1/1",
 		unlockConfirm: 0,
@@ -1185,7 +1225,7 @@ export const BINANCE_DEPOSITS = [
 		address: ADDRESSES.binanceDeposit,
 		addressTag: "",
 		txId: HASHES.pendingUsdcDeposit,
-		insertTime: ms("2026-02-05T21:44:02Z"),
+		insertTime: timeline(4, "21:44:02"),
 		transferType: 0,
 		confirmTimes: "0/12",
 		unlockConfirm: 0,
@@ -1201,8 +1241,8 @@ export const BINANCE_DEPOSITS = [
 		address: ADDRESSES.binanceDeposit,
 		addressTag: "",
 		txId: HASHES.walletBToBinance,
-		insertTime: ms("2025-12-12T12:39:51Z"),
-		completeTime: ms("2025-12-12T12:41:03Z"),
+		insertTime: timeline(7, "12:39:51"),
+		completeTime: timeline(7, "12:41:03"),
 		transferType: 0,
 		confirmTimes: "12/12",
 		unlockConfirm: 0,
@@ -1218,7 +1258,7 @@ export const BINANCE_DIVIDENDS = [
 		id: 1637366104,
 		amount: "0.06000000",
 		asset: "BNB",
-		divTime: ms("2025-06-20T04:00:00Z"),
+		divTime: timeline(120, "04:00:00"),
 		enInfo: "BNB Vault rewards",
 		tranId: 2968885920,
 		direction: 1,
@@ -1227,7 +1267,7 @@ export const BINANCE_DIVIDENDS = [
 		id: 1637366105,
 		amount: "0.42000000",
 		asset: "USDT",
-		divTime: ms("2025-12-01T00:00:00Z"),
+		divTime: timeline(8, "00:00:00"),
 		enInfo: "Simple Earn Flexible Interest",
 		tranId: 2968885921,
 		direction: 1,
@@ -1242,7 +1282,7 @@ export const BINANCE_EARN_REWARDS = [
 		rewards: "0.42000000",
 		projectId: "USDT001",
 		type: "REWARDS",
-		time: ms("2025-12-01T00:00:00Z"),
+		time: timeline(8, "00:00:00"),
 		dividendId: 1637366105,
 	},
 ];
@@ -1257,14 +1297,14 @@ export const EARN_SUBSCRIPTIONS = [
 		to: "earn",
 		asset: "USDT",
 		amount: "100.00000000",
-		time: ms("2025-09-15T06:00:00Z"),
+		time: timeline(33, "06:00:00"),
 	},
 	{
 		wallet: "spot",
 		to: "earn",
 		asset: "ETH",
 		amount: "0.02000000",
-		time: ms("2026-02-01T07:30:00Z"),
+		time: timeline(5, "07:30:00"),
 	},
 ];
 
@@ -1292,7 +1332,7 @@ export const BINANCE_EARN_POSITIONS = {
 			projectId: "ETH120",
 			asset: "ETH",
 			amount: "0.02000000",
-			purchaseTime: ms("2026-02-01T07:30:00Z"),
+			purchaseTime: timeline(5, "07:30:00"),
 			duration: 120,
 			accrualDays: 59,
 			rewardAmt: "0.00000000",
@@ -1300,7 +1340,7 @@ export const BINANCE_EARN_POSITIONS = {
 			extraRewards: "0.00000000",
 			extraRewardsAsset: "ETH",
 			status: "HOLDING",
-			subscriptionStartTime: ms("2026-02-01T07:30:00Z"),
+			subscriptionStartTime: timeline(5, "07:30:00"),
 			type: "AUTO",
 			autoSubscribe: false,
 		},
@@ -1309,7 +1349,7 @@ export const BINANCE_EARN_POSITIONS = {
 
 export const BINANCE_DUST = [
 	{
-		operateTime: ms("2025-11-05T03:00:00Z"),
+		operateTime: timeline(16, "03:00:00"),
 		totalTransferedAmount: "0.00013200",
 		totalServiceChargeAmount: "0.00000270",
 		transId: 45178372831,
@@ -1318,7 +1358,7 @@ export const BINANCE_DUST = [
 				transId: 4359321,
 				serviceChargeAmount: "0.00000270",
 				amount: "2.10000000",
-				operateTime: ms("2025-11-05T03:00:00Z"),
+				operateTime: timeline(16, "03:00:00"),
 				transferedAmount: "0.00013200",
 				fromAsset: "XRP",
 				targetAsset: "BNB",
@@ -1338,7 +1378,7 @@ export const BINANCE_CONVERTS = [
 		toAmount: "24.98000000",
 		ratio: "0.99920000",
 		inverseRatio: "1.00080064",
-		createTime: ms("2025-11-28T15:20:31Z"),
+		createTime: timeline(9, "15:20:31"),
 	},
 	{
 		quoteId: "mock-quote-2",
@@ -1350,7 +1390,7 @@ export const BINANCE_CONVERTS = [
 		toAmount: "0.01660000",
 		ratio: "0.00166000",
 		inverseRatio: "602.40963855",
-		createTime: ms("2026-01-05T11:02:00Z"),
+		createTime: timeline(2, "11:02:00"),
 	},
 ];
 
@@ -1364,8 +1404,8 @@ export const BINANCE_FIAT_ORDERS = [
 		totalFee: "0.00",
 		method: "Bank Transfer",
 		status: "Completed",
-		createTime: ms("2025-04-07T05:30:00Z"),
-		updateTime: ms("2025-04-07T06:02:00Z"),
+		createTime: timeline(152, "05:30:00"),
+		updateTime: timeline(152, "06:02:00"),
 	},
 	{
 		orderNo: "fiat-order-2",
@@ -1376,8 +1416,8 @@ export const BINANCE_FIAT_ORDERS = [
 		totalFee: "5.00",
 		method: "Bank Transfer",
 		status: "Completed",
-		createTime: ms("2026-02-18T10:12:00Z"),
-		updateTime: ms("2026-02-18T10:40:00Z"),
+		createTime: timeline(18, "10:12:00"),
+		updateTime: timeline(18, "10:40:00"),
 	},
 ];
 
@@ -1392,7 +1432,7 @@ export const BINANCE_C2C_CANCELLED = {
 	totalPrice: "44300.00000000",
 	unitPrice: "88.60",
 	orderStatus: "CANCELLED",
-	createTime: ms("2025-04-08T09:20:00Z"),
+	createTime: timeline(150, "09:20:00"),
 	commission: "0",
 	counterPartNickName: "mock-counterparty-2",
 	payMethodName: "UPI",
@@ -1685,6 +1725,33 @@ export function allFixtures() {
 	};
 }
 
+// Every instant the fixture data claims to have happened, in epoch ms. `check-fixture.mjs` uses
+// this to prove the fixture still fits the real wall clock: no event in the future, none older
+// than CoinGecko's 365-day window, and the P2P buy inside Binance's six-month C2C cap.
+export function fixtureTimes() {
+	const times = [
+		P2P_BUY.createTime,
+		BINANCE_C2C_CANCELLED.createTime,
+		...INTERNAL_TRANSFERS.map((row) => row.time),
+		...BINANCE_TRADES.map((trade) => trade.raw.time),
+		...BINANCE_WITHDRAWALS.map((row) => stampMs(row.applyTime)),
+		...BINANCE_DEPOSITS.map((row) => row.insertTime),
+		...BINANCE_DIVIDENDS.map((row) => row.divTime),
+		...BINANCE_EARN_REWARDS.map((row) => row.time),
+		...EARN_SUBSCRIPTIONS.map((row) => row.time),
+		...BINANCE_DUST.flatMap((row) => [
+			row.operateTime,
+			...row.userAssetDribbletDetails.map((detail) => detail.operateTime),
+		]),
+		...BINANCE_CONVERTS.map((row) => row.createTime),
+		...BINANCE_FIAT_ORDERS.flatMap((row) => [row.createTime, row.updateTime]),
+		...COINDCX_TRADES.map((row) => row.timestamp),
+	];
+	for (const transactions of Object.values(CHAIN_TRANSACTIONS))
+		for (const tx of transactions) times.push(Date.parse(tx.time));
+	return times;
+}
+
 // --- Daily prices ----------------------------------------------------------
 // One deterministic series feeds both the Binance klines and CoinGecko, so the two sources
 // agree. Values are BigInt in 1e-8 USD, never a float.
@@ -1695,19 +1762,30 @@ export const PRICE_SERIES = {
 	BNBUSDT: { asset: "BNB", baseUnits: 58000000000n, trendBpPerDay: 3 },
 };
 
-export const COINGECKO_IDS = {
-	bitcoin: "BTCUSDT",
-	ethereum: "ETHUSDT",
-	binancecoin: "BNBUSDT",
-	"usd-coin": null,
-	tether: null,
-	ripple: null,
+// CoinGecko's `/coins/{id}/history` always answers in every supported currency, whatever
+// `vs_currency` says, so the mock serves `usd` and `inr` together. `ripple` deliberately has no
+// series: an id the mock knows but cannot price returns empty market data instead of inventing a
+// USDT value (the fixture user holds no XRP after the dust conversion anyway).
+export const COINGECKO_COINS = {
+	bitcoin: { symbol: "btc", name: "Bitcoin", asset: "BTC" },
+	ethereum: { symbol: "eth", name: "Ethereum", asset: "ETH" },
+	binancecoin: { symbol: "bnb", name: "BNB", asset: "BNB" },
+	"usd-coin": { symbol: "usdc", name: "USD Coin", asset: "USDC" },
+	tether: { symbol: "usdt", name: "Tether", asset: "USDT" },
+	ripple: { symbol: "xrp", name: "XRP", asset: null },
 };
+
+export function coingeckoPriceUnits(id, dateIso) {
+	const coin = COINGECKO_COINS[id];
+	if (!coin?.asset) return null;
+	return priceUnitsByAsset(coin.asset, dateIso);
+}
 
 export const COINGECKO_USD_INR = 88n;
 
+// The price series is anchored to a fixed day so a given date always prices the same, whichever
+// day the mock runs. Dates outside the clamp reuse the nearest edge price.
 export const PRICE_FIRST_DAY = "2025-04-01";
-export const PRICE_LAST_DAY = "2026-03-31";
 
 function hashInt(text) {
 	let hash = 0x811c9dc5;
@@ -1782,7 +1860,7 @@ export const COINDCX_TRADES = [
 		symbol: "BTCINR",
 		base: "BTC",
 		quote: "INR",
-		timestamp: ms("2025-05-20T11:00:00Z"),
+		timestamp: timeline(115, "11:00:00"),
 	},
 	{
 		id: 252950144,
@@ -1795,7 +1873,7 @@ export const COINDCX_TRADES = [
 		symbol: "ETHINR",
 		base: "ETH",
 		quote: "INR",
-		timestamp: ms("2025-07-11T09:30:00Z"),
+		timestamp: timeline(85, "09:30:00"),
 	},
 	{
 		id: 252961300,
@@ -1808,7 +1886,7 @@ export const COINDCX_TRADES = [
 		symbol: "BTCINR",
 		base: "BTC",
 		quote: "INR",
-		timestamp: ms("2025-09-22T14:45:00Z"),
+		timestamp: timeline(40, "14:45:00"),
 	},
 	{
 		id: 252977421,
@@ -1821,7 +1899,7 @@ export const COINDCX_TRADES = [
 		symbol: "ETHINR",
 		base: "ETH",
 		quote: "INR",
-		timestamp: ms("2025-11-03T07:05:00Z"),
+		timestamp: timeline(22, "07:05:00"),
 	},
 ];
 
@@ -1845,6 +1923,3 @@ export const COINDCX_MARKETS = [
 		status: "active",
 	},
 ];
-// The P2P buy lands in the funding wallet. The user then moves most of it to spot
-// with an internal transfer, which has no read endpoint (research §1.7), so the fixture
-// records it here and the README documents it as a total-neutral move.

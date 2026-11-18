@@ -26,12 +26,13 @@ import {
 	CHAINS,
 	COINDCX_MARKETS,
 	COINDCX_TRADES,
-	COINGECKO_IDS,
+	COINGECKO_COINS,
 	COINGECKO_USD_INR,
 	CREDENTIALS,
 	chainNativeAsset,
 	chainTransactions,
 	coindcxBalances,
+	coingeckoPriceUnits,
 	DATA_NOW,
 	eachDay,
 	evmBalances,
@@ -41,15 +42,19 @@ import {
 	P2P_BUY,
 	PRICE_SERIES,
 	priceUnits,
-	priceUnitsByAsset,
 	TOKENS,
 } from "./fixtures.mjs";
 
 const DEFAULT_PORT = Number(process.env.MOCK_SYNC_PORT ?? 11601);
 const DEFAULT_NOW = Date.parse(DATA_NOW);
 const MAX_BODY_BYTES = 1_000_000;
-const REQUEST_LOG_LIMIT = 500;
+// A full ten-wallet sync makes thousands of calls; the old 500 cap dropped the start of it.
+const REQUEST_LOG_LIMIT = positiveInt(
+	process.env.MOCK_SYNC_REQUEST_LOG_LIMIT,
+	20_000,
+);
 const DAY_MS = 86_400_000;
+const SAPI_WEIGHT_WINDOW_MS = 60_000;
 const BINANCE_RECV_WINDOW_MAX = 60_000;
 const COINDCX_TIME_TOLERANCE_MS = 10_000;
 const ETHERSCAN_MAX_RECORDS = 1000;
@@ -60,6 +65,11 @@ const BLOCKSCOUT_CREDITS_PER_CALL = 20;
 const BLOCKSCOUT_CREDITS_PER_DAY = 100_000;
 const COINGECKO_CALLS_PER_MINUTE = 100;
 const COINGECKO_HISTORY_DAYS = 365;
+
+function positiveInt(raw, fallback) {
+	const value = Number(raw);
+	return Number.isInteger(value) && value > 0 ? value : fallback;
+}
 
 const SCENARIOS = new Set([
 	"normal",
@@ -105,6 +115,7 @@ const state = {
 	requests: [],
 	coingeckoCalls: [],
 	etherscanCalls: [],
+	sapiWeights: new Map(),
 	blockscout: { day: null, credits: BLOCKSCOUT_CREDITS_PER_DAY },
 	rpcPages: new Map(),
 };
@@ -121,6 +132,7 @@ function resetState() {
 	state.requests = [];
 	state.coingeckoCalls = [];
 	state.etherscanCalls = [];
+	state.sapiWeights = new Map();
 	state.blockscout = { day: null, credits: BLOCKSCOUT_CREDITS_PER_DAY };
 	state.rpcPages = new Map();
 }
@@ -156,11 +168,48 @@ function windowError(ctx, label) {
 	);
 }
 
-function binanceWeights(weight) {
+// `/api/v3` budgets are per IP and reported as `X-MBX-*`. `/sapi` endpoints have their own
+// per-minute IP and UID budgets, reported as `X-SAPI-USED-IP-WEIGHT-1M` and
+// `X-SAPI-USED-UID-WEIGHT-1M` (issue M4). The mock keeps one rolling minute per endpoint and
+// reports it under both names: real Binance splits endpoints between the two budgets, but a client
+// that reads the header it cares about sees a truthful cumulative count.
+function isSapi(ctx) {
+	return ctx.url.pathname.includes("/sapi/");
+}
+
+function sapiWeightUsed(ctx, add) {
+	const path = ctx.url.pathname;
+	const now = Date.now();
+	const log = state.sapiWeights.get(path) ?? [];
+	while (log.length > 0 && log[0].at <= now - SAPI_WEIGHT_WINDOW_MS)
+		log.shift();
+	if (add > 0) log.push({ at: now, weight: add });
+	state.sapiWeights.set(path, log);
+	return log.reduce((sum, entry) => sum + entry.weight, 0);
+}
+
+function binanceWeights(ctx, weight) {
+	if (!isSapi(ctx))
+		return {
+			"X-MBX-USED-WEIGHT-1M": String(weight),
+			"X-MBX-ORDER-COUNT-10S": "0",
+		};
+	const used = sapiWeightUsed(ctx, weight);
 	return {
-		"X-MBX-USED-WEIGHT-1M": String(weight),
-		"X-MBX-ORDER-COUNT-10S": "0",
+		"X-SAPI-USED-IP-WEIGHT-1M": String(used),
+		"X-SAPI-USED-UID-WEIGHT-1M": String(used),
 	};
+}
+
+// The one-shot 429 and the 418 ban answer before the route does, so they report a budget over the
+// limit without charging the mock's counter.
+function binanceWeightLimit(ctx, used) {
+	if (isSapi(ctx))
+		return {
+			"X-SAPI-USED-IP-WEIGHT-1M": String(used),
+			"X-SAPI-USED-UID-WEIGHT-1M": String(used),
+		};
+	return { "X-MBX-USED-WEIGHT-1M": String(used) };
 }
 
 function binanceBanned(ctx) {
@@ -170,7 +219,7 @@ function binanceBanned(ctx) {
 		418,
 		-1003,
 		`Way too many requests; IP banned until ${until}. Please use the websocket for live updates to avoid bans.`,
-		{ "Retry-After": "120" },
+		{ "Retry-After": "120", ...binanceWeightLimit(ctx, 6001) },
 	);
 }
 
@@ -302,9 +351,14 @@ function klineRows(symbol, _interval, timeZone, startTime, endTime, limit) {
 		const high = ((open > close ? open : close) * 10040n) / 10000n;
 		// biome-ignore lint/complexity/useMathMinMax: Math.min throws on BigInt
 		const low = ((open < close ? open : close) * 9960n) / 10000n;
-		const volumeUnits =
-			BigInt((hashIntFor(`${symbol}:${day}:volume`) % 9_000_000) + 1_000_000) *
-			1000n;
+		// 1,000–9,999 whole coins a day, in the same 1e18-scaled units the rest of the fixture uses.
+		const coins = BigInt((hashIntFor(`${symbol}:${day}:volume`) % 9000) + 1000);
+		const volumeUnits = coins * 10n ** 18n;
+		// Quote volume is base volume × close, nudged ±0.3% so the VWAP the client derives
+		// (quote/base) differs from the close without leaving a plausible range.
+		const wobble = BigInt((hashIntFor(`${symbol}:${day}:vwap`) % 61) - 30);
+		const quoteUnits =
+			(volumeUnits * close * (10000n + wobble)) / (10000n * 100000000n);
 		rows.push([
 			openTime,
 			formatPrice(open),
@@ -313,10 +367,10 @@ function klineRows(symbol, _interval, timeZone, startTime, endTime, limit) {
 			formatPrice(close),
 			formatAsset(volumeUnits, 8),
 			openTime + DAY_MS - 1,
-			formatAsset((volumeUnits * close) / 100000000n, 8),
+			formatAsset(quoteUnits, 8),
 			(hashIntFor(`${symbol}:${day}:trades`) % 4000) + 100,
 			formatAsset(volumeUnits / 2n, 8),
-			formatAsset((volumeUnits * close) / 200000000n, 8),
+			formatAsset(quoteUnits / 2n, 8),
 			"0",
 		]);
 		if (rows.length >= limit) break;
@@ -340,7 +394,7 @@ function handleBinance(ctx, rest, publicOnly) {
 	if (state.scenario === "ban_418") return binanceBanned(ctx);
 
 	if (rest === "/api/v3/time" && ctx.method === "GET")
-		return send(ctx, 200, { serverTime: serverNow() }, binanceWeights(1));
+		return send(ctx, 200, { serverTime: serverNow() }, binanceWeights(ctx, 1));
 
 	if (rest === "/api/v3/exchangeInfo" && ctx.method === "GET") {
 		const requested = param(ctx, "symbols");
@@ -382,7 +436,7 @@ function handleBinance(ctx, rest, publicOnly) {
 				exchangeFilters: [],
 				symbols,
 			},
-			binanceWeights(20),
+			binanceWeights(ctx, 20),
 		);
 	}
 
@@ -419,7 +473,7 @@ function handleBinance(ctx, rest, publicOnly) {
 			endTime,
 			limit,
 		);
-		return send(ctx, 200, rows, binanceWeights(2));
+		return send(ctx, 200, rows, binanceWeights(ctx, 2));
 	}
 
 	if (publicOnly)
@@ -437,7 +491,7 @@ function handleBinance(ctx, rest, publicOnly) {
 	if (ctx.method === "POST" && rest === "/sapi/v3/asset/getUserAsset")
 		return binanceUserAsset(ctx);
 	if (ctx.method === "GET" && rest === "/sapi/v1/capital/config/getall")
-		return send(ctx, 200, BINANCE_COIN_CONFIG, binanceWeights(10));
+		return send(ctx, 200, BINANCE_COIN_CONFIG, binanceWeights(ctx, 10));
 	if (ctx.method === "GET" && rest === "/sapi/v1/capital/deposit/hisrec")
 		return binanceDeposits(ctx);
 	if (ctx.method === "GET" && rest === "/sapi/v1/capital/withdraw/history")
@@ -474,7 +528,7 @@ function handleBinance(ctx, rest, publicOnly) {
 	if (ctx.method === "GET" && rest === "/sapi/v1/account/apiRestrictions")
 		return binanceApiRestrictions(ctx);
 	if (ctx.method === "GET" && rest === "/sapi/v1/spot/delist-schedule")
-		return send(ctx, 200, [], binanceWeights(1));
+		return send(ctx, 200, [], binanceWeights(ctx, 1));
 
 	return binanceError(ctx, 404, -1102, `No mock route for ${rest}.`);
 }
@@ -487,6 +541,7 @@ function send(ctx, status, body, headers = {}) {
 				? body
 				: JSON.stringify(body);
 	ctx.status = status;
+	ctx.responseHeaders = { ...headers };
 	ctx.response.writeHead(status, {
 		"Content-Type": "application/json; charset=utf-8",
 		"Content-Length": Buffer.byteLength(payload),
@@ -509,12 +564,15 @@ function record(ctx) {
 	const params = {};
 	for (const [key, value] of ctx.url.searchParams)
 		params[key] = SECRET_PARAMS.has(key.toLowerCase()) ? "***" : value;
-	state.requests.push({
+	const entry = {
 		method: ctx.method,
 		path: redactedPath(ctx.url.pathname),
 		params,
 		status: ctx.status,
-	});
+	};
+	if (ctx.responseHeaders && Object.keys(ctx.responseHeaders).length > 0)
+		entry.headers = ctx.responseHeaders;
+	state.requests.push(entry);
 	if (state.requests.length > REQUEST_LOG_LIMIT) state.requests.shift();
 }
 
@@ -605,6 +663,7 @@ async function handleControl(ctx) {
 			};
 			state.coingeckoCalls = [];
 			state.etherscanCalls = [];
+			state.sapiWeights = new Map();
 			state.blockscout = { day: null, credits: BLOCKSCOUT_CREDITS_PER_DAY };
 			state.rpcPages = new Map();
 		}
@@ -620,7 +679,16 @@ async function handleControl(ctx) {
 		return send(ctx, 200, controlState());
 	}
 	if (path === "/__requests") {
-		if (ctx.method === "GET") return send(ctx, 200, state.requests);
+		if (ctx.method === "GET") {
+			const raw = param(ctx, "since");
+			if (raw === null) return send(ctx, 200, state.requests);
+			const since = Number(raw);
+			if (!Number.isInteger(since) || since < 0)
+				return send(ctx, 400, {
+					error: "`since` must be a non-negative integer index into the log.",
+				});
+			return send(ctx, 200, state.requests.slice(since));
+		}
 		if (ctx.method === "DELETE") {
 			state.requests = [];
 			return send(ctx, 204, undefined);
@@ -671,7 +739,7 @@ function onceLimit(ctx, vendor) {
 				code: -1003,
 				msg: "Too much request weight used; current limit is 6000 request weight per 1 MINUTE. Please use the websocket for live updates to avoid polling the API.",
 			},
-			{ ...retryAfter, "X-MBX-USED-WEIGHT-1M": "6001" },
+			{ ...retryAfter, ...binanceWeightLimit(ctx, 6001) },
 		);
 	else if (vendor === "coindcx")
 		send(
@@ -957,7 +1025,7 @@ function binanceMyTrades(ctx) {
 		.filter((row) => startTime === null || row.time >= startTime)
 		.filter((row) => endTime === null || row.time <= endTime);
 	rows = sortedBy(rows, (row) => row.id).slice(0, limit);
-	return send(ctx, 200, rows, binanceWeights(20));
+	return send(ctx, 200, rows, binanceWeights(ctx, 20));
 }
 
 function binanceAccount(ctx) {
@@ -993,7 +1061,7 @@ function binanceAccount(ctx) {
 			permissions: ["SPOT"],
 			uid: 354937868,
 		},
-		binanceWeights(20),
+		binanceWeights(ctx, 20),
 	);
 }
 
@@ -1013,7 +1081,7 @@ function binanceFundingAsset(ctx) {
 			btcValuation: "0.00000000",
 		});
 	}
-	return send(ctx, 200, rows, binanceWeights(1));
+	return send(ctx, 200, rows, binanceWeights(ctx, 1));
 }
 
 function binanceUserAsset(ctx) {
@@ -1037,7 +1105,7 @@ function binanceUserAsset(ctx) {
 			btcValuation: "0.00000000",
 		});
 	}
-	return send(ctx, 200, rows, binanceWeights(5));
+	return send(ctx, 200, rows, binanceWeights(ctx, 5));
 }
 
 function windowBounds(ctx, startName, endName, label, defaultDays) {
@@ -1075,7 +1143,7 @@ function binanceDeposits(ctx) {
 					row.insertTime <= (bounds.end ?? state.now)),
 		);
 	rows = sortedBy(rows, (row) => row.insertTime).slice(offset, offset + limit);
-	return send(ctx, 200, rows, binanceWeights(1));
+	return send(ctx, 200, rows, binanceWeights(ctx, 1));
 }
 
 function applyTimeMs(row) {
@@ -1115,7 +1183,7 @@ function binanceWithdrawals(ctx) {
 					applyTimeMs(row) <= (bounds.end ?? state.now)),
 		);
 	rows = sortedBy(rows, applyTimeMs).slice(offset, offset + limit);
-	return send(ctx, 200, rows);
+	return send(ctx, 200, rows, binanceWeights(ctx, 1));
 }
 
 function binanceConvert(ctx) {
@@ -1152,7 +1220,7 @@ function binanceConvert(ctx) {
 			limit,
 			moreData: all.length > list.length,
 		},
-		binanceWeights(3000),
+		binanceWeights(ctx, 3000),
 	);
 }
 
@@ -1166,7 +1234,7 @@ function binanceDribblet(ctx) {
 		ctx,
 		200,
 		{ total: rows.length, userAssetDribblets: rows.slice(-100) },
-		binanceWeights(1),
+		binanceWeights(ctx, 1),
 	);
 }
 
@@ -1198,7 +1266,7 @@ function binanceDividend(ctx) {
 					row.divTime <= (bounds.end ?? state.now)),
 		)
 		.slice(0, limit);
-	return send(ctx, 200, { rows, total: rows.length }, binanceWeights(10));
+	return send(ctx, 200, { rows, total: rows.length }, binanceWeights(ctx, 10));
 }
 
 function fiatEnvelope(data, total) {
@@ -1246,7 +1314,7 @@ function binanceFiat(ctx, kind) {
 
 	if (kind === "payments")
 		// Rotki's note: the empty answer drops `data` completely. Keep that quirk.
-		return send(ctx, 200, fiatEnvelope(null, 0), binanceWeights(1));
+		return send(ctx, 200, fiatEnvelope(null, 0), binanceWeights(ctx, 1));
 
 	const matches = historyRows(BINANCE_FIAT_ORDERS)
 		.filter((row) => row.transactionType === transactionType)
@@ -1261,7 +1329,7 @@ function binanceFiat(ctx, kind) {
 		ctx,
 		200,
 		fiatEnvelope(matches.slice(start, start + rows), matches.length),
-		binanceWeights(45000),
+		binanceWeights(ctx, 45000),
 	);
 }
 
@@ -1299,7 +1367,7 @@ function binanceC2c(ctx) {
 		ctx,
 		200,
 		fiatEnvelope(all.slice(start, start + rows), all.length),
-		binanceWeights(1),
+		binanceWeights(ctx, 1),
 	);
 }
 
@@ -1347,7 +1415,7 @@ function binanceEarn(ctx, flexible) {
 			})),
 			total: all.length,
 		},
-		binanceWeights(150),
+		binanceWeights(ctx, 150),
 	);
 }
 
@@ -1391,7 +1459,7 @@ function binanceEarnPosition(ctx, kind) {
 		ctx,
 		200,
 		{ rows: all.slice(start, start + size), total: all.length },
-		binanceWeights(150),
+		binanceWeights(ctx, 150),
 	);
 }
 
@@ -1415,7 +1483,7 @@ function binanceApiRestrictions(ctx) {
 			enableSpotAndMarginTrading: trading,
 			enablePortfolioMarginTrading: false,
 		},
-		binanceWeights(1),
+		binanceWeights(ctx, 1),
 	);
 }
 
@@ -2565,8 +2633,8 @@ function handleCoinGecko(ctx, rest) {
 	const historyMatch = rest.match(/^\/api\/v3\/coins\/([^/]+)\/history$/);
 	if (ctx.method === "GET" && historyMatch) {
 		const id = historyMatch[1];
-		if (!(id in COINGECKO_IDS))
-			return coingeckoError(ctx, 404, 10004, "Coin not found");
+		const coin = COINGECKO_COINS[id];
+		if (!coin) return coingeckoError(ctx, 404, 10004, "Coin not found");
 		const raw = param(ctx, "date");
 		const day = raw ? isoDay(ddMmYyyyToIso(raw)) : isoDay(state.now - DAY_MS);
 		if (!day) return coingeckoError(ctx, 400, 10014, "Invalid date");
@@ -2580,26 +2648,27 @@ function handleCoinGecko(ctx, rest) {
 				10005,
 				"Public API is limited to dates within the past 365 days. Please upgrade your plan to access older data.",
 			);
-		const currency = coingeckoCurrency(ctx);
-		const asset = COINGECKO_IDS[id]
-			? PRICE_SERIES[COINGECKO_IDS[id]].asset
-			: id === "usd-coin"
-				? "USDC"
-				: "USDT";
-		const units = priceUnitsByAsset(asset, day);
-		const price = coingeckoValue(units, currency);
-		return send(ctx, 200, {
+		const envelope = {
 			id,
-			symbol: asset.toLowerCase(),
-			name: id,
+			symbol: coin.symbol,
+			name: coin.name,
 			localization: {},
 			image: { thumb: "", small: "", large: "" },
-			market_data: {
-				current_price: { [currency]: price },
-				market_cap: { [currency]: price * 1_000_000 },
-				total_volume: { [currency]: price * 10_000 },
-			},
 			last_updated: new Date(`${day}T00:00:00Z`).toISOString(),
+		};
+		const units = coingeckoPriceUnits(id, day);
+		if (units === null) return send(ctx, 200, { ...envelope, market_data: {} });
+		// The real endpoint returns every currency regardless of the request, and the app reads
+		// `inr`; sending both (as numbers, like the real API) is issue M2.
+		const usd = coingeckoValue(units, "usd");
+		const inr = coingeckoValue(units, "inr");
+		return send(ctx, 200, {
+			...envelope,
+			market_data: {
+				current_price: { usd, inr },
+				market_cap: { usd: usd * 1_000_000, inr: inr * 1_000_000 },
+				total_volume: { usd: usd * 10_000, inr: inr * 10_000 },
+			},
 		});
 	}
 
@@ -2608,7 +2677,7 @@ function handleCoinGecko(ctx, rest) {
 	);
 	if (ctx.method === "GET" && rangeMatch) {
 		const id = rangeMatch[1];
-		if (!(id in COINGECKO_IDS))
+		if (!COINGECKO_COINS[id])
 			return coingeckoError(ctx, 404, 10004, "Coin not found");
 		const from = parseCoingeckoDate(param(ctx, "from"));
 		const to = parseCoingeckoDate(param(ctx, "to"));
@@ -2623,19 +2692,16 @@ function handleCoinGecko(ctx, rest) {
 				"Public API is limited to dates within the past 365 days. Please upgrade your plan to access older data.",
 			);
 		const currency = coingeckoCurrency(ctx);
-		const asset = COINGECKO_IDS[id]
-			? PRICE_SERIES[COINGECKO_IDS[id]].asset
-			: id === "usd-coin"
-				? "USDC"
-				: "USDT";
 		const first = isoDay(from);
 		const last = isoDay(Math.min(to, state.now));
 		const prices = [];
 		const marketCaps = [];
 		const volumes = [];
 		for (const day of eachDay(first, last)) {
+			const units = coingeckoPriceUnits(id, day);
+			if (units === null) break;
 			const stamp = Date.parse(`${day}T00:00:00Z`);
-			const price = coingeckoValue(priceUnitsByAsset(asset, day), currency);
+			const price = coingeckoValue(units, currency);
 			prices.push([stamp, price]);
 			marketCaps.push([stamp, Math.round(price * 1_000_000)]);
 			volumes.push([stamp, Math.round(price * 10_000)]);
@@ -2685,6 +2751,10 @@ function parseArgs(argv) {
 const USAGE = `Usage: node tools/mock-sync/server.mjs [--port <port>]
 
   --port   port to listen on (default: 11601, or MOCK_SYNC_PORT)
+
+Environment:
+  MOCK_SYNC_PORT                port to listen on (default: 11601)
+  MOCK_SYNC_REQUEST_LOG_LIMIT   calls kept in the /__requests log (default: 20000)
 `;
 
 async function main() {
@@ -2701,8 +2771,13 @@ async function main() {
 	}
 	const running = await startMockSync({ port: options.port });
 	console.log(`mock-sync listening on http://0.0.0.0:${running.port}`);
-	console.log(`  data clock    ${new Date(DEFAULT_NOW).toISOString()}`);
+	console.log(
+		`  data clock    ${new Date(DEFAULT_NOW).toISOString()}  (start of today; POST /__control pins it)`,
+	);
 	console.log(`  scenario      normal  (POST /__control {"scenario":"..."})`);
+	console.log(
+		`  request log   last ${REQUEST_LOG_LIMIT} calls  (MOCK_SYNC_REQUEST_LOG_LIMIT)`,
+	);
 	for (const [name, value] of Object.entries({
 		BINANCE_API_BASE: `${running.url}/binance`,
 		BINANCE_DATA_BASE: `${running.url}/binance-data`,

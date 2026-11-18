@@ -21,15 +21,18 @@ import {
 	CHAIN_TRANSACTIONS,
 	CHAINS,
 	COINDCX_TRADES,
+	COINGECKO_USD_INR,
 	CREDENTIALS,
 	chainNativeAsset,
 	EARN_SUBSCRIPTIONS,
 	eachDay,
 	FY,
+	fixtureTimes,
 	HASHES,
 	INTERNAL_TRANSFERS,
 	OWN_ADDRESSES,
 	P2P_BUY,
+	stampMs,
 	TOKENS,
 } from "./fixtures.mjs";
 import { startMockSync } from "./server.mjs";
@@ -279,6 +282,18 @@ async function signed(path, params, method) {
 		`${server.url}/binance${path}?${query}&signature=${signature}`,
 		{ method, headers: { "X-MBX-APIKEY": CREDENTIALS.binance.apiKey } },
 	);
+	return {
+		status: response.status,
+		body: await response.json(),
+		headers: response.headers,
+	};
+}
+
+async function coingecko(path, params = {}) {
+	const response = await fetch(
+		`${server.url}/coingecko/api/v3${path}?${new URLSearchParams(params)}`,
+		{ headers: { "x-cg-demo-api-key": CREDENTIALS.coingecko.apiKey } },
+	);
 	return { status: response.status, body: await response.json() };
 }
 
@@ -359,6 +374,23 @@ function hex(value) {
 // A 32-byte ABI word, the shape eth_call returns for balanceOf(address).
 function word(value) {
 	return `0x${BigInt(value).toString(16).padStart(64, "0")}`;
+}
+
+// Binance caps each history call (30/90/180 days), so the checks derive their windows from the
+// fixture's own timestamps rather than hard-coding calendar days that go stale.
+function windowsAround(times, maxDays) {
+	const hour = 3_600_000;
+	const span = maxDays * 86_400_000 - 2 * hour;
+	const windows = [];
+	for (const time of [...times].sort((left, right) => left - right)) {
+		const open = windows.at(-1);
+		if (open && time - open.start <= span) open.end = time;
+		else windows.push({ start: time, end: time });
+	}
+	return windows.map(({ start, end }) => ({
+		startTime: String(start - hour),
+		endTime: String(end + hour),
+	}));
 }
 
 // Alchemy pages with `pageKey`; a two-row page forces several pages for a handful of legs.
@@ -562,21 +594,22 @@ const bnbTrades = await binanceGet("/api/v3/myTrades", { symbol: "BNBUSDT" });
 equal("myTrades for a symbol with no fills is empty", 0, bnbTrades.body.length);
 
 console.log("binance withdrawals");
-const withdrawalRows = [];
-for (const [start, end] of [
-	["2025-04-15", "2025-06-30"],
-	["2026-02-01", "2026-03-20"],
-]) {
-	const page = await binanceGet("/sapi/v1/capital/withdraw/history", {
-		startTime: String(Date.parse(`${start}T00:00:00Z`)),
-		endTime: String(Date.parse(`${end}T00:00:00Z`)),
-	});
-	equal(`withdrawals ${start} answer 200`, 200, page.status);
-	withdrawalRows.push(...page.body);
+const withdrawalRows = new Map();
+for (const window of windowsAround(
+	BINANCE_WITHDRAWALS.map((row) => stampMs(row.applyTime)),
+	90,
+)) {
+	const page = await binanceGet("/sapi/v1/capital/withdraw/history", window);
+	equal(`withdrawals ${window.startTime} answer 200`, 200, page.status);
+	for (const row of page.body) withdrawalRows.set(row.id, row);
 }
-equal("withdrawal history returns every row", 5, withdrawalRows.length);
+equal(
+	"withdrawal history returns every row",
+	BINANCE_WITHDRAWALS.length,
+	withdrawalRows.size,
+);
 
-for (const row of withdrawalRows) {
+for (const row of withdrawalRows.values()) {
 	if (row.status !== 6) continue;
 	const chainId = { ETH: 1, BASE: 8453, BSC: 56 }[row.network];
 	check(
@@ -619,18 +652,19 @@ for (const row of withdrawalRows) {
 }
 
 const dividends = [];
-for (const [start, end] of [
-	["2025-06-01", "2025-06-30"],
-	["2025-12-01", "2025-12-02"],
-]) {
-	const page = await binanceGet("/sapi/v1/asset/assetDividend", {
-		startTime: String(Date.parse(`${start}T00:00:00Z`)),
-		endTime: String(Date.parse(`${end}T00:00:00Z`)),
-	});
-	equal(`dividends ${start} answer 200`, 200, page.status);
+for (const window of windowsAround(
+	BINANCE_DIVIDENDS.map((row) => row.divTime),
+	180,
+)) {
+	const page = await binanceGet("/sapi/v1/asset/assetDividend", window);
+	equal(`dividends ${window.startTime} answer 200`, 200, page.status);
 	dividends.push(...page.body.rows);
 }
-equal("dividend feed returns every row", 2, dividends.length);
+equal(
+	"dividend feed returns every row",
+	BINANCE_DIVIDENDS.length,
+	dividends.length,
+);
 for (const reward of BINANCE_EARN_REWARDS)
 	check(
 		`dividend ${reward.dividendId} is served`,
@@ -638,14 +672,186 @@ for (const reward of BINANCE_EARN_REWARDS)
 		JSON.stringify(dividends.map((row) => row.id)),
 	);
 
-const deposits = await binanceGet("/sapi/v1/capital/deposit/hisrec", {
-	startTime: String(Date.parse("2025-12-01T00:00:00Z")),
-	endTime: String(Date.parse("2025-12-31T00:00:00Z")),
-});
-equal(
+const deposits = [];
+for (const window of windowsAround(
+	BINANCE_DEPOSITS.map((row) => row.insertTime),
+	89,
+)) {
+	const page = await binanceGet("/sapi/v1/capital/deposit/hisrec", window);
+	equal(`deposits ${window.startTime} answer 200`, 200, page.status);
+	deposits.push(...page.body);
+}
+const walletBDeposit = deposits.find(
+	(row) => row.txId === HASHES.walletBToBinance,
+);
+check(
 	"deposit txId is the wallet-B outgoing hash",
-	HASHES.walletBToBinance,
-	deposits.body[0].txId,
+	walletBDeposit?.status === 1 && walletBDeposit.coin === "USDC",
+	JSON.stringify(walletBDeposit ?? null),
+);
+
+console.log("lookback windows");
+const sixMonthsAgo = new Date(Date.now());
+sixMonthsAgo.setUTCMonth(sixMonthsAgo.getUTCMonth() - 6);
+check(
+	"the P2P buy is inside the six-month C2C cap",
+	P2P_BUY.createTime >= sixMonthsAgo.getTime(),
+	`${new Date(P2P_BUY.createTime).toISOString()} < ${sixMonthsAgo.toISOString()}`,
+);
+const p2p = await binanceGet("/sapi/v1/c2c/orderMatch/listUserOrderHistory", {
+	tradeType: "BUY",
+	startTimestamp: String(P2P_BUY.createTime - 86_400_000),
+	endTimestamp: String(P2P_BUY.createTime + 86_400_000),
+});
+check(
+	"the C2C feed serves the P2P buy",
+	p2p.body.data.some((row) => row.orderNumber === P2P_BUY.orderNumber),
+	JSON.stringify(p2p.body.data.map((row) => row.orderNumber)),
+);
+
+const fixtureClock = Date.now();
+const times = fixtureTimes();
+check(
+	"no fixture event is in the future",
+	times.every((time) => time <= fixtureClock),
+	`${times.filter((time) => time > fixtureClock).length} future`,
+);
+check(
+	"every fixture event is inside CoinGecko's 365-day window",
+	times.every((time) => fixtureClock - time <= 365 * 86_400_000),
+	`oldest ${new Date(Math.min(...times)).toISOString()}`,
+);
+
+console.log("binance USDT timeline");
+const usdtEvents = [
+	{
+		at: P2P_BUY.createTime,
+		wallet: "funding",
+		delta: units(P2P_BUY.amount),
+		label: "P2P buy",
+	},
+];
+for (const move of INTERNAL_TRANSFERS)
+	if (move.asset === "USDT") {
+		usdtEvents.push({
+			at: move.time,
+			wallet: move.from,
+			delta: -units(move.amount),
+			label: `${move.from} → ${move.to}`,
+		});
+		usdtEvents.push({
+			at: move.time,
+			wallet: move.to,
+			delta: units(move.amount),
+			label: `${move.from} → ${move.to}`,
+		});
+	}
+for (const { raw } of BINANCE_TRADES)
+	if (raw.quote === "USDT") {
+		usdtEvents.push({
+			at: raw.time,
+			wallet: "spot",
+			delta: raw.isBuyer ? -units(raw.quoteQty) : units(raw.quoteQty),
+			label: `trade ${raw.id}`,
+		});
+		if (raw.commissionAsset === "USDT")
+			usdtEvents.push({
+				at: raw.time,
+				wallet: "spot",
+				delta: -units(raw.commission),
+				label: `fee ${raw.id}`,
+			});
+	}
+for (const deposit of BINANCE_DEPOSITS)
+	if (deposit.coin === "USDT" && (deposit.status === 1 || deposit.status === 6))
+		usdtEvents.push({
+			at: deposit.insertTime,
+			wallet: "spot",
+			delta: units(deposit.amount),
+			label: "deposit",
+		});
+for (const withdrawal of BINANCE_WITHDRAWALS)
+	if (withdrawal.coin === "USDT" && withdrawal.status === 6)
+		usdtEvents.push({
+			at: stampMs(withdrawal.applyTime),
+			wallet: "spot",
+			delta: -(units(withdrawal.amount) + units(withdrawal.transactionFee)),
+			label: "withdrawal",
+		});
+for (const subscription of EARN_SUBSCRIPTIONS)
+	if (subscription.asset === "USDT")
+		usdtEvents.push({
+			at: subscription.time,
+			wallet: "spot",
+			delta: -units(subscription.amount),
+			label: "earn subscription",
+		});
+for (const dividend of BINANCE_DIVIDENDS)
+	if (dividend.asset === "USDT")
+		usdtEvents.push({
+			at: dividend.divTime,
+			wallet: "spot",
+			delta: units(dividend.amount),
+			label: "dividend",
+		});
+for (const dribblet of BINANCE_DUST)
+	for (const detail of dribblet.userAssetDribbletDetails) {
+		if (detail.fromAsset === "USDT")
+			usdtEvents.push({
+				at: detail.operateTime,
+				wallet: "spot",
+				delta: -units(detail.amount),
+				label: "dust source",
+			});
+		if (detail.targetAsset === "USDT")
+			usdtEvents.push({
+				at: detail.operateTime,
+				wallet: "spot",
+				delta: units(detail.transferedAmount),
+				label: "dust target",
+			});
+	}
+for (const convert of BINANCE_CONVERTS) {
+	if (convert.orderStatus !== "SUCCESS") continue;
+	if (convert.fromAsset === "USDT")
+		usdtEvents.push({
+			at: convert.createTime,
+			wallet: "spot",
+			delta: -units(convert.fromAmount),
+			label: "convert out",
+		});
+	if (convert.toAsset === "USDT")
+		usdtEvents.push({
+			at: convert.createTime,
+			wallet: "spot",
+			delta: units(convert.toAmount),
+			label: "convert in",
+		});
+}
+usdtEvents.sort(
+	(left, right) => left.at - right.at || (left.delta < right.delta ? -1 : 1),
+);
+const usdtBalances = { funding: 0n, spot: 0n };
+let firstUnderwater;
+for (const event of usdtEvents) {
+	usdtBalances[event.wallet] += event.delta;
+	if (usdtBalances[event.wallet] < 0n && !firstUnderwater)
+		firstUnderwater = event;
+}
+check(
+	"USDT never goes negative in time order",
+	!firstUnderwater,
+	firstUnderwater
+		? `${firstUnderwater.label} at ${new Date(firstUnderwater.at).toISOString()}`
+		: "",
+);
+const firstSpend = usdtEvents.find(
+	(event) => event.wallet === "spot" && event.delta < 0n,
+);
+check(
+	"the P2P buy and transfer precede the first USDT spend",
+	Boolean(firstSpend) && P2P_BUY.createTime < firstSpend.at,
+	firstSpend ? new Date(firstSpend.at).toISOString() : "no spend",
 );
 
 console.log("coindcx");
@@ -1294,6 +1500,84 @@ equal(
 );
 await control({ scenario: "normal" });
 
+console.log("coingecko");
+const historyDay = new Date(BINANCE_DIVIDENDS[0].divTime)
+	.toISOString()
+	.slice(0, 10);
+const [historyYear, historyMonth, historyDate] = historyDay.split("-");
+const historyStamp = `${historyDate}-${historyMonth}-${historyYear}`;
+const ethHistory = await coingecko("/coins/ethereum/history", {
+	date: historyStamp,
+	localization: "false",
+});
+equal("coingecko history answers 200", 200, ethHistory.status);
+const ethPrice = ethHistory.body.market_data?.current_price ?? {};
+check(
+	"coingecko history has usd and inr",
+	typeof ethPrice.usd === "number" &&
+		typeof ethPrice.inr === "number" &&
+		ethPrice.usd > 0 &&
+		ethPrice.inr > 0,
+	JSON.stringify(ethPrice),
+);
+check(
+	"coingecko inr is usd at the fixture rate",
+	Math.abs(ethPrice.inr - ethPrice.usd * Number(COINGECKO_USD_INR)) <= 1,
+	`usd ${ethPrice.usd}, inr ${ethPrice.inr}`,
+);
+
+const rippleHistory = await coingecko("/coins/ripple/history", {
+	date: historyStamp,
+	localization: "false",
+});
+equal(
+	"coingecko serves a coin with no price series",
+	200,
+	rippleHistory.status,
+);
+check(
+	"coingecko invents no price for it",
+	Object.keys(rippleHistory.body.market_data ?? {}).length === 0,
+	JSON.stringify(rippleHistory.body.market_data),
+);
+const unknownCoin = await coingecko("/coins/not-a-coin/history", {
+	date: historyStamp,
+});
+equal("coingecko unknown coin is 404", 404, unknownCoin.status);
+
+console.log("sapi weights");
+const firstWeighted = await binanceGet("/sapi/v1/asset/assetDividend", {
+	asset: "BNB",
+});
+const secondWeighted = await binanceGet("/sapi/v1/asset/assetDividend", {
+	asset: "BNB",
+});
+const ipWeight = (response) =>
+	Number(response.headers.get("x-sapi-used-ip-weight-1m"));
+const uidWeight = (response) =>
+	Number(response.headers.get("x-sapi-used-uid-weight-1m"));
+check(
+	"sapi responses carry X-SAPI-USED-IP-WEIGHT-1M",
+	ipWeight(firstWeighted) > 0,
+	String(firstWeighted.headers.get("x-sapi-used-ip-weight-1m")),
+);
+check(
+	"sapi responses carry X-SAPI-USED-UID-WEIGHT-1M",
+	uidWeight(firstWeighted) > 0,
+	String(firstWeighted.headers.get("x-sapi-used-uid-weight-1m")),
+);
+check(
+	"sapi weight accumulates within the minute",
+	ipWeight(secondWeighted) > ipWeight(firstWeighted),
+	`${ipWeight(firstWeighted)} then ${ipWeight(secondWeighted)}`,
+);
+const spotPing = await fetch(`${server.url}/binance/api/v3/time`);
+equal(
+	"api responses keep X-MBX-USED-WEIGHT-1M",
+	"1",
+	spotPing.headers.get("x-mbx-used-weight-1m"),
+);
+
 console.log("klines");
 const symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"];
 const fyDays = eachDay(FY.start, FY.end);
@@ -1323,6 +1607,23 @@ for (const symbol of symbols) {
 		`${symbol} candles cover exactly the tax year`,
 		days.join(",") === fyDays.join(","),
 		`${days[0]} .. ${days.at(-1)}`,
+	);
+	const [candle] = rows;
+	const baseVolume = unitsAt(candle[5], 8);
+	const quoteVolume = unitsAt(candle[7], 8);
+	check(`${symbol} kline base volume is positive`, baseVolume > 0n, candle[5]);
+	check(
+		`${symbol} kline quote volume is positive`,
+		quoteVolume > 0n,
+		candle[7],
+	);
+	const vwap = (quoteVolume * 10n ** 8n) / baseVolume;
+	const close = unitsAt(candle[4], 8);
+	const drift = vwap > close ? vwap - close : close - vwap;
+	check(
+		`${symbol} kline VWAP is within 0.5% of the close`,
+		drift * 10_000n <= close * 50n,
+		`vwap ${text(vwap * 10n ** 10n)}, close ${candle[4]}`,
 	);
 }
 
@@ -1354,6 +1655,35 @@ check(
 	"nodereal key is redacted in the log path",
 	log.some((entry) => entry.path === "/nodereal/***"),
 	JSON.stringify(log.map((entry) => entry.path).slice(0, 5)),
+);
+const loggedSapi = log.find(
+	(entry) => entry.path === "/binance/sapi/v1/asset/assetDividend",
+);
+check(
+	"the log records response headers",
+	loggedSapi?.headers?.["X-SAPI-USED-IP-WEIGHT-1M"] !== undefined,
+	JSON.stringify(loggedSapi?.headers ?? {}),
+);
+
+// The GET that produced `log` was recorded after its body was serialised, so one extra entry
+// exists beyond `log.length` by the time the next request is handled.
+const since = Math.max(0, log.length - 2);
+const tail = await fetch(`${server.url}/__requests?since=${since}`).then((r) =>
+	r.json(),
+);
+check(
+	"?since= returns the calls after that index",
+	tail.length === log.length + 1 - since && tail[0]?.path === log[since]?.path,
+	`${tail.length} rows from ${since} of ${log.length}`,
+);
+const badSince = await fetch(`${server.url}/__requests?since=later`);
+equal("?since= rejects a non-numeric index", 400, badSince.status);
+await fetch(`${server.url}/__requests`, { method: "DELETE" });
+const cleared = await fetch(`${server.url}/__requests`).then((r) => r.json());
+check(
+	"DELETE clears the request log",
+	cleared.every((entry) => entry.path.startsWith("/__")),
+	JSON.stringify(cleared.map((entry) => entry.path)),
 );
 
 await server.close();

@@ -580,8 +580,7 @@ export function ImportClient() {
 					{result.skippedRows.length > 0 || result.rowsSkipped > 0 ? (
 						<div className="space-y-2">
 							<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
-								Skipped — covered by another export ({result.skippedRows.length}
-								)
+								Skipped — not added to the ledger ({result.skippedRows.length})
 							</h3>
 							{result.skippedRows.length > 0 ? (
 								<div className="max-h-64 overflow-auto rounded border border-[var(--border)] bg-[var(--bg-subtle)]">

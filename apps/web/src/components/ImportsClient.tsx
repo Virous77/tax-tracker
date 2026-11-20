@@ -334,7 +334,7 @@ export function ImportsClient() {
 													) : null}
 													{imp.rowsSkipped > 0 ? (
 														<span className="num block text-[11px] font-normal text-[var(--text-muted)]">
-															{imp.rowsSkipped} skipped (overlap)
+															{imp.rowsSkipped} skipped
 														</span>
 													) : null}
 												</td>
@@ -701,8 +701,8 @@ export function ImportsClient() {
 						{detail.skippedRows.length > 0 || detail.rowsSkipped > 0 ? (
 							<div className="space-y-2">
 								<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
-									Skipped — covered by another export (
-									{detail.skippedRows.length})
+									Skipped — not added to the ledger ({detail.skippedRows.length}
+									)
 								</h3>
 								{detail.skippedRows.length > 0 ? (
 									<div className="max-h-60 space-y-1.5 overflow-y-auto">

@@ -98,7 +98,7 @@ it.each([
 				);
 				expect(response.status).toBe(202);
 				const { jobId } = await response.json();
-				await settleBackgroundJobs(database());
+				await settleBackgroundJobs(await database());
 				const job = await (
 					await call("getJob", "GET", undefined, { id: jobId })
 				).json();
@@ -115,7 +115,7 @@ it.each([
 						notices: [expect.stringMatching(/balance check skipped/i)],
 					});
 					expect(
-						database().connections.get(connection.id)?.lastSyncStatus,
+						(await database()).connections.get(connection.id)?.lastSyncStatus,
 					).toBe("incomplete");
 					expect(
 						await (
@@ -154,7 +154,7 @@ it.each([
 				const { jobId } = await (
 					await call("syncConnection", "POST", undefined, connection)
 				).json();
-				await settleBackgroundJobs(database());
+				await settleBackgroundJobs(await database());
 				const job = await (
 					await call("getJob", "GET", undefined, { id: jobId })
 				).json();
@@ -163,12 +163,12 @@ it.each([
 					expect.objectContaining({ asset: "USDC", difference: "0.5" }),
 				);
 				expect(
-					database().imports.get(job.result.importId)?.warnings,
+					(await database()).imports.get(job.result.importId)?.warnings,
 				).toContainEqual(expect.objectContaining({ code: "balance_mismatch" }));
 			}
 		} finally {
-			await settleBackgroundJobs(database());
-			closeDatabases();
+			await settleBackgroundJobs(await database());
+			await closeDatabases();
 			vi.unstubAllEnvs();
 			await mock.close();
 			await rm(dir, { recursive: true, force: true });

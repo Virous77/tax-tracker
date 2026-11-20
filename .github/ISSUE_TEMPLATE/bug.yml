@@ -1,0 +1,22 @@
+name: Bug report
+description: Report a problem you can reproduce with synthetic data
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Include the expected behavior and the steps to reproduce it.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tax Tracker version and install method
+      placeholder: 0.1.0 on Docker Desktop
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Synthetic example or redacted error
+      description: Remove real transactions, personal information, keys, and wallet addresses.

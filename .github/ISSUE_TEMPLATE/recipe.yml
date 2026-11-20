@@ -1,0 +1,23 @@
+name: Recipe request
+description: Request support for a CSV export format
+body:
+  - type: input
+    id: format
+    attributes:
+      label: Export name
+      description: Include the exchange or broker and the name of its export.
+    validations:
+      required: true
+  - type: textarea
+    id: header
+    attributes:
+      label: Header row only
+      description: Paste only the CSV column names. Never paste real rows, API keys, or wallet addresses.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: documentation
+    attributes:
+      label: Public format documentation
+      description: Link to public instructions for generating the export, if available.

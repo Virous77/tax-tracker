@@ -74,9 +74,14 @@ export function insertReconciled(
 	if (!rows.length) return { inserted: 0, duplicate: 0 };
 	const incoming = rows.map(({ tx }) => reconciliationView(tx));
 	const venues = new Set(incoming.map((tx) => tx.source));
+	const demoIds = new Set(db.imports.demoIds());
 	const existing = db.transactions
 		.active()
-		.filter((tx) => venues.has(venueForSource(tx.source)))
+		.filter(
+			(tx) =>
+				venues.has(venueForSource(tx.source)) &&
+				!demoIds.has(tx.importId ?? ""),
+		)
 		.map(reconciliationView);
 	const category = (tx: LedgerTx) => {
 		const kind = transactionReportKind(tx);

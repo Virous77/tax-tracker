@@ -182,6 +182,18 @@ export async function handle(
 				"Response failed contract validation.",
 			);
 		}
+		if (name === "downloadBackup") {
+			const { stream, size, fileName } =
+				ApiContract.downloadBackup.response.parse(output);
+			return new Response(stream as unknown as ReadableStream<Uint8Array>, {
+				headers: {
+					"Content-Type": "application/vnd.sqlite3",
+					"Content-Disposition": `attachment; filename="${fileName}"`,
+					"Content-Length": String(size),
+					"Cache-Control": "no-store",
+				},
+			});
+		}
 		if (name === "exportReport") {
 			const file = ApiContract.exportReport.response.parse(output);
 			return new Response(new Uint8Array(file.bytes), {
@@ -197,9 +209,12 @@ export async function handle(
 		return Response.json(output, {
 			status: ["syncConnection", "fillPrices"].includes(name)
 				? 202
-				: ["createTransaction", "createImport", "createConnection"].includes(
-							name,
-						)
+				: [
+							"createTransaction",
+							"createImport",
+							"createConnection",
+							"loadDemo",
+						].includes(name)
 					? 201
 					: 200,
 			headers: { "Cache-Control": "no-store", ...result.headers },

@@ -39,6 +39,7 @@ export async function exportReport(
 ) {
 	const metadata = [
 		[report.disclaimer],
+		...(report.includesDemoData ? [["Includes sample data"]] : []),
 		["Tax year", report.taxYear, "Act", report.act],
 		...settingsRows(report.generatedFrom.settings),
 		...sectionRows(report.sections),

@@ -13,10 +13,10 @@ afterEach(() => {
 	for (const dir of dirs.splice(0))
 		rmSync(dir, { recursive: true, force: true });
 });
-function setup() {
+async function setup() {
 	const dir = mkdtempSync(join(tmpdir(), "tax-db-"));
 	dirs.push(dir);
-	return { dir, db: openDatabase(dir) };
+	return { dir, db: await openDatabase(dir) };
 }
 const record = (): ImportDetail => ({
 	id: randomUUID(),
@@ -58,8 +58,8 @@ function transaction(importId: string): LedgerTx {
 	};
 }
 describe("database", () => {
-	it("upgrades old review-only fees while preserving real fees and user edits", () => {
-		const { dir, db } = setup();
+	it("upgrades old review-only fees while preserving real fees and user edits", async () => {
+		const { dir, db } = await setup();
 		const imported = record();
 		db.imports.save(imported);
 		const { id, source, importId, timestamp, raw } = transaction(imported.id);
@@ -90,10 +90,10 @@ describe("database", () => {
 		db.close();
 		const sqlite = new Database(join(dir, "tax-tracker.db"));
 		sqlite.exec(
-			"DELETE FROM __drizzle_migrations WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations)",
+			"DELETE FROM __drizzle_migrations WHERE created_at >= (SELECT created_at FROM __drizzle_migrations ORDER BY created_at LIMIT 1 OFFSET 7); ALTER TABLE imports DROP COLUMN demo;",
 		);
 		sqlite.close();
-		const upgraded = openDatabase(dir);
+		const upgraded = await openDatabase(dir);
 		expect(upgraded.transactions.get(id)).toMatchObject({
 			type: "transfer",
 			raw,
@@ -106,8 +106,8 @@ describe("database", () => {
 		});
 		upgraded.close();
 	});
-	it("migrates, persists precise strings, preserves edits on reimport and cascades deletes", () => {
-		const { dir, db } = setup();
+	it("migrates, persists precise strings, preserves edits on reimport and cascades deletes", async () => {
+		const { dir, db } = await setup();
 		const imported = record();
 		db.imports.save(imported);
 		const rawId = randomUUID();
@@ -138,7 +138,7 @@ describe("database", () => {
 			raw: tx.raw,
 		});
 		db.close();
-		const reopened = openDatabase(dir);
+		const reopened = await openDatabase(dir);
 		expect(reopened.health()).toBe(true);
 		expect(reopened.transactions.all()).toHaveLength(1);
 		reopened.imports.delete(imported.id);
@@ -146,8 +146,8 @@ describe("database", () => {
 		expect(reopened.rawRows.list(imported.id)).toEqual([]);
 		reopened.close();
 	});
-	it("replaces balances atomically and persists settings, recipes and jobs", () => {
-		const { db } = setup();
+	it("replaces balances atomically and persists settings, recipes and jobs", async () => {
+		const { db } = await setup();
 		db.actualBalances.replace("2026-27", [{ asset: "BTC", amount: "0.1" }]);
 		expect(() =>
 			db.actualBalances.replace("2026-27", [
@@ -166,8 +166,8 @@ describe("database", () => {
 		expect(db.jobs.get(job)?.status).toBe("failed");
 		db.close();
 	});
-	it("marks interrupted API sync imports failed without removing rows or cursors", () => {
-		const { dir, db } = setup();
+	it("marks interrupted API sync imports failed without removing rows or cursors", async () => {
+		const { dir, db } = await setup();
 		const connectionId = randomUUID();
 		const imported = { ...record(), status: "pending_recipe" as const };
 		db.connections.save({
@@ -189,7 +189,7 @@ describe("database", () => {
 		db.jobs.update(jobId, "running", { importId: imported.id });
 		db.close();
 
-		const reopened = openDatabase(dir);
+		const reopened = await openDatabase(dir);
 		try {
 			expect(reopened.jobs.recover()).toBe(1);
 			expect(reopened.jobs.get(jobId)).toMatchObject({ status: "failed" });

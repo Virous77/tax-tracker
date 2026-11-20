@@ -1,0 +1,62 @@
+[
+	{
+		"source": "csv:1188940dd0eacc229740704cb60f75d8c16ee94141a8571eb00a1c79de14f149",
+		"sourceRef": "sample-buy",
+		"importId": null,
+		"timestamp": "2025-12-01T09:00:00.000Z",
+		"type": "buy",
+		"assetIn": "ETH",
+		"amountIn": "1",
+		"assetOut": "INR",
+		"amountOut": "200000",
+		"inrValue": "200000",
+		"inrRateSource": "trade_inr",
+		"priceQuote": {
+			"asset": "INR",
+			"price": "200000"
+		},
+		"raw": {
+			"Date": "2025-12-01 09:00:00",
+			"Side": "BUY",
+			"Pair": "ETHINR",
+			"Quantity": "1",
+			"Price": "200000",
+			"Total": "200000",
+			"Fee": "",
+			"Fee Asset": "",
+			"ID": "sample-buy"
+		},
+		"reviewFlags": []
+	},
+	{
+		"source": "csv:1188940dd0eacc229740704cb60f75d8c16ee94141a8571eb00a1c79de14f149",
+		"sourceRef": "sample-sell",
+		"importId": null,
+		"timestamp": "2026-01-02T09:00:00.000Z",
+		"type": "sell",
+		"assetIn": "INR",
+		"amountIn": "125000",
+		"assetOut": "ETH",
+		"amountOut": "0.5",
+		"feeAsset": "INR",
+		"feeAmount": "10",
+		"inrValue": "125000",
+		"inrRateSource": "trade_inr",
+		"priceQuote": {
+			"asset": "INR",
+			"price": "250000"
+		},
+		"raw": {
+			"Date": "2026-01-02 09:00:00",
+			"Side": "SELL",
+			"Pair": "ETHINR",
+			"Quantity": "0.5",
+			"Price": "250000",
+			"Total": "125000",
+			"Fee": "10",
+			"Fee Asset": "INR",
+			"ID": "sample-sell"
+		},
+		"reviewFlags": []
+	}
+]

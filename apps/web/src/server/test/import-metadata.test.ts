@@ -15,7 +15,7 @@ beforeEach(async () => {
 	vi.stubEnv("SECRETS_PASSPHRASE", "");
 });
 afterEach(async () => {
-	closeDatabases();
+	await closeDatabases();
 	vi.restoreAllMocks();
 	vi.unstubAllEnvs();
 	await rm(dir, { recursive: true, force: true });
@@ -60,7 +60,7 @@ it("stores a future TDS-only importer result in details without creating ledger 
 		tdsSummary,
 	});
 	const imported = await createImport(
-		database(),
+		await database(),
 		CreateImportRequestSchema.parse({
 			file: bytes,
 			fileName: "tds.csv",
@@ -69,8 +69,12 @@ it("stores a future TDS-only importer result in details without creating ledger 
 		}),
 	);
 	expect(imported.rowsInserted).toBe(1);
-	expect(database().imports.get(imported.id)?.tdsSummary).toEqual(tdsSummary);
-	expect(database().transactions.all()).toEqual([]);
-	closeDatabases();
-	expect(database().imports.get(imported.id)?.tdsSummary).toEqual(tdsSummary);
+	expect((await database()).imports.get(imported.id)?.tdsSummary).toEqual(
+		tdsSummary,
+	);
+	expect((await database()).transactions.all()).toEqual([]);
+	await closeDatabases();
+	expect((await database()).imports.get(imported.id)?.tdsSummary).toEqual(
+		tdsSummary,
+	);
 });

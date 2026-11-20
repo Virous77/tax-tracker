@@ -15,6 +15,7 @@ import {
 
 export const imports = sqliteTable("imports", {
 	id: text("id").primaryKey(),
+	demo: integer("demo", { mode: "boolean" }).notNull().default(false),
 	kind: text("kind", { enum: ["file", "api_sync"] })
 		.notNull()
 		.default("file"),

@@ -15,10 +15,10 @@ afterEach(() => {
 	for (const dir of dirs.splice(0))
 		rmSync(dir, { recursive: true, force: true });
 });
-function setup() {
+async function setup() {
 	const dir = mkdtempSync(join(tmpdir(), "tax-db-phase2-"));
 	dirs.push(dir);
-	const db = openDatabase(dir);
+	const db = await openDatabase(dir);
 	databases.push(db);
 	return db;
 }
@@ -90,8 +90,8 @@ function add(
 	return { tx, count: db.transactions.insert([{ tx, rawRowId }]) };
 }
 for (const first of ["binance", "binance-api"])
-	it(`deduplicates as a persistent multiset with ${first} first`, () => {
-		const db = setup();
+	it(`deduplicates as a persistent multiset with ${first} first`, async () => {
+		const db = await setup();
 		const sibling = first === "binance" ? "binance-api" : "binance";
 		const a = imported(db, first);
 		add(db, a, "first-1");
@@ -118,8 +118,8 @@ for (const first of ["binance", "binance-api"])
 		const d = imported(db, sibling);
 		expect(add(db, d, "second-1").count.inserted).toBe(1);
 	});
-it("inserts near matches and flags the existing ledger id", () => {
-	const db = setup();
+it("inserts near matches and flags the existing ledger id", async () => {
+	const db = await setup();
 	const a = add(db, imported(db, "coindcx"), "one");
 	const b = add(db, imported(db, "coindcx-api"), "two", "1.000000001");
 	expect(b.count.inserted).toBe(1);
@@ -128,8 +128,8 @@ it("inserts near matches and flags the existing ledger id", () => {
 		message: `Possible sibling-channel duplicate of ${a.tx.id}; review both original rows.`,
 	});
 });
-it("rolls back rows and cursor together, resets sync cursors on import deletion, and retains ledger on connection deletion", () => {
-	const db = setup();
+it("rolls back rows and cursor together, resets sync cursors on import deletion, and retains ledger on connection deletion", async () => {
+	const db = await setup();
 	const connection = {
 		id: randomUUID(),
 		kind: "binance" as const,
@@ -175,7 +175,7 @@ it("rolls back rows and cursor together, resets sync cursors on import deletion,
 	expect(db.vault.list()).toEqual([]);
 	expect(db.fetchedBalances.list(connection.id)).toEqual([]);
 });
-it("upgrades a phase-1 database and backfills normalized fingerprints without guessing old cache identity", () => {
+it("upgrades a phase-1 database and backfills normalized fingerprints without guessing old cache identity", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "tax-db-upgrade-"));
 	dirs.push(dir);
 	const legacy = new Database(join(dir, "tax-tracker.db"));
@@ -216,7 +216,7 @@ it("upgrades a phase-1 database and backfills normalized fingerprints without gu
 		)
 		.run();
 	legacy.close();
-	const db = openDatabase(dir);
+	const db = await openDatabase(dir);
 	databases.push(db);
 	const check = new Database(join(dir, "tax-tracker.db"));
 	expect(
@@ -233,8 +233,8 @@ it("upgrades a phase-1 database and backfills normalized fingerprints without gu
 	check.close();
 });
 
-it("retains explicit file TDS when CoinDCX API history arrived first", () => {
-	const db = setup();
+it("retains explicit file TDS when CoinDCX API history arrived first", async () => {
+	const db = await setup();
 	const api = add(db, imported(db, "coindcx-api"), "api");
 	const file = imported(db, "coindcx");
 	expect(add(db, file, "file", "1", 0, { tdsInr: "10" }).count).toEqual({

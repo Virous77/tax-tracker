@@ -24,7 +24,7 @@ beforeEach(async () => {
 	vi.stubEnv("SECRETS_PASSPHRASE", "");
 });
 afterEach(async () => {
-	closeDatabases();
+	await closeDatabases();
 	vi.unstubAllEnvs();
 	await rm(directory, { recursive: true, force: true });
 });
@@ -141,7 +141,7 @@ it.each([true, false])(
 			"2025-06-15T03:12:44.000Z",
 			"2026-05-10T09:00:00.000Z",
 		]);
-		const db = database();
+		const db = await database();
 		const atSameSecond = () =>
 			db.transactions.active().filter((tx) => timestamps.has(tx.timestamp));
 		if (fillsFirst) {
@@ -224,7 +224,7 @@ describe("all report kinds through the import service", () => {
 			expect(imported.rowsRead).toBe(
 				imported.rowsInserted + imported.rowsDuplicate + imported.rowsSkipped,
 			);
-			expect(database().rawRows.list(imported.id)).toHaveLength(
+			expect((await database()).rawRows.list(imported.id)).toHaveLength(
 				imported.rowsRead,
 			);
 			const detail = await (
@@ -296,10 +296,10 @@ it("persists filename timezone precedence and both original Time columns", async
 			expect.objectContaining({ message: expect.stringContaining("no fees") }),
 		]),
 	);
-	expect(database().transactions.all()[0]?.timestamp).toBe(
+	expect((await database()).transactions.all()[0]?.timestamp).toBe(
 		"2026-04-01T04:31:00.000Z",
 	);
-	expect(database().rawRows.list(result.id)[0]?.data).toMatchObject({
+	expect((await database()).rawRows.list(result.id)[0]?.data).toMatchObject({
 		Time: "2026-04-01 10:00:00",
 		"Time#2": "2026-04-01 10:01:00",
 	});
@@ -311,7 +311,7 @@ it("uses a selected fixed offset for a report without a timezone", async () => {
 		detectedTimezone: null,
 		timezoneOrigin: null,
 	});
-	expect(database().transactions.all()[0]?.timestamp).toBe(
+	expect((await database()).transactions.all()[0]?.timestamp).toBe(
 		"2026-04-01T13:31:00.000Z",
 	);
 });
@@ -330,7 +330,7 @@ it("persists column-header timezone provenance in the import list and detail", a
 		]),
 	};
 	expect(result).toMatchObject(expected);
-	closeDatabases();
+	await closeDatabases();
 	expect(await (await call("listImports")).json()).toMatchObject([expected]);
 	expect(
 		await (await call("getImport", "GET", undefined, { id: result.id })).json(),
@@ -338,12 +338,12 @@ it("persists column-header timezone provenance in the import list and detail", a
 });
 it("supersedes an order, excludes it from the report and restores it on deletion", async () => {
 	const first = await (await upload(order(), "orders(UTC+5:30).xlsx")).json();
-	const original = database().transactions.all()[0];
+	const original = (await database()).transactions.all()[0];
 	const better = await (await upload(fills())).json();
 	expect(better).toMatchObject({ rowsInserted: 2, rowsDuplicate: 0 });
-	expect(database().transactions.all()).toHaveLength(3);
-	expect(database().transactions.active()).toHaveLength(2);
-	expect(database().transactions.superseded()).toEqual([
+	expect((await database()).transactions.all()).toHaveLength(3);
+	expect((await database()).transactions.active()).toHaveLength(2);
+	expect((await database()).transactions.superseded()).toEqual([
 		{ txId: original?.id, importId: better.id },
 	]);
 	const replaced = await (
@@ -369,18 +369,18 @@ it("supersedes an order, excludes it from the report and restores it on deletion
 	expect(
 		(await call("deleteImport", "DELETE", undefined, { id: better.id })).status,
 	).toBe(204);
-	expect(database().transactions.active()).toEqual([original]);
-	expect(database().rawRows.list(first.id)).toHaveLength(1);
-	expect(database().transactions.superseded()).toEqual([]);
+	expect((await database()).transactions.active()).toEqual([original]);
+	expect((await database()).rawRows.list(first.id)).toHaveLength(1);
+	expect((await database()).transactions.superseded()).toEqual([]);
 });
 it("inserts mismatched fills with possible_duplicate naming the order candidate", async () => {
 	await upload(order("2"), "orders(UTC+5:30).xlsx");
-	const original = database().transactions.all()[0];
+	const original = (await database()).transactions.all()[0];
 	const incoming = await (await upload(fills())).json();
 	expect(incoming.rowsInserted).toBe(2);
-	expect(database().transactions.superseded()).toEqual([]);
-	for (const tx of database()
-		.transactions.all()
+	expect((await database()).transactions.superseded()).toEqual([]);
+	for (const tx of (await database()).transactions
+		.all()
 		.filter((row) => row.importId === incoming.id))
 		expect(tx.reviewFlags).toContainEqual({
 			code: "possible_duplicate",
@@ -390,7 +390,7 @@ it("inserts mismatched fills with possible_duplicate naming the order candidate"
 it.each(["file-first", "api-first"])(
 	"reconciles API fills and file orders %s without fingerprint double handling",
 	async (direction) => {
-		const db = database();
+		const db = await database();
 		const fileName = "orders(UTC+5:30).xlsx";
 		const fileRows = importFile(
 			{ name: fileName, bytes: order() },
@@ -488,13 +488,13 @@ describe("PDF errors and snapshots", () => {
 				rowsInserted: 0,
 				rowsDuplicate: 3,
 			});
-			expect(database().rawRows.list(item.id)).toHaveLength(3);
+			expect((await database()).rawRows.list(item.id)).toHaveLength(3);
 		}
 		expect(reencodedDuplicate.warnings).toContainEqual({
 			code: "parse_warning",
 			message: expect.stringMatching(/UTC.*instead of.*IST/),
 		});
-		expect(database().balanceSnapshots.list()).toHaveLength(1);
+		expect((await database()).balanceSnapshots.list()).toHaveLength(1);
 	});
 	it.each([
 		[
@@ -553,7 +553,7 @@ describe("PDF errors and snapshots", () => {
 			const text = await response.text();
 			expect(JSON.parse(text)).toMatchObject({ error: { code } });
 			if (password) expect(text).not.toContain(password);
-			expect(database().imports.list()).toHaveLength(0);
+			expect((await database()).imports.list()).toHaveLength(0);
 		},
 	);
 	it("detects PDF magic independent of extension, compares exact amounts, applies and cascades deletion", async () => {
@@ -570,7 +570,7 @@ describe("PDF errors and snapshots", () => {
 			rowsInserted: 3,
 			rowsRead: 3,
 		});
-		expect(database().transactions.all()).toEqual([]);
+		expect((await database()).transactions.all()).toEqual([]);
 		const detail = await (
 			await call("getImport", "GET", undefined, { id: imported.id })
 		).json();
@@ -588,7 +588,7 @@ describe("PDF errors and snapshots", () => {
 			raw: {},
 			reviewFlags: [],
 		};
-		database().transactions.insert([
+		(await database()).transactions.insert([
 			{ tx: ledger },
 			{
 				tx: {
@@ -640,7 +640,7 @@ describe("PDF errors and snapshots", () => {
 });
 
 it("does not count a fill twice when file/API fingerprints overlap inside an order window", async () => {
-	const db = database();
+	const db = await database();
 	const imported = await (
 		await upload(order(), "orders(UTC+5:30).xlsx")
 	).json();
@@ -690,7 +690,7 @@ it("does not count a fill twice when file/API fingerprints overlap inside an ord
 });
 
 it("aggregates snapshot wallets and preserves other venue balances when applying per-source", async () => {
-	const db = database();
+	const db = await database();
 	const pages = statementPages();
 	for (const page of pages)
 		for (const cell of page) if (cell.text === "ETH") cell.text = "BTC";

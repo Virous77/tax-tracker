@@ -115,7 +115,7 @@ it("reconciles signed sync and flags every difference against the shared mock", 
 					options: { providers: ["etherscan"] },
 				}),
 			);
-		const db = database();
+		const db = await database();
 		for (const stream of [
 			"deposits",
 			"withdrawals",
@@ -227,8 +227,8 @@ it("reconciles signed sync and flags every difference against the shared mock", 
 		).toBe(true);
 		expect(report.excluded.length).toBeGreaterThan(0);
 	} finally {
-		await settleBackgroundJobs(database());
-		closeDatabases();
+		await settleBackgroundJobs(await database());
+		await closeDatabases();
 		vi.restoreAllMocks();
 		vi.unstubAllEnvs();
 		await mock.close();

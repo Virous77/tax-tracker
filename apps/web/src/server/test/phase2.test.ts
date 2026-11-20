@@ -89,8 +89,8 @@ beforeEach(async () => {
 	control.balanceError = undefined;
 });
 afterEach(async () => {
-	await settleBackgroundJobs(database());
-	closeDatabases();
+	await settleBackgroundJobs(await database());
+	await closeDatabases();
 	vi.unstubAllEnvs();
 	vi.unstubAllGlobals();
 	await rm(dir, { recursive: true, force: true });
@@ -274,7 +274,7 @@ it("returns 202 before work finishes, rejects overlapping syncs, persists progre
 	} finally {
 		release();
 	}
-	await settleBackgroundJobs(database());
+	await settleBackgroundJobs(await database());
 	expect(
 		await (await call("getJob", "GET", undefined, { id: jobId })).json(),
 	).toMatchObject({
@@ -296,21 +296,21 @@ it("returns 202 before work finishes, rejects overlapping syncs, persists progre
 	const second = await (
 		await call("syncConnection", "POST", undefined, connection)
 	).json();
-	await settleBackgroundJobs(database());
+	await settleBackgroundJobs(await database());
 	expect(
 		await (await call("getJob", "GET", undefined, { id: second.jobId })).json(),
 	).toMatchObject({
 		result: { streams: [{ rowsInserted: 0, rowsDuplicate: 1 }] },
 	});
-	closeDatabases();
+	await closeDatabases();
 	expect(await (await call("listConnections")).json()).toMatchObject([
 		{ runningJobId: null, lastSyncJobId: second.jobId },
 	]);
 	expect((await call("getJob", "GET", undefined, { id: jobId })).status).toBe(
 		200,
 	);
-	expect(database().transactions.all()).toHaveLength(1);
-	expect(database().cursors.get(connection.id)).toEqual({
+	expect((await database()).transactions.all()).toHaveLength(1);
+	expect((await database()).cursors.get(connection.id)).toEqual({
 		trades: { lastId: "1" },
 	});
 });
@@ -320,7 +320,7 @@ it("moves a manual buy between venue balances and disposal lot pools", async () 
 	const { jobId } = await (
 		await call("syncConnection", "POST", undefined, connection)
 	).json();
-	await settleBackgroundJobs(database());
+	await settleBackgroundJobs(await database());
 	expect(
 		await (await call("getJob", "GET", undefined, { id: jobId })).json(),
 	).toMatchObject({ status: "completed" });
@@ -340,7 +340,7 @@ it("moves a manual buy between venue balances and disposal lot pools", async () 
 	const buy = await manual.json();
 	expect(buy).toMatchObject({ source: "manual", venue: "binance" });
 	const sale = {
-		...database().transactions.active()[0],
+		...(await database()).transactions.active()[0],
 		id: "00000000-0000-4000-8000-000000000001",
 		importId: null,
 		source: "binance-api",
@@ -355,8 +355,8 @@ it("moves a manual buy between venue balances and disposal lot pools", async () 
 		raw: {},
 		reviewFlags: [],
 	};
-	database().transactions.insert([{ tx: sale }]);
-	closeDatabases();
+	(await database()).transactions.insert([{ tx: sale }]);
+	await closeDatabases();
 	expect(
 		await (
 			await call("listTransactions", "GET", undefined, {}, "?source=manual")
@@ -386,7 +386,7 @@ it("moves a manual buy between venue balances and disposal lot pools", async () 
 		source: "manual",
 		venue: "coindcx",
 	});
-	expect(database().transactions.get(buy.id)?.venue).toBe("coindcx");
+	expect((await database()).transactions.get(buy.id)?.venue).toBe("coindcx");
 	expect(
 		(await call("getReport", "GET", undefined, { taxYear: "2026-27" })).status,
 	).toBe(404);
@@ -420,8 +420,8 @@ it("moves a manual buy between venue balances and disposal lot pools", async () 
 it("rejects a venue on an imported transaction without applying other edits", async () => {
 	const connection = await setup();
 	await call("syncConnection", "POST", undefined, connection);
-	await settleBackgroundJobs(database());
-	const tx = database().transactions.active()[0];
+	await settleBackgroundJobs(await database());
+	const tx = (await database()).transactions.active()[0];
 	if (!tx) throw new Error("Missing synced transaction");
 	const response = await call(
 		"patchTransaction",
@@ -436,7 +436,7 @@ it("rejects a venue on an imported transaction without applying other edits", as
 			message: "Venue can only be changed for manual transactions.",
 		},
 	});
-	expect(database().transactions.get(tx.id)).toEqual(tx);
+	expect((await database()).transactions.get(tx.id)).toEqual(tx);
 });
 it("retains incomplete warnings, reports balance drift, sanitizes failures and exposes failed connections in review", async () => {
 	const connection = await setup();
@@ -445,7 +445,7 @@ it("retains incomplete warnings, reports balance drift, sanitizes failures and e
 	const { jobId } = await (
 		await call("syncConnection", "POST", undefined, connection)
 	).json();
-	await settleBackgroundJobs(database());
+	await settleBackgroundJobs(await database());
 	expect(
 		await (await call("getJob", "GET", undefined, { id: jobId })).json(),
 	).toMatchObject({
@@ -455,15 +455,13 @@ it("retains incomplete warnings, reports balance drift, sanitizes failures and e
 		},
 	});
 	expect(
-		database()
-			.imports.list()[0]
-			?.warnings.map((row) => row.code),
+		(await database()).imports.list()[0]?.warnings.map((row) => row.code),
 	).toEqual(["import_incomplete", "balance_mismatch"]);
 	control.fail = true;
 	const failed = await (
 		await call("syncConnection", "POST", undefined, connection)
 	).json();
-	await settleBackgroundJobs(database());
+	await settleBackgroundJobs(await database());
 	const job = await (
 		await call("getJob", "GET", undefined, { id: failed.jobId })
 	).json();
@@ -497,7 +495,7 @@ it("completes an EVM sync when the balance check discovers incomplete older hist
 	const { jobId } = await (
 		await call("syncConnection", "POST", undefined, connection)
 	).json();
-	await settleBackgroundJobs(database());
+	await settleBackgroundJobs(await database());
 	expect(
 		await (await call("getJob", "GET", undefined, { id: jobId })).json(),
 	).toMatchObject({
@@ -513,9 +511,9 @@ it("completes an EVM sync when the balance check discovers incomplete older hist
 			notices: [expect.stringMatching(/balance check skipped/i)],
 		},
 	});
-	expect(database().connections.get(connection.id)?.lastSyncStatus).toBe(
-		"incomplete",
-	);
+	expect(
+		(await database()).connections.get(connection.id)?.lastSyncStatus,
+	).toBe("incomplete");
 });
 it("fills prices only when enabled and computes reports offline from the cache", async () => {
 	const connection = await setup();
@@ -570,7 +568,7 @@ it("fills prices only when enabled and computes reports offline from the cache",
 	const fill = await call("fillPrices", "POST", { taxYear: "2026-27" });
 	expect(fill.status).toBe(202);
 	const { jobId } = await fill.json();
-	await settleBackgroundJobs(database());
+	await settleBackgroundJobs(await database());
 	expect(
 		await (await call("getJob", "GET", undefined, { id: jobId })).json(),
 	).toMatchObject({ result: { requested: 1, fetched: 1, missing: [] } });
@@ -599,7 +597,7 @@ it("auto-unlocks from the environment and clears the key on logout", async () =>
 		autoUnlock: true,
 	});
 	await call("logout", "POST");
-	expect((await vaultSession(database())).status().unlocked).toBe(false);
+	expect((await vaultSession(await database())).status().unlocked).toBe(false);
 });
 
 for (const fileFirst of [true, false])
@@ -631,7 +629,7 @@ for (const fileFirst of [true, false])
 		const sync = await (
 			await call("syncConnection", "POST", undefined, connection)
 		).json();
-		await settleBackgroundJobs(database());
+		await settleBackgroundJobs(await database());
 		if (!fileFirst)
 			expect(await (await upload()).json()).toMatchObject({
 				rowsInserted: 0,
@@ -645,7 +643,7 @@ for (const fileFirst of [true, false])
 			).toMatchObject({
 				result: { streams: [{ rowsInserted: 0, rowsDuplicate: 1 }] },
 			});
-		expect(database().transactions.all()).toHaveLength(1);
+		expect((await database()).transactions.all()).toHaveLength(1);
 	});
 
 it("creates every supported chain and fails fast with chain-specific provider requirements", async () => {
@@ -694,7 +692,7 @@ it("creates every supported chain and fails fast with chain-specific provider re
 		{ apiKey: "hidden-paid", tier: "paid" },
 		{ name: "etherscan" },
 	);
-	expect(await connectionOptions(database(), base.id)).toMatchObject({
+	expect(await connectionOptions(await database(), base.id)).toMatchObject({
 		providers: [{ kind: "etherscan", tier: "paid" }],
 	});
 	for (const name of ["alchemy", "nodereal"])
@@ -715,7 +713,7 @@ it("creates every supported chain and fails fast with chain-specific provider re
 			address: `0x${"b".repeat(40)}`,
 		})
 	).json();
-	const options = await connectionOptions(database(), base.id);
+	const options = await connectionOptions(await database(), base.id);
 	expect(options).toMatchObject({
 		ownAddresses: [`0x${"a".repeat(40)}`, sibling.address],
 		providers: [{ kind: "alchemy" }, { kind: "etherscan", tier: "paid" }],

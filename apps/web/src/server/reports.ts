@@ -142,11 +142,13 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 				"Update actual balances to match the selected lot pool.",
 			);
 		const bound = taxYearBounds(taxYear).endExclusiveUtc;
-		const report = VdaReportSchema.parse(
-			computeVdaReport({
-				transactions: db.transactions
-					.active()
-					.filter((tx) => tx.timestamp < bound),
+		const transactions = db.transactions
+			.active()
+			.filter((tx) => tx.timestamp < bound);
+		const demoImports = new Set(db.imports.demoIds());
+		const report = VdaReportSchema.parse({
+			...computeVdaReport({
+				transactions,
 				rules: loadRules("india-vda", taxYear),
 				settings,
 				taxYear,
@@ -157,7 +159,10 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 					db.prices.mappings(),
 				),
 			}),
-		);
+			includesDemoData: transactions.some(
+				(tx) => tx.importId && demoImports.has(tx.importId),
+			),
+		});
 		const throughYear = new Set(
 			db.transactions
 				.all()
@@ -184,5 +189,5 @@ export function getReport(db: TaxDatabase, taxYear: string) {
 			"Compute a report for this year first.",
 			db.reports.missingDetails(taxYear),
 		);
-	return report;
+	return { ...report, includesDemoData: report.includesDemoData ?? false };
 }

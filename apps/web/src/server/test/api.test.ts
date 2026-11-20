@@ -25,7 +25,7 @@ beforeEach(async () => {
 	vi.stubEnv("AI_API_KEY", "");
 });
 afterEach(async () => {
-	closeDatabases();
+	await closeDatabases();
 	vi.unstubAllEnvs();
 	vi.unstubAllGlobals();
 	await rm(directory, { recursive: true, force: true });
@@ -92,8 +92,8 @@ describe("API happy path", () => {
 			)
 		).json();
 		expect(transactions).toMatchObject({ total: 2, pageSize: 1 });
-		const sell = database()
-			.transactions.all()
+		const sell = (await database()).transactions
+			.all()
 			.find((tx) => tx.sourceRef === "sell");
 		if (!sell) throw new Error("Missing sell");
 		expect(
@@ -108,7 +108,9 @@ describe("API happy path", () => {
 		);
 		expect(patched.status).toBe(200);
 		await upload();
-		expect(database().transactions.get(sell.id)?.inrValue).toBe("260000");
+		expect((await database()).transactions.get(sell.id)?.inrValue).toBe(
+			"260000",
+		);
 		const report = await call(
 			"computeReport",
 			"POST",
@@ -163,8 +165,8 @@ describe("API happy path", () => {
 			(await call("deleteImport", "DELETE", undefined, { id: imported.id }))
 				.status,
 		).toBe(204);
-		expect(database().transactions.all()).toEqual([]);
-		expect(database().rawRows.list(imported.id)).toEqual([]);
+		expect((await database()).transactions.all()).toEqual([]);
+		expect((await database()).rawRows.list(imported.id)).toEqual([]);
 		expect(
 			(await call("getReport", "GET", undefined, { taxYear: "2026-27" }))
 				.status,
@@ -284,8 +286,8 @@ describe("API happy path", () => {
 		).json();
 		expect(detail.rowErrors).toHaveLength(2);
 		expect(
-			database()
-				.transactions.all()
+			(await database()).transactions
+				.all()
 				.some((tx) =>
 					tx.reviewFlags.some((flag) => flag.code === "complex_onchain"),
 				),
@@ -653,9 +655,9 @@ it("groups identical warnings without losing counts or transaction attribution",
 		},
 	]);
 	const imported = await (await upload()).json();
-	const ledger = database().transactions.all();
+	const ledger = (await database()).transactions.all();
 	await call("computeReport", "POST", {}, { taxYear: "2026-27" });
-	const report = database().reports.latest("2026-27");
+	const report = (await database()).reports.latest("2026-27");
 	if (!report) throw new Error("Missing report");
 	report.warnings = groupWarnings(
 		ledger.map((tx) => ({
@@ -664,7 +666,7 @@ it("groups identical warnings without losing counts or transaction attribution",
 			txId: tx.id,
 		})),
 	);
-	database().reports.save(report);
+	(await database()).reports.save(report);
 	const reviewed = await (await call("review")).json();
 	expect(
 		reviewed.groups.find(
@@ -678,9 +680,9 @@ it("refuses AI requests for imported and failed files before making a network ca
 	const fetcher = vi.fn();
 	vi.stubGlobal("fetch", fetcher);
 	for (const status of ["imported", "failed"] as const) {
-		const detail = database().imports.get(imported.id);
+		const detail = (await database()).imports.get(imported.id);
 		if (!detail) throw new Error("Missing import");
-		database().imports.save({ ...detail, status });
+		(await database()).imports.save({ ...detail, status });
 		for (const endpoint of ["previewPayload", "suggestRecipe"] as const)
 			expect(
 				(await call(endpoint, "POST", { importId: imported.id })).status,
@@ -707,7 +709,7 @@ it("persists report invalidation reasons across reopening the database", async (
 		code: "report_not_computed",
 		details: { invalidatedAt: expect.any(String), cause: "settings_changed" },
 	});
-	closeDatabases();
+	await closeDatabases();
 	const after = await (
 		await call("getReport", "GET", undefined, params)
 	).json();

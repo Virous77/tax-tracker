@@ -11,6 +11,7 @@ import {
 } from "./phase2.js";
 
 export * from "./phase2.js";
+export * from "./phase4.js";
 
 import {
 	AssetSchema,
@@ -37,6 +38,7 @@ import {
 	EngineSettingsPatchSchema,
 	EngineSettingsSchema,
 } from "../settings.js";
+import { Phase4ApiContract } from "./phase4.js";
 
 export const EmptyRequestSchema = z.object({}).strict();
 export const NoContentResponseSchema = z.undefined();
@@ -55,6 +57,7 @@ export const HealthResponseSchema = z.object({
 	ok: z.literal(true),
 	version: z.string(),
 	dbOk: z.boolean(),
+	sourceUrl: z.url({ protocol: /^https?$/ }).optional(),
 });
 
 export const AiSettingsSchema = z.object({
@@ -460,6 +463,7 @@ export type ImportDetail = z.infer<typeof GetImportResponseSchema>;
 
 export const ApiContract = {
 	...Phase2ApiContract,
+	...Phase4ApiContract,
 	health: {
 		method: "GET",
 		path: "/api/health",

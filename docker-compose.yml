@@ -1,16 +1,22 @@
 services:
   app:
-    build: .
-    image: tax-tracker-app:local
+    build:
+      context: .
+      args:
+        VERSION: ${TAX_TRACKER_VERSION:-}
+        REVISION: ${TAX_TRACKER_REVISION:-}
+        REPOSITORY_URL: ${TAX_TRACKER_REPOSITORY_URL:-}
+    image: ${TAX_TRACKER_IMAGE:-ghcr.io/virous77/tax-tracker:latest}
     depends_on:
       data-init:
         condition: service_completed_successfully
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-3000}:3000"
     volumes:
       - ${DATA_HOST_DIR:-./data}:/data
     environment:
       DATA_DIR: /data
+      SOURCE_URL: ${SOURCE_URL:-}
       APP_PASSWORD: ${APP_PASSWORD:-}
       APP_SECRET: ${APP_SECRET:-}
       AI_BASE_URL: ${AI_BASE_URL:-http://ollama:11434/v1}
@@ -27,7 +33,7 @@ services:
       COINGECKO_API_BASE: ${COINGECKO_API_BASE:-}
     restart: unless-stopped
   data-init:
-    image: tax-tracker-app:local
+    image: ${TAX_TRACKER_IMAGE:-ghcr.io/virous77/tax-tracker:latest}
     pull_policy: never
     user: "0:0"
     network_mode: none
@@ -36,11 +42,18 @@ services:
     entrypoint:
       - node
       - -e
-      - "require('node:fs').chownSync('/data', 1000, 1000)"
+      - |
+        const fs = require("node:fs");
+        fs.chownSync("/data", 1000, 1000);
+        for (const name of ["tax-tracker.db", "tax-tracker.db-wal", "tax-tracker.db-shm", ".session-secret"]) {
+          const path = "/data/" + name;
+          if (fs.lstatSync(path, { throwIfNoEntry: false })?.isFile())
+            fs.lchownSync(path, 1000, 1000);
+        }
     healthcheck:
       disable: true
   ollama:
-    image: ollama/ollama:0.12.10
+    image: ollama/ollama:0.12.10@sha256:e8c3d1f6ad16323bc40dc63eff0701d4fc32113f75a86b54b3e836eef8290de6
     profiles: [ai]
     volumes:
       - ollama:/root/.ollama

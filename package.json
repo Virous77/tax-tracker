@@ -1,6 +1,7 @@
 {
 	"name": "tax-tracker",
 	"private": true,
+	"version": "0.1.0",
 	"license": "AGPL-3.0-only",
 	"packageManager": "pnpm@12.18.0",
 	"engines": {
@@ -11,6 +12,8 @@
 		"test": "pnpm -r --if-present test",
 		"typecheck": "pnpm -r --if-present typecheck",
 		"lint": "biome check .",
+		"recipes:check": "pnpm --filter @tax/recipes exec node scripts/check.mjs",
+		"recipes:new": "pnpm --filter @tax/recipes exec node scripts/new.mjs",
 		"format": "biome format --write .",
 		"test:api": "vitest run --root tests/api",
 		"test:e2e": "playwright test -c tests/e2e/playwright.config.ts"

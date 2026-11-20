@@ -1,0 +1,27 @@
+{
+	"id": "generic-trades-v1",
+	"name": "Generic trades (Date, Side, Pair, Quantity)",
+	"version": 1,
+	"fingerprint": "1188940dd0eacc229740704cb60f75d8c16ee94141a8571eb00a1c79de14f149",
+	"sheet": "CSV",
+	"columns": {
+		"timestamp": "Date",
+		"side": "Side",
+		"pair": "Pair",
+		"amount": "Quantity",
+		"price": "Price",
+		"total": "Total",
+		"feeAmount": "Fee",
+		"feeAsset": "Fee Asset",
+		"id": "ID"
+	},
+	"dateFormat": "yyyy-MM-dd HH:mm:ss",
+	"sideMap": {
+		"BUY": "buy",
+		"SELL": "sell"
+	},
+	"signStyle": "side_column",
+	"pairSplit": {
+		"knownQuotes": ["INR", "USDT", "USD", "BTC", "ETH"]
+	}
+}

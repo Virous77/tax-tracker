@@ -1,12 +1,15 @@
 import * as api from "@tax/core/api";
 import { listTaxYears } from "@tax/rules";
+import { version } from "../../../../package.json";
 import { previewPayload, suggestRecipe } from "./ai/index";
 import { invalidateSessions, login, sessionCookie } from "./auth";
+import { downloadBackup } from "./backup";
 import {
 	applyBalanceSnapshot,
 	listBalanceSnapshots,
 } from "./balance-snapshots";
 import { database } from "./context";
+import { demoStatus, loadDemo, removeDemo } from "./demo";
 import { ApiError, required } from "./errors";
 import { exportReport } from "./exports";
 import type { Endpoint } from "./http";
@@ -29,7 +32,7 @@ export async function execute(
 	query: Record<string, unknown>,
 	request: Request,
 ): Promise<{ value: unknown; headers?: Record<string, string> }> {
-	const db = database();
+	const db = await database();
 	await vaultSession(db);
 	if (name in api.Phase2ApiContract)
 		return {
@@ -44,8 +47,29 @@ export async function execute(
 	const year = params.taxYear ?? "";
 	let value: unknown;
 	switch (name) {
-		case "health":
-			value = { ok: true, version: "0.1.0", dbOk: db.health() };
+		case "health": {
+			const source = URL.parse(process.env.SOURCE_URL ?? "");
+			const sourceUrl =
+				source &&
+				["https:", "http:"].includes(source.protocol) &&
+				!source.username &&
+				!source.password
+					? source.href
+					: undefined;
+			value = { ok: true, version, dbOk: db.health(), sourceUrl };
+			break;
+		}
+		case "getDemo":
+			value = demoStatus(db);
+			break;
+		case "loadDemo":
+			value = loadDemo(db);
+			break;
+		case "removeDemo":
+			removeDemo(db);
+			break;
+		case "downloadBackup":
+			value = await downloadBackup(db);
 			break;
 		case "getSettings":
 			value = getSettings(db);

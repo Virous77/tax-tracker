@@ -2,27 +2,46 @@ import { resolve } from "node:path";
 import { openDatabase, type TaxDatabase } from "@tax/db";
 
 import { cancelBackgroundJobs } from "./background";
-import { closeVaultSessions, vaultSession } from "./vault";
+import { closeVaultSessions } from "./vault";
 
-const databases = new Map<string, TaxDatabase>();
-export function database(): TaxDatabase {
+const processState = globalThis as typeof globalThis & {
+	taxTrackerDatabases?: Map<string, Promise<TaxDatabase>>;
+};
+processState.taxTrackerDatabases ??= new Map();
+const databases = processState.taxTrackerDatabases;
+
+export function database(): Promise<TaxDatabase> {
 	const dir = resolve(
 		/* turbopackIgnore: true */ process.env.DATA_DIR ?? "./data",
 	);
-	let db = databases.get(dir);
-	if (!db) {
-		db = openDatabase(dir);
-		db.jobs.recover();
-		databases.set(dir, db);
-		void vaultSession(db);
+	let pending = databases.get(dir);
+	if (!pending) {
+		pending = openDatabase(dir)
+			.then((db) => {
+				try {
+					db.jobs.recover();
+					return db;
+				} catch (error) {
+					db.close();
+					throw error;
+				}
+			})
+			.catch((error) => {
+				databases.delete(dir);
+				throw error;
+			});
+		databases.set(dir, pending);
 	}
-	return db;
+	return pending;
 }
-export function closeDatabases(): void {
+
+export async function closeDatabases(): Promise<void> {
 	closeVaultSessions();
-	for (const db of databases.values()) {
-		cancelBackgroundJobs(db);
-		db.close();
+	for (const result of await Promise.allSettled(databases.values())) {
+		if (result.status === "fulfilled") {
+			cancelBackgroundJobs(result.value);
+			result.value.close();
+		}
 	}
 	databases.clear();
 }

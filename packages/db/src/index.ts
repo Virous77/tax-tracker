@@ -1,7 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	type ActualBalance,
 	ActualBalanceSchema,
@@ -22,30 +19,26 @@ import {
 	type ImportDetail,
 	type ReportMissingDetails,
 } from "@tax/core/api";
-import Database, { type Database as SQLiteDatabase } from "better-sqlite3";
+import type { Database as SQLiteDatabase } from "better-sqlite3";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { backupDatabase, openMigratedDatabase } from "./backup.js";
 import { phase2Repositories } from "./phase2.js";
 import * as schema from "./schema.js";
 
 export * as schema from "./schema.js";
-export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
-	const directory = resolve(/* turbopackIgnore: true */ dataDir);
-	mkdirSync(directory, { recursive: true, mode: 0o700 });
-	const path = resolve(directory, "tax-tracker.db");
-	const sqlite: SQLiteDatabase = new Database(path);
-	chmodSync(path, 0o600);
-	sqlite.pragma("foreign_keys = ON");
-	sqlite.pragma("busy_timeout = 5000");
-	sqlite.pragma("journal_mode = WAL");
+export async function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
+	const { sqlite, directory } = await openMigratedDatabase(dataDir);
+	try {
+		return repositoriesFor(sqlite, directory);
+	} catch (error) {
+		sqlite.close();
+		throw error;
+	}
+}
+
+function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 	const orm = drizzle(sqlite, { schema });
-	migrate(orm, {
-		migrationsFolder: resolve(
-			dirname(fileURLToPath(import.meta.url)),
-			"../migrations",
-		),
-	});
 	sqlite.transaction(() => {
 		const rows = sqlite
 			.prepare("SELECT * FROM transactions WHERE fingerprint IS NULL")
@@ -120,7 +113,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 		if (skipCrossChannel || !sibling || !fingerprint) return undefined;
 		const candidates = sqlite
 			.prepare(
-				"SELECT t.id FROM transactions t WHERE t.superseded_by IS NULL AND t.source=? AND t.type=? AND t.fingerprint=? AND NOT EXISTS (SELECT 1 FROM raw_rows r WHERE r.tx_id=t.id AND r.source=?) ORDER BY t.id",
+				"SELECT t.id FROM transactions t WHERE t.superseded_by IS NULL AND NOT EXISTS (SELECT 1 FROM imports i WHERE i.id=t.import_id AND i.demo=1) AND t.source=? AND t.type=? AND t.fingerprint=? AND NOT EXISTS (SELECT 1 FROM raw_rows r WHERE r.tx_id=t.id AND r.source=?) ORDER BY t.id",
 			)
 			.all(sibling, tx.type, fingerprint, tx.source) as { id: string }[];
 		const exact = candidates.find((row) => !absorbed.has(row.id));
@@ -129,6 +122,14 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 	};
 	const repositories = {
 		imports: {
+			demoIds: () =>
+				orm
+					.select({ id: schema.imports.id })
+					.from(schema.imports)
+					.where(eq(schema.imports.demo, true))
+					.orderBy(schema.imports.id)
+					.all()
+					.map(({ id }) => id),
 			syncConnections: (id: string): string[] => {
 				const related = sqlite
 					.prepare(
@@ -388,7 +389,7 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 						if (sibling && !skipCrossChannel) {
 							const others = sqlite
 								.prepare(
-									"SELECT id,timestamp,amount_in,amount_out FROM transactions WHERE superseded_by IS NULL AND source=? AND type=? AND asset_in IS ? AND asset_out IS ?",
+									"SELECT id,timestamp,amount_in,amount_out FROM transactions t WHERE t.superseded_by IS NULL AND NOT EXISTS (SELECT 1 FROM imports i WHERE i.id=t.import_id AND i.demo=1) AND t.source=? AND t.type=? AND t.asset_in IS ? AND t.asset_out IS ?",
 								)
 								.all(
 									sibling,
@@ -706,11 +707,13 @@ export function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 		...repositories,
 		...phase2Repositories(sqlite, () => invalidateReports("ledger_changed")),
 		dataDir: directory,
-		atomic: <T>(fn: () => T): T => orm.transaction(fn),
+		backup: (target: string) => backupDatabase(sqlite, target),
+		atomic: <T>(fn: () => T, behavior?: "immediate"): T =>
+			orm.transaction(fn, { behavior }),
 		health: () => sqlite.prepare("SELECT 1").get() !== undefined,
 		close: (): void => {
 			sqlite.close();
 		},
 	};
 }
-export type TaxDatabase = ReturnType<typeof openDatabase>;
+export type TaxDatabase = Awaited<ReturnType<typeof openDatabase>>;

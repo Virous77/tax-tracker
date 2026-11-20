@@ -402,6 +402,20 @@ export const PatchTransactionRequestSchema = z
 export const PatchTransactionResponseSchema = LedgerTxSchema;
 export const DeleteTransactionRequestSchema = IdParamsSchema;
 export const DeleteTransactionResponseSchema = NoContentResponseSchema;
+export const ReportReviewStatusSchema = z.enum(["current", "stale", "missing"]);
+/** Marks review items as checked. Resolutions persist across report recomputes and never change tax figures. */
+export const ResolveReviewRequestSchema = z
+	.object({
+		code: ReviewCodeSchema,
+		/** Ledger rows to resolve for this code; omit to resolve every current item in the group for the tax year. */
+		txIds: z.array(z.string()).optional(),
+		taxYear: TaxYearSchema,
+		note: z.string().max(500).optional(),
+	})
+	.strict();
+export const ResolveReviewResponseSchema = z.object({
+	resolved: z.number().int().nonnegative(),
+});
 export const ReviewQuerySchema = z.object({
 	taxYear: TaxYearSchema.optional(),
 });
@@ -433,11 +447,12 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 export type ReportReviewItem = z.infer<typeof ReportReviewItemSchema>;
 export const ReviewResponseSchema = z.object({
 	connections: z.array(ConnectionSchema).default([]),
-	reportStatus: z.enum(["current", "missing"]),
+	/** "stale": inputs changed since the last compute; report items shown are from that compute. */
+	reportStatus: ReportReviewStatusSchema,
 	reportStatuses: z.array(
 		z.object({
 			taxYear: TaxYearSchema,
-			status: z.enum(["current", "missing"]),
+			status: ReportReviewStatusSchema,
 		}),
 	),
 	computeTaxYears: z.array(TaxYearSchema),
@@ -618,6 +633,12 @@ export const ApiContract = {
 		path: "/api/review",
 		request: ReviewRequestSchema,
 		response: ReviewResponseSchema,
+	},
+	resolveReview: {
+		method: "POST",
+		path: "/api/review/resolve",
+		request: ResolveReviewRequestSchema,
+		response: ResolveReviewResponseSchema,
 	},
 	listBalanceSnapshots: {
 		method: "GET",

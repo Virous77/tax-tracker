@@ -18,7 +18,7 @@ Settings. Install first: see the [install guide](install.md).
 - [10. Settings, and what a CA should check](#10-settings-and-what-a-ca-should-check)
 - [11. The report and exports](#11-the-report-and-exports)
 - [12. Balances and balance snapshots](#12-balances-and-balance-snapshots)
-- [13. Command line](#13-command-line)
+- [13. Command line and HTTP API](#13-command-line-and-http-api)
 
 ## Two words first
 
@@ -36,14 +36,35 @@ Settings. Install first: see the [install guide](install.md).
 1. **Notice.** The first visit shows a notice: what the tool does, that it is not tax advice, that the rules are
    pending CA review and that your data stays on your computer. Click **I understand** to continue. (Reports and
    exports through the API are not blocked by it.)
-2. **Getting started checklist.** The Overview page shows five steps, each with a link and a done/not-done mark
-   worked out from your data: choose the tax year and settings, import a file or connect an exchange, resolve
-   Review items, open the report, export. You can dismiss it.
+2. **Getting started checklist.** The Overview page shows five steps, each with a link and a done/not-done mark:
+   choose the tax year and settings (done once you have saved Settings), import a file or connect an exchange,
+   resolve Review items (notes about your files do not count), open the report, export. You can dismiss it.
 3. **Try with sample data.** To look around before using your own files, click **Try with sample data** on the
    Overview page. It loads a small, clearly fake history (Binance, CoinDCX and one EVM wallet) so you can see a
    complete report at once. While it is loaded a banner says **Sample data loaded** with a **Remove sample data**
    button, and the report and every export say **Includes sample data**. Remove it before you import your own
    files; removing it deletes only the sample imports and their rows.
+
+### Try it with the example files
+
+The sample data skips the import step. To try importing files without your own exports, use the synthetic files
+in the repository's [`examples/`](../examples/) folder. Every value in them is invented.
+
+| File                                       | Time zone to choose | What it shows                                                                                              |
+| ------------------------------------------ | ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `binance-spot-trade-history.SYNTHETIC.csv` | UTC                 | Spot fills, crypto-to-crypto swaps and fees charged in several coins                                       |
+| `binance-deposit-history.SYNTHETIC.csv`    | UTC                 | A crypto deposit with a network and transaction hash                                                       |
+| `binance-withdrawal-history.SYNTHETIC.csv` | UTC                 | A crypto withdrawal with a network fee                                                                     |
+| `coindcx-trade-report.SYNTHETIC.csv`       | IST                 | The Instant Orders sheet of a CoinDCX Trade Report: an INR buy and sell, TDS                               |
+| `generic-unknown-exchange.SYNTHETIC.csv`   | IST                 | A made-up exchange format, to try the recipe wizard ([section 4](#4-other-csvs-recipes-and-the-ai-wizard)) |
+
+1. Remove the sample data first, if it is loaded.
+2. Import each file on **Import** ([section 3](#3-importing-a-file)) with the time zone in the table. For the
+   generic file choose **Other CSV / XLSX** and fill in the mappings listed in
+   [`examples/README.md`](../examples/README.md).
+3. Open **Review**. The wallet activity is deliberately unmatched, so you can see how transfers are flagged.
+4. Compute the FY 2025-26 report and export it. Delete the example imports on **Imports** before you import your
+   own files.
 
 ## 2. Which exports to download
 
@@ -107,7 +128,8 @@ On **Import**:
 3. **What time zone are the times in this file?** Choose **IST (+05:30)**, **UTC** or **Other offset** (a fixed
    `±HH:MM` up to ±14:00). This decides which tax year a trade falls in, which matters for trades near midnight on
    31 March. A zone stated in the file itself (a ` UTC` suffix in the header, or the Binance file-name offset)
-   wins over your choice, and a conflict is shown as a warning.
+   wins over your choice. The import result says which zone was used, and a conflict with your choice is listed
+   under **Notes about your files** on Review (no action needed unless the file's zone is wrong).
 4. For a password-protected PDF, enter its password. It is used once and never stored or logged.
 
 The result shows rows read, inserted, duplicates, skipped, errors and warnings, per sheet, plus the report kind it
@@ -260,26 +282,41 @@ for missing history). Manual rows can be deleted; imported rows cannot, only the
 ## 9. Review codes
 
 The **Review** page groups every open problem by code, explains it and links to the fix. Codes from the report
-appear after you compute it.
+appear after you compute it. Items come in two kinds:
 
-| Code                      | Title in the app                          | Severity | What it means and what to do                                                                                                                                                                                                                             |
-| ------------------------- | ----------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `missing_history`         | Missing acquisition history               | Error    | A sell or swap used up more coins than your recorded buys. The uncovered part is **left out of the totals** and listed as unresolved, never given zero cost. Import earlier history or **Add missing buy**. Also raised for a negative year-end holding. |
-| `missing_inr_value`       | Missing INR valuation                     | Error    | No rupee value and no USDT/USD price to work one out. Turn on price lookups and fetch prices, or enter the INR value by hand.                                                                                                                            |
-| `unknown_type`            | Unrecognized transaction type             | Error    | The importer could not tell what kind of row this is. Open the original row and set the type. Derivatives rows carry this too, on purpose.                                                                                                               |
-| `fx_unavailable`          | SBI FX reference rate unavailable         | Error    | No bundled SBI USD/INR rate on or before that date, so a USD/USDT amount could not be converted. Enter the INR value by hand.                                                                                                                            |
-| `unmatched_transfer`      | Unmatched withdrawal or deposit           | Warning  | A withdrawal or deposit with no matching other side on another source within the match window. Import the other wallet or exchange, or check whether it was a sale or a gift.                                                                            |
-| `ambiguous_transfer`      | Ambiguous self-transfer match             | Warning  | More than one deposit could match this withdrawal. Check the pair so the cost basis moves to the right place.                                                                                                                                            |
-| `tds_not_deducted`        | TDS not deducted by platform              | Warning  | Sales on a platform that does not deduct Indian TDS (Binance). The report shows the TDS that may have been due; discuss it with your CA.                                                                                                                 |
-| `ambiguous_timezone`      | Ambiguous timestamp timezone              | Warning  | The file did not state its time zone, so your choice was used. Check trades near midnight on 31 March / 1 April IST.                                                                                                                                     |
-| `balance_mismatch`        | Computed vs actual balance mismatch       | Warning  | Your computed year-end balance differs from the actual balance you entered, a statement or an exchange. Usually a missing file, transfer or fee convention.                                                                                              |
-| `parse_warning`           | Import parse warning                      | Warning  | The row was read with a fallback or an unusual format (for example long float-noise prices, or a CoinDCX file row adding TDS to an API row). Compare the original with the converted fields.                                                             |
-| `fee_review_required`     | Fee treatment requires review             | Warning  | A fee needs checking: an order export with no fee column, a fee larger than the trade, an unusual fee coin, or a received amount larger than the sent amount.                                                                                            |
-| `import_incomplete`       | Incomplete import or excluded rows        | Warning  | A file is waiting for a recipe, failed, or had row errors; or a sync did not finish. Finish those imports so no trades are missed.                                                                                                                       |
-| `suspected_spam`          | Looks like a spam token                   | Warning  | An unsolicited or look-alike token. Left out of the calculation until you clear the flag.                                                                                                                                                                |
-| `possible_duplicate`      | Possible duplicate of a file-imported row | Warning  | An API row almost matches a file row (or two exports overlap in a way the app could not settle). If both are the same trade, keep one.                                                                                                                   |
-| `complex_onchain`         | Complex on-chain interaction              | Info     | A multi-leg contract call, bridge or wrap, or a derivatives row. Each leg is recorded; classify it yourself or ask your CA.                                                                                                                              |
-| `ca_verification_pending` | Section numbers pending CA verification   | Info     | The section numbers printed on the report have not been verified by a CA. Shown for every tax year until they are.                                                                                                                                       |
+- **Items that need action.** Something may be wrong or missing: a sale with no buy history, a row with no rupee
+  value, an unmatched transfer, a fee to check. Each has a link to the fix, and you can mark a flag resolved once
+  you have checked it. These are the items counted in "N items need review" on the Overview, and the
+  getting-started step "Resolve Review items" is done when none are left.
+- **Notes about your files.** Shown in their own section. They record how a file was read, for example "used the
+  +05:00 offset from the file name instead of the zone you selected", "duplicate column names were renamed" or
+  "this export has no fee column". They need no action, cannot be resolved and are not counted. Read them once;
+  if a note surprises you (a wrong time zone, say), fix the import and import again.
+
+**Incomplete reports.** While any sale is unresolved (missing buy history or no rupee value), the report and its
+exports are marked **incomplete**. The unresolved parts are listed under _Unresolved disposal slices_ and left out
+of the Schedule VDA rows and every total, so the tax, TDS and net payable figures cover only the resolved sales and
+are provisional. A negative net payable on an incomplete report is not a refund. Resolve the items, recompute, and
+the mark goes away.
+
+| Code                      | Title in the app                          | Severity | What it means and what to do                                                                                                                                                                                                                                        |
+| ------------------------- | ----------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `missing_history`         | Missing acquisition history               | Error    | A sell or swap used up more coins than your recorded buys. The uncovered part is **left out of the totals** and listed as unresolved, never given zero cost. Import earlier history or **Add missing buy**. Also raised for a negative year-end holding.            |
+| `missing_inr_value`       | Missing INR valuation                     | Error    | No rupee value and no USDT/USD price to work one out. Turn on price lookups and fetch prices, or enter the INR value by hand.                                                                                                                                       |
+| `unknown_type`            | Unrecognized transaction type             | Error    | The importer could not tell what kind of row this is. Open the original row and set the type. Derivatives rows carry this too, on purpose.                                                                                                                          |
+| `fx_unavailable`          | SBI FX reference rate unavailable         | Error    | No bundled SBI USD/INR rate on or before that date, so a USD/USDT amount could not be converted. Enter the INR value by hand.                                                                                                                                       |
+| `unmatched_transfer`      | Unmatched withdrawal or deposit           | Warning  | A withdrawal or deposit with no matching other side on another source within the match window. Import the other wallet or exchange, or check whether it was a sale or a gift.                                                                                       |
+| `ambiguous_transfer`      | Ambiguous self-transfer match             | Warning  | More than one deposit could match this withdrawal. Check the pair so the cost basis moves to the right place.                                                                                                                                                       |
+| `tds_not_deducted`        | TDS not deducted by platform              | Warning  | Sales on a platform that does not deduct Indian TDS (Binance). The report shows the TDS that may have been due; discuss it with your CA.                                                                                                                            |
+| `ambiguous_timezone`      | Ambiguous timestamp timezone              | Warning  | The file did not state its time zone, so your choice was used. Check trades near midnight on 31 March / 1 April IST.                                                                                                                                                |
+| `balance_mismatch`        | Computed vs actual balance mismatch       | Warning  | Your computed year-end balance differs from the actual balance you entered, a statement or an exchange. Usually a missing file, transfer or fee convention.                                                                                                         |
+| `parse_warning`           | Import parse warning                      | Warning  | The row was read with a fallback or an unusual format (for example long float-noise prices, or a CoinDCX file row adding TDS to an API row). Compare the original with the converted fields. File-level notes of this code appear under **Notes about your files**. |
+| `fee_review_required`     | Fee treatment requires review             | Warning  | A fee needs checking: an order export with no fee column, a fee larger than the trade, an unusual fee coin, or a received amount larger than the sent amount.                                                                                                       |
+| `import_incomplete`       | Incomplete import or excluded rows        | Warning  | A file is waiting for a recipe, failed, or had row errors; or a sync did not finish. Finish those imports so no trades are missed.                                                                                                                                  |
+| `suspected_spam`          | Looks like a spam token                   | Warning  | An unsolicited or look-alike token. Left out of the calculation until you clear the flag.                                                                                                                                                                           |
+| `possible_duplicate`      | Possible duplicate of a file-imported row | Warning  | An API row almost matches a file row (or two exports overlap in a way the app could not settle). If both are the same trade, keep one.                                                                                                                              |
+| `complex_onchain`         | Complex on-chain interaction              | Info     | A multi-leg contract call, bridge or wrap, or a derivatives row. Each leg is recorded; classify it yourself or ask your CA.                                                                                                                                         |
+| `ca_verification_pending` | Section numbers pending CA verification   | Info     | The section numbers printed on the report have not been verified by a CA. Shown for every tax year until they are.                                                                                                                                                  |
 
 Review also lists connections whose last sync failed or was incomplete, and tells you when a tax year's report has
 not been computed (or needs recomputing after a change).
@@ -351,8 +388,10 @@ Losses are shown but never reduce the tax: Indian VDA rules do not allow set-off
 
 **Exports.** Each of **Schedule VDA**, **TDS**, **Income** and **Full Report** downloads as CSV or XLSX. Every
 export starts with the "not tax advice" notice, the settings used, the section references and their verification
-status; it says **Includes sample data** when demo data is loaded. The full report adds totals, balances,
-unresolved items, valuations, warnings and the ledger trail. Cells that look like spreadsheet formulas are
+status; it says **Includes sample data** when demo data is loaded, and **incomplete** while sales are unresolved.
+The Schedule VDA export uses the ITR's column titles (date of acquisition, date of transfer, cost of acquisition,
+consideration received, income) so a CA can read it directly. The full report adds totals, balances, unresolved
+items, valuations, warnings and the ledger trail for each row (as JSON), which the other exports leave out. Cells that look like spreadsheet formulas are
 escaped.
 
 ## 12. Balances and balance snapshots
@@ -369,7 +408,7 @@ A good check on any tax report: does the computed year-end holding of each coin 
 - **Exchange and wallet sync** stores the balances the exchange or chain reports and shows them beside the
   computed ones on the Connections page.
 
-## 13. Command line
+## 13. Command line and HTTP API
 
 The engine also runs without the web app, for scripting or checking:
 
@@ -378,5 +417,44 @@ pnpm install && pnpm -r build
 pnpm --filter @tax/cli exec node dist/index.js compute --ledger ledger.json --year 2026-27 --out report.json --csv vda.csv
 ```
 
-`ledger.json` is an array of ledger rows (see `packages/core`). The web API also works without the browser; the
-first-run notice is only a UI gate.
+`ledger.json` is an array of ledger rows (see `packages/core`).
+
+### The HTTP API
+
+The web app's own API also works without the browser, for scripts. The first-run notice is only a UI gate. Every
+endpoint, with its request and response schema, is listed in `ApiContract` in
+[`packages/core/src/api/index.ts`](../packages/core/src/api/index.ts); the black-box tests in
+[`tests/api/`](../tests/api/) use them all. The API is not versioned yet and may change before 1.0. A minimal
+round trip, with the app on port 3000:
+
+```sh
+# Is it up?
+curl http://localhost:3000/api/health
+
+# Import a file (multipart). source: auto | binance | coindcx | generic; timezone: IST | UTC | +05:30 style offset.
+curl -F "file=@Binance-Spot-Trade-History-202611170145(UTC+5)-part1-of1.csv" \
+  -F source=auto -F timezone=IST http://localhost:3000/api/imports
+
+# What needs review for a tax year (JSON; "totals.action" is the number that needs action)
+curl "http://localhost:3000/api/review?taxYear=2025-26"
+
+# Compute the report (returns it as JSON), then read it again later
+curl -X POST http://localhost:3000/api/reports/2025-26/compute
+curl http://localhost:3000/api/reports/2025-26
+
+# Export: kind = schedule-vda | tds | income | full, format = csv | xlsx
+curl -OJ "http://localhost:3000/api/reports/2025-26/export?kind=schedule-vda&format=csv"
+```
+
+Tax years are written `2025-26` or `2026-27`. Errors come back as `{"error":{"code":"…","message":"…"}}` with a
+4xx/5xx status. Changes are refused when the request carries an `Origin` header from another site, so call the API
+from the same machine (curl sends no `Origin`). With `APP_PASSWORD` set, sign in first and send the cookie with
+every call:
+
+```sh
+curl -c cookies.txt -H 'Content-Type: application/json' \
+  -d '{"password":"your-password"}' http://localhost:3000/api/auth/login
+curl -b cookies.txt "http://localhost:3000/api/review?taxYear=2025-26"
+```
+
+Delete `cookies.txt` afterwards: it is a valid login for 12 hours.

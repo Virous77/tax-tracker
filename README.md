@@ -66,14 +66,22 @@ You need [Docker](https://docs.docker.com/get-docker/) (Docker Desktop on macOS 
 ```sh
 git clone https://github.com/Virous77/tax-tracker.git
 cd tax-tracker
+cp .env.example .env
 docker compose up -d --build
 ```
 
-Open <http://localhost:3000>. Your data lives in `./data`. The first build takes a few minutes. Once a release is
-published (not before the tax rules are signed off by a CA), `docker compose pull && docker compose up -d` runs the
-published image `ghcr.io/virous77/tax-tracker` instead of building. The app is reachable only from this computer
-unless you set `APP_PASSWORD` and `APP_BIND_ADDRESS`. Details, `.env` options and troubleshooting are in
-the [install guide](docs/install.md).
+Open <http://localhost:3000>. Your data lives in `./data`. The first build takes a few minutes. The app is
+reachable only from this computer unless you set `APP_PASSWORD` and `APP_BIND_ADDRESS`.
+
+**Image name.** `.env.example` sets `TAX_TRACKER_IMAGE=tax-tracker:local`, so the image you build is tagged
+`tax-tracker:local` and never takes the published name. (Without a `.env`, a local build is tagged
+`ghcr.io/virous77/tax-tracker:latest`.) No image is published until the tax rules are signed off by a CA. After
+a release, switch to the published image: set `TAX_TRACKER_IMAGE=ghcr.io/virous77/tax-tracker:latest` (or a pinned
+tag such as `:v0.1.0`) in `.env`, then run `docker compose pull && docker compose up -d`.
+
+**No exports of your own yet?** Click **Try with sample data** on the Overview page, or import the synthetic
+files in [`examples/`](examples/) to try the import path. Details, `.env` options and troubleshooting are in the
+[install guide](docs/install.md).
 
 ## Your first report in 5 steps
 
@@ -82,8 +90,9 @@ the [install guide](docs/install.md).
 2. **Import** your exchange exports on the **Import** page (Binance CSV/XLSX, CoinDCX Trade Report XLSX, or any
    other CSV), or add a read-only exchange key or wallet address under **Connections**. Import every year you
    ever traded, not only the current one: FIFO needs the earlier buys.
-3. **Resolve the Review page.** Each item says what is wrong and links to the fix: missing buys, rows with no
-   rupee value, unmatched transfers.
+3. **Resolve the Review page.** Each item that needs action says what is wrong and links to the fix: missing
+   buys, rows with no rupee value, unmatched transfers. **Notes about your files** (how a file was read) need no
+   action.
 4. **Compute** the report on the **Report** page and walk through it: Schedule VDA rows, TDS, income, balances.
 5. **Export** Schedule VDA, TDS, Income or the full report as CSV or XLSX, and take it to your CA.
 

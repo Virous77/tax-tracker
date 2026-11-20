@@ -27,25 +27,32 @@ You also need `git`, or download the repository as a ZIP from GitHub and unpack 
 ```sh
 git clone https://github.com/Virous77/tax-tracker.git
 cd tax-tracker
+cp .env.example .env
 docker compose up -d --build
 ```
 
 The first build takes a few minutes. Open <http://localhost:3000>. On first visit a notice explains what the tool is and is not; accept it to
 continue.
 
+No exports of your own yet? Use **Try with sample data** on the Overview page, or import the synthetic files in
+[`examples/`](../examples/) (see the [user guide](user-guide.md#try-it-with-the-example-files)).
+
 ### Published image or local build
 
-`docker-compose.yml` names the published image `ghcr.io/virous77/tax-tracker:latest` (for `linux/amd64` and
-`linux/arm64`) and also keeps `build: .`:
+`docker-compose.yml` keeps `build: .` and runs whatever image `TAX_TRACKER_IMAGE` names:
 
-- `docker compose up -d --build` builds the image from the source you cloned. Use this until the first release is
+- **Local build (the default for now).** `.env.example` sets `TAX_TRACKER_IMAGE=tax-tracker:local`, so
+  `docker compose up -d --build` builds from the source you cloned and tags the result `tax-tracker:local`. It never
+  takes the published name, and `docker compose pull` never replaces it. Use this until the first release is
   published (no image is published before the tax rules are signed off by a CA), if you changed the code, or if you
-  want to run exactly the source you read.
-- Once a release exists, `docker compose pull && docker compose up -d` downloads and runs the published image
-  without building.
+  want to run exactly the source you read. Without a `.env` file the compose default
+  `ghcr.io/virous77/tax-tracker:latest` is used as the tag, so a local build would take the published name.
+- **Published image (after a release).** Set `TAX_TRACKER_IMAGE=ghcr.io/virous77/tax-tracker:latest` in `.env`,
+  or a pinned tag such as `ghcr.io/virous77/tax-tracker:v0.1.0`, then run
+  `docker compose pull && docker compose up -d`. It is built for `linux/amd64` and `linux/arm64`. Your `data/`
+  folder is the same either way.
 
-To run another image or tag (for example a pinned `:v0.1.0`, or `tax-tracker-app:local` so a local build never
-shadows the published tag), set `TAX_TRACKER_IMAGE` in `.env`.
+To see which image you are running: `docker compose images app`.
 
 ## 3. Configuration (`.env`)
 
@@ -83,7 +90,7 @@ Image and build variables (compose only):
 
 | Variable                     | Default                               | What it does                                                                                                                 |
 | ---------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `TAX_TRACKER_IMAGE`          | `ghcr.io/virous77/tax-tracker:latest` | Image to run or to tag a local build as.                                                                                     |
+| `TAX_TRACKER_IMAGE`          | `ghcr.io/virous77/tax-tracker:latest` | Image to run or to tag a local build as. `.env.example` sets `tax-tracker:local`; see [§2](#published-image-or-local-build). |
 | `TAX_TRACKER_VERSION`        | empty                                 | Version label written into a local build's image metadata.                                                                   |
 | `TAX_TRACKER_REVISION`       | empty                                 | Git commit written into a local build's image metadata.                                                                      |
 | `TAX_TRACKER_REPOSITORY_URL` | empty                                 | Source repository written into a local build's image metadata.                                                               |
@@ -167,23 +174,62 @@ After an update, recompute your reports: stored reports are invalidated when the
 
 Keep backups somewhere encrypted. They contain your history and your encrypted keys.
 
-**Restore** (there is no restore button, on purpose):
+**Restore** (there is no restore button, on purpose). Run these from the repository folder, in this order:
 
-```sh
-docker compose stop
-cp /path/to/backup.db data/tax-tracker.db
-rm -f data/tax-tracker.db-wal data/tax-tracker.db-shm
-docker compose start
-```
+1. Stop the app, so nothing writes to the database:
 
-On Linux, make sure the restored file is owned by uid 1000 (`sudo chown 1000:1000 data/tax-tracker.db`).
-Your vault passphrase is the one that was in use when the backup was taken.
+   ```sh
+   docker compose stop
+   ```
+
+2. Delete the write-ahead log files. A leftover `-wal` file belongs to the old database and can roll back or
+   corrupt the restored one:
+
+   ```sh
+   rm -f data/tax-tracker.db-wal data/tax-tracker.db-shm
+   ```
+
+3. Replace the database with your backup:
+
+   ```sh
+   cp /path/to/backup.db data/tax-tracker.db
+   ```
+
+4. **Linux only:** give the file to uid 1000, the user the app runs as:
+
+   ```sh
+   sudo chown 1000:1000 data/tax-tracker.db
+   ```
+
+5. Start the app again:
+
+   ```sh
+   docker compose start
+   ```
+
+If you set `DATA_HOST_DIR`, use that folder instead of `data/`. Your vault passphrase is the one that was in use
+when the backup was taken. Stored reports come back with the backup; recompute them if you changed settings since.
 
 ## 9. Uninstall
 
+From the repository folder, one command stops and removes the containers, the Ollama model volume (`ollama`,
+if you used the AI profile) and every image the services use:
+
 ```sh
-docker compose --profile ai down --volumes   # stops containers, removes the Ollama model volume
-docker image rm ghcr.io/virous77/tax-tracker:latest
+docker compose --profile ai down --volumes --rmi all
+```
+
+`--rmi all` removes the app image under the name compose resolves from `TAX_TRACKER_IMAGE`, and the
+`ollama/ollama` image when `--profile ai` is given. To remove the images by hand instead, first read the app
+image's name: it is the `TAX_TRACKER_IMAGE` line in `.env` (`tax-tracker:local` with the example file), or
+`ghcr.io/virous77/tax-tracker:latest` when that line is missing or commented out.
+
+```sh
+grep '^TAX_TRACKER_IMAGE=' .env           # prints the name, if it is set
+docker compose images                     # or list what the running stack uses (before `down`)
+docker image rm tax-tracker:local         # the name you found
+docker image ls ollama/ollama             # AI users: the Ollama image (pinned by digest, so its tag may show <none>)
+docker image rm <IMAGE ID from the line above>
 ```
 
 Then delete the `tax-tracker` folder. **This deletes `data/` and your whole history**; download a backup first

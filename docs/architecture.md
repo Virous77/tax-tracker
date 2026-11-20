@@ -24,6 +24,9 @@ this page is the map.
 
 Internal packages are named `@tax/<folder>` and consumed as `workspace:*`.
 
+Outside the packages, `examples/` holds synthetic exchange exports for users to try the import path, and
+`docs/research/export-samples/` holds the header samples each importer was built from.
+
 ## Data flow
 
 ```
@@ -46,6 +49,8 @@ Internal packages are named `@tax/<folder>` and consumed as `workspace:*`.
    cached prices, settings and actual balances, and calls the engine. The engine returns the report; the app stores
    it with the settings used. Any later change to the ledger, settings or balances invalidates the stored report.
 4. **Export.** CSV/XLSX files are rendered from the stored report and always start with the disclaimer and settings.
+   The Schedule VDA, TDS and Income exports use human column titles; only the full export carries each row's JSON
+   trail. A report with unresolved sales is marked incomplete in the UI and in every export.
 
 ## Engine purity
 

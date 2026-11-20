@@ -24,6 +24,31 @@ Phase 4: public release polish (in progress; see `docs/SPEC-phase4.md`).
 - Multi-architecture image published to GitHub Container Registry; Docker Compose uses it by default, keeps
   `build: .` for local builds, and binds to `127.0.0.1`.
 - CI, release, CodeQL and Dependabot workflows (with a 10-day cooldown), issue and PR templates.
+- `examples/`: synthetic Binance, CoinDCX and generic-CSV exports to try the import path and the recipe wizard,
+  pointed to from the README quick start, the install guide and the user guide.
+- User guide: a minimal HTTP API walk-through with `curl` (health, import upload, review, compute, read and export a
+  report, password login), pointing to `ApiContract` for the full list.
+
+### Changed
+
+- Local builds are tagged `tax-tracker:local` through `TAX_TRACKER_IMAGE` in `.env.example`, so they never take the
+  published `ghcr.io/virous77/tax-tracker` name. The README quick start and install guide explain the local tag and
+  how to switch to the published image after a release.
+- Review separates items that need action from **Notes about your files** (how a file was read), which need no
+  action and do not hold back the getting-started checklist. The user guide explains both, and that a report with
+  unresolved sales is marked incomplete with provisional totals.
+- The Schedule VDA export uses human column titles; the JSON trail is only in the full export.
+- `pnpm test` picks up new library recipes without a rebuild, `pnpm recipes:check` lists each differing field, and `pnpm recipes:new` gives a one-line error for an id that already exists.
+
+### Fixed
+
+- Install guide: the restore steps are exact (stop, delete `-wal`/`-shm`, replace the database, `chown` on Linux,
+  start) and are the single source for the restore text in Settings.
+- Install guide: uninstall removes the image named in `TAX_TRACKER_IMAGE` (`docker compose down --rmi all`, or by
+  hand after reading the name), and the Ollama image and model volume for AI users.
+- CONTRIBUTING recipe walkthrough: the commands to run after adding a recipe, a worked `expected.json` that matches
+  the importer's real output, the swap `priceQuote` convention for USDT and other crypto quote pairs, and the
+  duplicate-id error.
 
 ## [0.1.0]
 

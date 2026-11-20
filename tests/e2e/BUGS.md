@@ -1079,3 +1079,87 @@ was set for every compose call. The stacks are the same as in the Phase 4 round 
   but users may read it as a lost check.
 - **The ×N chip is never shown.** With one row per linked transaction, the "(×N)" chip from P2-E2E-7 no longer appears
   in Review.
+
+# Phase 4 release candidate — browser E2E, 2026-11-20
+
+Image `tax-tracker-app:local` built from `main` at `ce4b78e` (not rebuilt). `TAX_TRACKER_IMAGE=tax-tracker-app:local`
+was set for every compose call.
+
+- Phase 1 + Phase 4 ran with `pnpm test:e2e`: `taxe2e*` on 3102–3106.
+- Phase 2 ran on `taxe2e2` (3112), with mock-sync on 11602 and
+  `PHASE2_ONLY=1 pnpm exec playwright test -c tests/e2e/phase2.config.ts --project=phase2`.
+- The API suite ran on `taxapi3` at the same time.
+
+## Results
+
+**Phase 1 + Phase 4: 179 tests, 179 pass (2.2 min), on the first run. No flakes.**
+
+| Spec                       | Pass | Fail |
+| -------------------------- | ---- | ---- |
+| `empty-states.spec.ts`     | 7    | 0    |
+| `import.spec.ts`           | 10   | 0    |
+| `imports-list.spec.ts`     | 4    | 0    |
+| `recipe-wizard.spec.ts`    | 7    | 0    |
+| `report.spec.ts`           | 6    | 0    |
+| `responsive-a11y.spec.ts`  | 32   | 0    |
+| `review.spec.ts`           | 11   | 0    |
+| `round3.spec.ts`           | 13   | 0    |
+| `screenshots.spec.ts`      | 4    | 0    |
+| `settings.spec.ts`         | 6    | 0    |
+| `shell.spec.ts`            | 9    | 0    |
+| `transactions.spec.ts`     | 6    | 0    |
+| `password.spec.ts`         | 11   | 0    |
+| `phase4.spec.ts` (47 → 53) | 53   | 0    |
+
+`phase4-bugs.spec.ts` was deleted: both of its tests now pass and live in `phase4.spec.ts`.
+
+**Phase 2: 97 tests, 97 pass (14.7 min).** Per spec: connections 16, import 9, regression 19, report-settings 3,
+responsive-a11y 34, sync 11, venue 6.
+
+## Fixed and verified
+
+- **P4-E2E-5 (fixed), Overview stale banner.** `phase4 › release candidate › P4-E2E-5 (fixed)`:
+  - a current report shows no banner and no badge;
+  - after adding a row, Overview keeps ₹13,100.00 under "Your data changed since this report was computed." with the
+    "From the last computed report" badge;
+  - Recompute clears both, and the API report is no longer stale.
+- **P4-E2E-4 (fixed), import source labels.** `phase4 › recipe wizard › the README mapping imports 3 rows …` now checks
+  that the Imports row and the "Import complete" card ("Source: …") both say `Generic CSV · E2E Example Exchange`.
+- **R1, wizard zero-row guard** (`phase4 › recipe wizard`, new):
+  - a date format that converts none of the 3 rows: Preview shows the alert "None of the 3 rows in this file converted,
+    so importing would add nothing…", Confirm is disabled and `aria-describedby` points at the alert; after fixing the
+    format and previewing again, the alert is gone and Confirm is enabled;
+  - a file with one bad date among 4 rows: "3 of 4 rows will be imported. 1 cannot be converted and will be listed as
+    row errors." Confirm imports, and the result shows "Row Errors (1)";
+  - confirming a broken mapping without a preview: "`<file>` — No rows imported", "Nothing was added to your ledger.
+    All 3 rows had errors", a "row errors" link to `#row-errors`, and the ledger stays empty.
+- **R2, Review on the selected year** (`phase4 › release candidate`, new):
+  - a year picked on Overview carries to Review;
+  - "All years" is `?taxYear=all`, survives a reload, and is not remembered: Overview and a plain `/review` go back to
+    the picked year;
+  - a new session opens Review on the saved default year, with "No transactions in 2026-27" and no Compute button;
+  - `empty-states` (UI agent's rewrite) covers the empty ledger: the default year, no "Reports not computed", and one
+    compute prompt only for the year with rows.
+- **Report notes.** The CA notice sits under a collapsed "Report notes · 1 note", not under "Notes about your files",
+  with "Review sections in Report" and no "View import" (`phase4 › review notes and action counts`).
+- **"All items reviewed"** replaces "No review flags found" (`phase4`, four tests).
+- **Imports tooltips.** The Inspect and Delete icon buttons have `title` "Inspect" / "Delete" and accessible names
+  (`imports-list`, new from the UI agent).
+- **Log out.** It is hidden without a password (`settings`, new) and is labelled "Log out" in password mode
+  (`password`, three tests).
+
+## The UI agent's unrun assertion edits (`ce4b78e`)
+
+All are correct and pass unchanged: `password` (3 × "Log out"), `phase4` (report notes, "All items reviewed", the
+notes count minus the CA notice), `empty-states` (Review empty state), `review` / `round3` / `phase2-regression` /
+`phase2-sync` (`/review?taxYear=all` where a test needs every year), plus the new `imports-list` tooltip and `settings`
+Log out tests.
+
+## New bugs
+
+None.
+
+## Harness changes
+
+- `phase4-bugs.spec.ts` was removed. Its two tests are folded into `phase4.spec.ts`, and the new `mapExampleBasics()`
+  helper fills the wizard's minimum mapping.

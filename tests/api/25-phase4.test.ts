@@ -11,6 +11,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import type BetterSqlite3 from "better-sqlite3";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { D, roundInr } from "../../packages/core/dist/decimal.js";
 import {
 	addManual,
 	allTx,
@@ -1915,6 +1916,401 @@ describe("final: examples/ files", () => {
 			(await call("GET", exportUrl("csv", "schedule-vda"))).text,
 		);
 		expect(csvRows.find((r) => r[0] === "Sl. No.")).toEqual(ITR_HEADER);
+	});
+});
+
+// Release candidate (f61fc10): import labels, duplicate pending uploads, deleted rows, TDS still due.
+const GENERIC_EXAMPLE = "generic-unknown-exchange.SYNTHETIC.csv";
+const genericBytes = () =>
+	readFileSync(join(ROOT, "examples", GENERIC_EXAMPLE));
+
+async function uploadGeneric(fileName = GENERIC_EXAMPLE) {
+	return ok(
+		await upload(genericBytes(), fileName, { source: "auto", timezone: "IST" }),
+		201,
+		api.CreateImportResponseSchema,
+	);
+}
+
+async function genericRecipe(importId: string, name: string) {
+	return {
+		id: `rc-${name.toLowerCase().replaceAll(" ", "-")}-${Date.now()}`,
+		name,
+		version: 1,
+		fingerprint: await fingerprintOf(importId),
+		columns: {
+			timestamp: "Date",
+			side: "Trade",
+			pair: "Market",
+			amount: "Volume",
+			price: "Price",
+			total: "Total",
+			feeAsset: "Fee Currency",
+			feeAmount: "Fee",
+			tds: "TDS",
+		},
+		dateFormat: "yyyy-MM-dd HH:mm:ss",
+		timezone: "IST",
+		sideMap: { Buy: "buy", Sell: "sell" },
+		signStyle: "side_column",
+		pairSplit: { knownQuotes: ["INR"] },
+	};
+}
+
+async function confirmGeneric(
+	importId: string,
+	name: string,
+	saveRecipe: boolean,
+) {
+	return ok(
+		await call("POST", `/api/imports/${importId}/confirm`, {
+			json: { recipe: await genericRecipe(importId, name), saveRecipe },
+		}),
+		200,
+		api.ConfirmImportResponseSchema,
+	);
+}
+
+async function importDetail(id: string) {
+	return ok(
+		await call("GET", `/api/imports/${id}`),
+		200,
+		api.GetImportResponseSchema,
+	);
+}
+
+describe("rc: sourceLabel on import summaries and details", () => {
+	const RECIPE = "RC Example Exchange";
+	let binanceId = "";
+	let coindcxId = "";
+	let genericId = "";
+
+	beforeAll(async () => {
+		await wipe();
+		binanceId = (await importSample(ORDER_HISTORY_SAMPLE)).id;
+		coindcxId = (
+			await importOk(
+				readFileSync(join(ROOT, "examples/coindcx-trade-report.SYNTHETIC.csv")),
+				"coindcx-trade-report.SYNTHETIC.csv",
+				{ source: "auto", timezone: "IST" },
+			)
+		).id;
+	});
+
+	it("native imports are labelled by venue in the list and the detail", async () => {
+		const list = new Map((await imports()).map((i) => [i.id, i.sourceLabel]));
+		expect(list.get(binanceId)).toBe("Binance");
+		expect(list.get(coindcxId)).toBe("CoinDCX");
+		expect((await importDetail(binanceId)).sourceLabel).toBe("Binance");
+		expect((await importDetail(coindcxId)).sourceLabel).toBe("CoinDCX");
+	});
+
+	it("a generic file waiting for a mapping is 'Generic CSV' on create, list and detail", async () => {
+		const created = await uploadGeneric();
+		genericId = created.id;
+		expect(created.status).toBe("pending_recipe");
+		expect(created.sourceLabel).toBe("Generic CSV");
+		expect((await imports()).find((i) => i.id === genericId)?.sourceLabel).toBe(
+			"Generic CSV",
+		);
+		expect((await importDetail(genericId)).sourceLabel).toBe("Generic CSV");
+	});
+
+	it("confirming with a saved recipe names it on confirm, list and detail, never as csv:<hash>", async () => {
+		const confirmed = await confirmGeneric(genericId, RECIPE, true);
+		const label = `Generic CSV · ${RECIPE}`;
+		expect(confirmed.sourceLabel).toBe(label);
+		expect((await imports()).find((i) => i.id === genericId)?.sourceLabel).toBe(
+			label,
+		);
+		const detail = await importDetail(genericId);
+		expect(detail.sourceLabel).toBe(label);
+		expect(JSON.stringify(await imports())).not.toMatch(/"sourceLabel":"csv:/);
+	});
+
+	it("confirming without saving the recipe still names the recipe used", async () => {
+		await wipe();
+		const pending = await uploadGeneric();
+		const confirmed = await confirmGeneric(pending.id, "RC Unsaved", false);
+		expect(confirmed.status).toBe("imported");
+		expect(confirmed.sourceLabel).toBe("Generic CSV · RC Unsaved");
+		expect((await importDetail(pending.id)).sourceLabel).toBe(
+			"Generic CSV · RC Unsaved",
+		);
+	});
+
+	it("every sample-data import has a readable label", async () => {
+		await wipe();
+		ok(await call("POST", "/api/demo"), 201, api.DemoLoadResponseSchema);
+		const labels = (await imports()).map((i) => i.sourceLabel);
+		expect(labels.length).toBeGreaterThan(0);
+		for (const label of labels) {
+			expect(label, String(label)).toBeTruthy();
+			expect(label, String(label)).not.toMatch(/^(csv|evm):/);
+		}
+		await call("DELETE", "/api/demo");
+	});
+});
+
+describe("rc: R9 identical unmapped uploads reuse the pending import", () => {
+	beforeAll(async () => {
+		await wipe();
+	});
+
+	it("the same bytes uploaded again, even under another name, return the pending import", async () => {
+		const first = await uploadGeneric();
+		const again = await uploadGeneric();
+		const renamed = await uploadGeneric("renamed-copy.csv");
+		expect(again.id).toBe(first.id);
+		expect(renamed.id).toBe(first.id);
+		expect(renamed.fileName).toBe(GENERIC_EXAMPLE);
+		expect(await imports()).toHaveLength(1);
+	});
+
+	it("concurrent identical uploads create one import", async () => {
+		await wipe();
+		const results = await Promise.all(
+			[1, 2, 3].map(() =>
+				upload(genericBytes(), GENERIC_EXAMPLE, {
+					source: "auto",
+					timezone: "IST",
+				}),
+			),
+		);
+		const ids = results.map(
+			(res) => ok(res, 201, api.CreateImportResponseSchema).id,
+		);
+		expect(new Set(ids).size).toBe(1);
+		expect(await imports()).toHaveLength(1);
+		expect((await imports())[0]?.status).toBe("pending_recipe");
+	});
+
+	it("different bytes still make a new pending import", async () => {
+		const changed = Buffer.concat([genericBytes(), Buffer.from("\n")]);
+		const other = ok(
+			await upload(changed, "changed.csv", { source: "auto", timezone: "IST" }),
+			201,
+			api.CreateImportResponseSchema,
+		);
+		expect(other.status).toBe("pending_recipe");
+		expect(await imports()).toHaveLength(2);
+		await call("DELETE", `/api/imports/${other.id}`);
+	});
+
+	it("once mapped, the same file uploaded again is a new import whose rows are all duplicates", async () => {
+		const [pending] = await imports();
+		const confirmed = await confirmGeneric(
+			pending?.id ?? "",
+			"RC Reuse",
+			false,
+		);
+		expect(confirmed.rowsInserted).toBeGreaterThan(0);
+		const next = await uploadGeneric();
+		expect(next.id).not.toBe(confirmed.id);
+		expect(next.status).toBe("pending_recipe");
+		const second = await confirmGeneric(next.id, "RC Reuse", false);
+		expect(second.rowsInserted).toBe(0);
+		expect(second.rowsDuplicate).toBe(confirmed.rowsInserted);
+	});
+
+	it("a native file uploaded twice is not merged: the second import is all duplicates", async () => {
+		await wipe();
+		const first = await importSample(ORDER_HISTORY_SAMPLE);
+		const second = await importSample(ORDER_HISTORY_SAMPLE);
+		expect(second.id).not.toBe(first.id);
+		expect(second.rowsInserted).toBe(0);
+		expect(second.rowsDuplicate).toBe(first.rowsInserted);
+	});
+});
+
+describe("rc: Review items of deleted rows in a stale report", () => {
+	let saleId = "";
+	let keptId = "";
+	const reportItems = (r: Awaited<ReturnType<typeof review>>) =>
+		r.groups.flatMap((g) =>
+			g.reportItems.map((item) => ({ ...item, code: g.code })),
+		);
+
+	beforeAll(async () => {
+		await wipe();
+		saleId = (
+			await addManual({
+				timestamp: "2025-09-01T00:00:00.000Z",
+				type: "sell",
+				assetOut: "SOL",
+				amountOut: "2",
+				inrValue: "30000",
+				inrRateSource: "manual",
+				reviewFlags: [
+					{ code: "parse_warning", message: "RC check the value." },
+				],
+			})
+		).id;
+		keptId = (
+			await addManual({
+				timestamp: "2025-10-01T00:00:00.000Z",
+				type: "sell",
+				assetOut: "ADA",
+				amountOut: "5",
+				inrValue: "1000",
+				inrRateSource: "manual",
+				reviewFlags: [{ code: "parse_warning", message: "RC kept row." }],
+			})
+		).id;
+		await compute(DEMO_YEAR);
+	});
+
+	it("a current report never marks rowDeleted", async () => {
+		const r = await review();
+		expect(r.reportStatus).toBe("current");
+		expect(JSON.stringify(r)).not.toContain('"rowDeleted"');
+	});
+
+	it("after deleting a row, its warning and unresolved items say so and link nowhere", async () => {
+		expect((await call("DELETE", `/api/transactions/${saleId}`)).status).toBe(
+			204,
+		);
+		const r = await review();
+		expect(r.reportStatus).toBe("stale");
+		const deleted = reportItems(r).filter((item) => item.rowDeleted);
+		expect(deleted.map((item) => [item.kind, item.code]).sort()).toEqual(
+			expect.arrayContaining([
+				["unresolved", "missing_history"],
+				["warning", "parse_warning"],
+			]),
+		);
+		for (const item of deleted) {
+			expect(item.message, item.message).toMatch(/\(rows? deleted\)$/);
+			if (item.kind === "warning") {
+				expect(item.warning.txId).toBeUndefined();
+				expect(item.warning.txIds).toBeUndefined();
+			}
+		}
+		const parse = deleted.find(
+			(item) => item.kind === "warning" && item.code === "parse_warning",
+		);
+		expect(parse?.message).toBe("RC check the value. (row deleted)");
+		for (const g of r.groups)
+			expect(g.items.map((tx) => tx.id)).not.toContain(saleId);
+	});
+
+	it("items of rows that still exist are not marked", async () => {
+		const r = await review();
+		const kept = reportItems(r).filter(
+			(item) =>
+				(item.kind === "warning" && item.warning.txIds?.includes(keptId)) ||
+				(item.kind === "unresolved" && item.unresolved.txId === keptId),
+		);
+		expect(kept.length).toBeGreaterThan(0);
+		for (const item of kept) {
+			expect(item.rowDeleted).toBeUndefined();
+			expect(item.message).not.toContain("deleted)");
+		}
+	});
+
+	it("a recompute drops the deleted row's items", async () => {
+		await compute(DEMO_YEAR);
+		const r = await review();
+		expect(r.reportStatus).toBe("current");
+		expect(JSON.stringify(r)).not.toContain('"rowDeleted"');
+		expect(JSON.stringify(r)).not.toContain(saleId);
+	});
+});
+
+describe("rc: TDS remainingDueInr and the TDS export", () => {
+	type Report = Awaited<ReturnType<typeof compute>>;
+	let report: Report;
+
+	beforeAll(async () => {
+		await wipe();
+		await importSample(ORDER_HISTORY_SAMPLE);
+		await importOk(
+			readFileSync(join(ROOT, "examples/coindcx-trade-report.SYNTHETIC.csv")),
+			"coindcx-trade-report.SYNTHETIC.csv",
+			{ source: "auto", timezone: "IST" },
+		);
+		await addManual({
+			timestamp: "2025-06-01T00:00:00.000Z",
+			type: "buy",
+			assetIn: "ETH",
+			amountIn: "2",
+			inrValue: "200000",
+			inrRateSource: "manual",
+		});
+		await addManual({
+			timestamp: "2025-09-01T00:00:00.000Z",
+			type: "sell",
+			assetOut: "ETH",
+			amountOut: "1",
+			inrValue: "200000",
+			tdsInr: "500",
+			inrRateSource: "manual",
+		});
+		report = await compute(DEMO_YEAR);
+	});
+
+	it("every source carries remainingDueInr = max(0, possiblyDueInr − tdsInr), to the paisa", () => {
+		expect(report.tds.bySource.length).toBeGreaterThanOrEqual(3);
+		for (const row of report.tds.bySource) {
+			const shortfall = D(row.possiblyDueInr).minus(row.tdsInr);
+			expect(row.remainingDueInr, row.source).toBe(
+				roundInr(shortfall.gt(0) ? shortfall : 0),
+			);
+		}
+	});
+
+	it("a partly deducted manual sale owes the rest; a venue that deducted owes nothing", () => {
+		const by = new Map(report.tds.bySource.map((row) => [row.source, row]));
+		expect(by.get("manual")).toMatchObject({
+			tdsInr: "500.00",
+			transferValueInr: "200000.00",
+			possiblyDueInr: "2000.00",
+			remainingDueInr: "1500.00",
+		});
+		expect(by.get("coindcx")?.remainingDueInr).toBe("0.00");
+		const binance = by.get("binance");
+		expect(binance?.tdsInr).toBe("0.00");
+		expect(binance?.remainingDueInr).toBe(binance?.possiblyDueInr);
+	});
+
+	it("a manual sale with TDS deducted gets no tds_not_deducted flag", async () => {
+		const r = await review();
+		const tds = r.groups.find((g) => g.code === "tds_not_deducted");
+		expect(tds?.items.some((tx) => tx.source === "binance")).toBe(true);
+		const manualFlagged = tds?.items.filter((tx) => tx.source === "manual");
+		expect(manualFlagged ?? []).toEqual([]);
+	});
+
+	it("the CSV TDS export's possiblyDueInr column is the remaining amount", async () => {
+		const res = await call("GET", exportUrl("csv", "tds"));
+		expect(res.status).toBe(200);
+		const rows = parseCsv(res.text);
+		const header = rows.find((row) => row.includes("possiblyDueInr")) ?? [];
+		expect(header).not.toContain("remainingDueInr");
+		const col = header.indexOf("possiblyDueInr");
+		const src = header.indexOf("source");
+		for (const row of report.tds.bySource) {
+			const line = rows.find((r) => r[src] === row.sourceLabel);
+			expect(line?.[col], row.source).toBe(row.remainingDueInr);
+		}
+	});
+
+	it("the XLSX TDS export holds the remaining amount, not the gross one", async () => {
+		const cells = (await exportText("xlsx", "tds")).split("\n");
+		expect(cells).toContain("possiblyDueInr");
+		expect(cells).not.toContain("remainingDueInr");
+		expect(cells).toContain("1500.00");
+		expect(cells).not.toContain("2000.00");
+	});
+
+	it("the full export's TDS section agrees", async () => {
+		const res = await call("GET", exportUrl("csv", "full"));
+		expect(res.status).toBe(200);
+		const rows = parseCsv(res.text);
+		const header = rows.find((row) => row.includes("possiblyDueInr")) ?? [];
+		const col = header.indexOf("possiblyDueInr");
+		const manualRow = rows.find((r) => r[0] === "Manual");
+		expect(manualRow?.[col]).toBe("1500.00");
 	});
 });
 

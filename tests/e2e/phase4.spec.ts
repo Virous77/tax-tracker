@@ -1327,20 +1327,222 @@ test.describe("recipe wizard on the example file", () => {
 			}),
 		).toBeVisible();
 		const label = `Generic CSV · ${RECIPE_NAME}`;
+		await expect(page.getByText(`Source: ${label}`)).toBeVisible();
 		await page.goto("/imports");
 		await settled(page);
+		// P4-E2E-4 (fixed): Imports names the recipe too, as Transactions does.
 		await expect(
 			page.locator("tr").filter({ hasText: GENERIC_FILE }).first(),
-		).toContainText("Generic CSV");
+		).toContainText(label);
 		await expect(page.getByText(/Generic CSV \(/)).toHaveCount(0);
 		await page.goto("/transactions");
 		await settled(page);
 		await expect(page.getByText(label).first()).toBeVisible();
 		await expect(page.getByText(/csv:[0-9a-f]{8}/)).toHaveCount(0);
 	});
+
+	test("a mapping that converts no rows disables Confirm and says why", async ({
+		page,
+	}) => {
+		await uploadExample(page);
+		await mapExampleBasics(page, "dd/MM/yyyy");
+		const confirm = page.getByRole("button", { name: "Confirm & import" });
+		await expect(confirm).toBeEnabled();
+		await page.getByRole("button", { name: /^Preview \d+ rows$/ }).click();
+		const alert = page
+			.getByRole("alert")
+			.filter({ hasText: "converted, so importing would add nothing" });
+		await expect(alert).toContainText("None of the 3 rows in this file");
+		await expect(confirm).toBeDisabled();
+		const describedBy = await confirm.getAttribute("aria-describedby");
+		expect(describedBy).toBeTruthy();
+		expect(await alert.getAttribute("id")).toBe(describedBy);
+		await snap(page, "phase4/wizard-zero-rows");
+
+		await page.getByLabel("Date format").fill("yyyy-MM-dd HH:mm:ss");
+		await page.getByRole("button", { name: /^Preview \d+ rows$/ }).click();
+		await expect(page.getByText("Dates OK")).toBeVisible();
+		await expect(alert).toHaveCount(0);
+		await expect(confirm).toBeEnabled();
+		await expect(confirm).not.toHaveAttribute("aria-describedby", /.+/);
+	});
+
+	test("a mapping that converts some rows warns how many will be imported", async ({
+		page,
+	}) => {
+		const lines = readFileSync(`${EXAMPLES}/${GENERIC_FILE}`, "utf8")
+			.trimEnd()
+			.split("\n");
+		lines.push("not a date,BTCINR,8000000,0.001,8000,Sell,INR,16,80");
+		await page.goto("/import");
+		await settled(page);
+		await page.getByLabel(/Drop your exchange export here/).setInputFiles({
+			name: "generic-partial.csv",
+			mimeType: "text/csv",
+			buffer: Buffer.from(`${lines.join("\n")}\n`),
+		});
+		await page.getByRole("radio", { name: /^Auto-detect / }).check();
+		await page.getByRole("radio", { name: /^IST / }).check();
+		await page.getByRole("button", { name: "Upload & import" }).click();
+		await expect(
+			page.getByRole("heading", {
+				name: "Map Generic CSV / Sheet: generic-partial.csv",
+			}),
+		).toBeVisible();
+		await mapExampleBasics(page, "yyyy-MM-dd HH:mm:ss");
+		await page.getByRole("button", { name: /^Preview \d+ rows$/ }).click();
+		await expect(
+			page
+				.getByRole("status")
+				.filter({ hasText: "3 of 4 rows will be imported." }),
+		).toContainText("1 cannot be converted and will be listed as row errors.");
+		const confirm = page.getByRole("button", { name: "Confirm & import" });
+		await expect(confirm).toBeEnabled();
+		await confirm.click();
+		await expect(
+			page.getByRole("heading", {
+				name: "generic-partial.csv — Import complete",
+			}),
+		).toBeVisible();
+		await expect(page.getByText("Row Errors (1)")).toBeVisible();
+	});
+
+	test("confirming a mapping without a preview that converts nothing says “No rows imported”", async ({
+		page,
+		api,
+	}) => {
+		await uploadExample(page);
+		await mapExampleBasics(page, "dd/MM/yyyy");
+		await page.getByRole("button", { name: "Confirm & import" }).click();
+		await expect(
+			page.getByRole("heading", {
+				name: `${GENERIC_FILE} — No rows imported`,
+			}),
+		).toBeVisible();
+		await expect(
+			page.getByText(
+				/Nothing was added to your ledger\. All 3 rows had errors/,
+			),
+		).toBeVisible();
+		await expect(
+			page.getByRole("link", { name: "row errors" }),
+		).toHaveAttribute("href", "#row-errors");
+		await expect(
+			page.getByText(`${GENERIC_FILE} — Import complete`),
+		).toHaveCount(0);
+		const total = await api.json<{ total: number }>(
+			"GET",
+			"/api/transactions?pageSize=1",
+		);
+		expect(total.total).toBe(0);
+	});
 });
 
-// Open bugs are in phase4-bugs.spec.ts (main project, not serial), so one red test skips nothing here.
+async function mapExampleBasics(page: Page, dateFormat: string) {
+	for (const [label, value] of [
+		[/^Timestamp/, "Date"],
+		[/^Amount \/ Quantity/, "Volume"],
+		[/^Trading Pair/, "Market"],
+	] as const)
+		await wizardColumn(page, label).selectOption(value);
+	await page.getByLabel("Date format").fill(dateFormat);
+}
+
+test.describe("release candidate: stale Overview and Review's year", () => {
+	test.beforeEach(async ({ api }) => {
+		await api.reset();
+	});
+
+	test("P4-E2E-5 (fixed): Overview says when its figures come from a stale report; Recompute clears it", async ({
+		page,
+		api,
+	}) => {
+		await api.seedWorkedExample();
+		await api.compute("2026-27");
+		await page.goto("/?taxYear=2026-27");
+		await settled(page);
+		await expect(page.getByText("₹13,100.00").first()).toBeVisible();
+		await expect(staleBanner(page)).toHaveCount(0);
+		await expect(page.getByText("From the last computed report")).toHaveCount(
+			0,
+		);
+
+		await api.addManual({
+			sourceRef: "e2e-p4-stale-overview",
+			timestamp: "2026-09-01T06:30:00.000Z",
+			type: "sell",
+			assetOut: "SOL",
+			amountOut: "1",
+			inrValue: "90000",
+		});
+		await page.reload();
+		await settled(page);
+		await expect(page.getByText("₹13,100.00").first()).toBeVisible();
+		await expect(staleBanner(page)).toBeVisible();
+		await expect(page.getByText("From the last computed report")).toBeVisible();
+		await snap(page, "phase4/overview-stale");
+
+		await staleBanner(page).getByRole("button", { name: "Recompute" }).click();
+		await expect(staleBanner(page)).toHaveCount(0);
+		await expect(page.getByText("From the last computed report")).toHaveCount(
+			0,
+		);
+		const report = await api.json<{ stale?: boolean }>(
+			"GET",
+			"/api/reports/2026-27",
+		);
+		expect(report.stale).toBeUndefined();
+	});
+
+	test("Review opens on the year picked on Overview; All years stays in the URL only", async ({
+		page,
+		api,
+	}) => {
+		await api.putSettings({ defaultTaxYear: YEAR });
+		await api.seedWorkedExample();
+		await api.compute("2026-27");
+		await page.goto("/");
+		await settled(page);
+		await page.getByLabel("Tax year").selectOption("2026-27");
+		await expect(page).toHaveURL(/taxYear=2026-27/);
+		await mainNav(page).getByRole("link", { name: "Review" }).click();
+		await expect(page).toHaveURL(/\/review/);
+		await settled(page);
+		await expect(page.getByLabel("Tax year")).toHaveValue("2026-27");
+
+		await page.getByLabel("Tax year").selectOption("");
+		await expect(page).toHaveURL(/\/review\?taxYear=all$/);
+		await settled(page);
+		await expect(page.getByLabel("Tax year")).toHaveValue("");
+		await page.reload();
+		await settled(page);
+		await expect(page.getByLabel("Tax year")).toHaveValue("");
+
+		await mainNav(page).getByRole("link", { name: "Overview" }).click();
+		await settled(page);
+		await expect(page.getByLabel("Tax year")).toHaveValue("2026-27");
+		await page.goto("/review");
+		await settled(page);
+		await expect(page.getByLabel("Tax year")).toHaveValue("2026-27");
+	});
+
+	test("Review opens on the saved default year in a new session", async ({
+		page,
+		api,
+	}) => {
+		await api.putSettings({ defaultTaxYear: "2026-27" });
+		await page.goto("/review");
+		await settled(page);
+		await expect(page.getByLabel("Tax year")).toHaveValue("2026-27");
+		await expect(
+			page.getByRole("heading", { name: "No transactions in 2026-27" }),
+		).toBeVisible();
+		await expect(page.getByRole("button", { name: /^Compute / })).toHaveCount(
+			0,
+		);
+	});
+});
+
 test.describe("fixed bugs", () => {
 	test("N1 (fixed): after every Binance review item is resolved, the checklist marks Review done", async ({
 		page,

@@ -776,3 +776,93 @@ The gate (`18b`) is still zero everywhere. There were no flakes.
   explains it, but the links lead nowhere.
 - **A year without rules is accepted.** `GET /api/review?taxYear=2019-20` lists the year in `computeTaxYears`, and
   `POST /api/review/resolve` answers `{resolved: 0}`. Compute answers 404 for that year. This is consistent but odd.
+
+# Phase 4 release candidate — API, 2026-11-20
+
+Image `tax-tracker-app:local` built from `main` at `ce4b78e` (it contains `f61fc10` server and `ce4b78e` UI; not
+rebuilt). `TAX_TRACKER_IMAGE=tax-tracker-app:local` was set for every compose call. Stack `taxapi3` on 3111
+(`tests/api/phase2.env`), mock-sync on 11601, mock LLM on 11511, fresh data dir, `pnpm -r build` first. The suite ran
+in parts (`01–13`, `14–17`, `18–24`, `25`).
+
+**Result: 973 tests, 973 pass, 0 fail. No flakes.** The gate (`18b`) is still zero everywhere.
+
+| Part / file                | Tests   | Pass    | Fail  |
+| -------------------------- | ------- | ------- | ----- |
+| `01-health-settings`       | 34      | 34      | 0     |
+| `02-imports`               | 36      | 36      | 0     |
+| `03-edge-data`             | 14      | 14      | 0     |
+| `04-recipes`               | 24      | 24      | 0     |
+| `05-transactions`          | 54      | 54      | 0     |
+| `06-review`                | 11      | 11      | 0     |
+| `07-reports`               | 29      | 29      | 0     |
+| `08-exports`               | 19      | 19      | 0     |
+| `09-auth`                  | 61      | 61      | 0     |
+| `10-security`              | 32      | 32      | 0     |
+| `11-research`              | 8       | 8       | 0     |
+| `12-server-round2`         | 13      | 13      | 0     |
+| `13-round3`                | 11      | 11      | 0     |
+| `14-vault`                 | 41      | 41      | 0     |
+| `15-providers-connections` | 74      | 74      | 0     |
+| `16-sync-binance`          | 51      | 51      | 0     |
+| `17-sync-coindcx`          | 13      | 13      | 0     |
+| `18-sync-evm`              | 45      | 45      | 0     |
+| `18b-gate`                 | 32      | 32      | 0     |
+| `19-prices`                | 22      | 22      | 0     |
+| `20-import-kinds`          | 54      | 54      | 0     |
+| `21-pdf-snapshots`         | 27      | 27      | 0     |
+| `22-dedupe-supersede`      | 16      | 16      | 0     |
+| `23-phase2-security`       | 37      | 37      | 0     |
+| `24-regression-round`      | 40      | 40      | 0     |
+| `25-phase4` (155 → 175)    | 175     | 175     | 0     |
+| **Total**                  | **973** | **973** | **0** |
+
+## Fixed and verified
+
+- **P4-API-1 (fixed).** One PATCH that edits `inrValue` and sends `resolveFlags` keeps the flag resolved.
+  `05-transactions › PATCH › edits type, inrValue, note and resolves flags` and
+  `25 › final: review resolutions › P4-API-1: …` both pass.
+- **`sourceLabel` on imports** (`25 › rc: sourceLabel on import summaries and details`, new):
+  - Binance / CoinDCX imports are `Binance` / `CoinDCX` in `GET /api/imports` and `GET /api/imports/:id`;
+  - a generic file waiting for a mapping is `Generic CSV` on create, list and detail;
+  - after confirm it is `Generic CSV · <recipe name>` on the confirm response, list and detail, whether or not the
+    recipe was saved; no label is ever `csv:<hash>`;
+  - every sample-data import has a readable label (no `csv:` / `evm:` ids).
+- **R9, duplicate unmapped uploads** (`25 › rc: R9 …`, new):
+  - the same bytes uploaded again (even under another file name) return the same pending import, and the list has one;
+  - three concurrent identical uploads create one import;
+  - different bytes still make a new pending import;
+  - once mapped, the same file uploaded again is a new pending import, and confirming it inserts 0 rows, all
+    duplicates;
+  - a native (Binance) file uploaded twice is still two imports, the second all duplicates.
+- **`rowDeleted`** (`25 › rc: Review items of deleted rows in a stale report`, new):
+  - a current report never carries `rowDeleted`;
+  - after deleting a flagged sale, the stale Review keeps its `parse_warning` and `missing_history` (unresolved)
+    items with `rowDeleted: true`, the message ending "(row deleted)", and no `txId`/`txIds` on the warning; the row is
+    in no group's `items`;
+  - items of rows that still exist are not marked;
+  - a recompute drops the deleted row's items.
+- **R7, `remainingDueInr`** (`25 › rc: TDS remainingDueInr and the TDS export`, new):
+  - every `tds.bySource` row has `remainingDueInr = max(0, possiblyDueInr − tdsInr)`, rounded to the paisa;
+  - a manual ₹2,00,000 sale with ₹500 TDS: possibly due 2000.00, remaining 1500.00; CoinDCX 0.00; Binance remaining =
+    possibly due;
+  - a manual sale with TDS deducted no longer gets `tds_not_deducted` (Binance still does);
+  - the CSV and XLSX TDS exports and the full export put the remaining amount in the `possiblyDueInr` column, with no
+    `remainingDueInr` column.
+
+## New bugs
+
+None.
+
+## Harness changes
+
+- The new `rc:` describes sit before `final: logged-out page requests (proxy)`, which leaves the stack in password mode.
+- They import `D` and `roundInr` from `packages/core/dist/decimal.js` to check the rounding without JS numbers.
+
+## Observations (no bug filed)
+
+- **The TDS export column name.** `possiblyDueInr` in the TDS export now holds the amount still due after TDS, while
+  the API's `possiblyDueInr` is the gross 1%. A CA comparing the export with the screen may misread it; a header such as
+  "Possibly due after TDS (INR)" would be clearer.
+- **R9 reuse ignores the new upload's name and time zone.** Uploading the same bytes as `renamed-copy.csv` returns the
+  pending import still named after the first upload, with the first upload's time zone. The recipe sets the time zone at
+  confirm, so figures are not affected.

@@ -149,6 +149,22 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 	};
 	const repositories = {
 		imports: {
+			findPendingGenericFile: (fileSha256: string) => {
+				const row = orm
+					.select({ id: schema.imports.id })
+					.from(schema.imports)
+					.where(
+						and(
+							eq(schema.imports.fileSha256, fileSha256),
+							eq(schema.imports.source, "generic"),
+							eq(schema.imports.kind, "file"),
+							eq(schema.imports.status, "pending_recipe"),
+						),
+					)
+					.orderBy(schema.imports.createdAt, schema.imports.id)
+					.get();
+				return row && repositories.imports.get(row.id);
+			},
 			demoIds: () =>
 				orm
 					.select({ id: schema.imports.id })

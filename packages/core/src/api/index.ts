@@ -165,6 +165,7 @@ export const ImportSheetSchema = z.object({
 	headers: z.array(z.string()),
 	sampleRows: z.array(SampleRowSchema).max(20),
 	rowsRead: z.number().int().nonnegative().optional(),
+	recipeName: z.string().optional(),
 });
 export const RowErrorSchema = z.object({
 	rowIndex: z.number().int().nonnegative(),
@@ -205,6 +206,7 @@ export const ImportSummarySchema = z.object({
 	connectionId: z.string().nullable().optional(),
 	connectionLabel: z.string().nullable().optional(),
 	source: z.string(),
+	sourceLabel: z.string().optional(),
 	fileName: z.string(),
 	fileSha256: z.string(),
 	timezone: TimezoneSchema,
@@ -431,6 +433,7 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 		message: z.string(),
 		warning: ReportWarningSchema,
 		sourceLabel: z.string().optional(),
+		rowDeleted: z.literal(true).optional(),
 		/** "info" notes explain how a file was read and need no action; they never block "all reviewed". */
 		severity: ReviewSeveritySchema.default("action"),
 	}),
@@ -440,6 +443,7 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 		message: z.string(),
 		balance: BalanceSchema,
 		sourceLabel: z.string().optional(),
+		rowDeleted: z.literal(true).optional(),
 		severity: z.literal("action").default("action"),
 	}),
 	z.object({
@@ -448,6 +452,7 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 		message: z.string(),
 		unresolved: UnresolvedSchema,
 		sourceLabel: z.string().optional(),
+		rowDeleted: z.literal(true).optional(),
 		severity: z.literal("action").default("action"),
 	}),
 ]);

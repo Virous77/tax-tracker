@@ -1,33 +1,62 @@
-import type { ReportWarning } from "@tax/core";
+import type { Recipe, ReportWarning } from "@tax/core";
+import type { ImportSummary } from "@tax/core/api";
 import type { TaxDatabase } from "@tax/db";
 import { chains } from "@tax/evm";
 import { libraryRecipes } from "@tax/recipes";
 
 export function sourceLabels(db: TaxDatabase) {
-	const recipes = new Map(
-		[...libraryRecipes, ...db.recipes.list()].map((recipe) => [
-			recipe.fingerprint,
-			recipe.name,
-		]),
+	return sourceLabelFor([...libraryRecipes, ...db.recipes.list()]);
+}
+
+function genericSourceLabel(recipeName?: string): string {
+	return recipeName ? `Generic CSV · ${recipeName}` : "Generic CSV";
+}
+
+function sourceLabelFor(recipes: Recipe[]) {
+	const names = new Map(
+		recipes.map(({ fingerprint, name }) => [fingerprint, name]),
 	);
 	return (source: string): string => {
 		switch (source) {
 			case "binance":
 				return "Binance";
+			case "binance-api":
+				return "Binance (API)";
 			case "coindcx":
 				return "CoinDCX";
+			case "coindcx-api":
+				return "CoinDCX (API)";
 			case "manual":
 				return "Manual";
+			case "generic":
+				return genericSourceLabel();
 		}
 		if (source.startsWith("evm:")) {
 			const chain = chains.find(({ chainId }) => `evm:${chainId}` === source);
 			return chain ? `${chain.name} wallet` : "EVM wallet";
 		}
 		if (source.startsWith("csv:")) {
-			const recipe = recipes.get(source.slice(4));
-			return recipe ? `Generic CSV · ${recipe}` : "Generic CSV";
+			return genericSourceLabel(names.get(source.slice(4)));
 		}
 		return source;
+	};
+}
+
+export function importLabels(db: TaxDatabase) {
+	const recipes = [...libraryRecipes, ...db.recipes.list()];
+	const names = new Map(recipes.map(({ id, name }) => [id, name]));
+	const label = sourceLabelFor(recipes);
+	return <T extends ImportSummary>(imported: T) => {
+		const recipeName =
+			imported.sheets?.find((sheet) => sheet.recipeName)?.recipeName ??
+			(imported.recipeId ? names.get(imported.recipeId) : undefined);
+		return {
+			...imported,
+			sourceLabel:
+				imported.source === "generic"
+					? genericSourceLabel(recipeName)
+					: label(imported.source),
+		};
 	};
 }
 

@@ -126,17 +126,6 @@ export function patchTransaction(db: TaxDatabase, id: string, input: unknown) {
 				"validation_error",
 				"Venue can only be changed for manual transactions.",
 			);
-		if (resolveFlags?.length) {
-			const { entries } = readReview(db, undefined, true);
-			saveReviewResolutions(
-				db,
-				entries.filter(
-					(entry) => entry.txId === id && resolveFlags.includes(entry.code),
-				),
-				false,
-				patch.userNote,
-			);
-		}
 		const inrChanged =
 			patch.inrValue !== undefined &&
 			(current.inrValue === undefined ||
@@ -151,6 +140,17 @@ export function patchTransaction(db: TaxDatabase, id: string, input: unknown) {
 			inrRateSource: inrChanged ? "manual" : current.inrRateSource,
 		});
 		if (Object.keys(patch).length) db.transactions.update(tx);
+		if (resolveFlags?.length) {
+			const { entries } = readReview(db, undefined, true);
+			saveReviewResolutions(
+				db,
+				entries.filter(
+					(entry) => entry.txId === id && resolveFlags.includes(entry.code),
+				),
+				false,
+				patch.userNote,
+			);
+		}
 		return required(reviewedLedger(db).find((row) => row.id === id));
 	}, "immediate");
 }

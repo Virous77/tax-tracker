@@ -22,6 +22,7 @@ import {
 	putBalances,
 } from "./reports";
 import { getSettings, putSettings } from "./settings";
+import { importLabels } from "./source-labels";
 import {
 	createTransaction,
 	deleteTransaction,
@@ -87,22 +88,23 @@ export async function execute(
 			value = listTaxYears();
 			break;
 		case "createImport":
-			value = await createImport(
-				db,
-				api.CreateImportRequestSchema.parse(input),
+			value = importLabels(db)(
+				await createImport(db, api.CreateImportRequestSchema.parse(input)),
 			);
 			break;
 		case "listImports":
-			value = db.imports.list();
+			value = db.imports.list().map(importLabels(db));
 			break;
 		case "getImport":
-			value = required(db.imports.get(id));
+			value = importLabels(db)(required(db.imports.get(id)));
 			break;
 		case "confirmImport":
-			value = await confirmImport(
-				db,
-				id,
-				api.ConfirmImportRequestSchema.parse(input),
+			value = importLabels(db)(
+				await confirmImport(
+					db,
+					id,
+					api.ConfirmImportRequestSchema.parse(input),
+				),
 			);
 			break;
 		case "deleteImport":

@@ -94,6 +94,7 @@ export const TdsSourceSchema = z.object({
 	tdsInr: DecimalStringSchema,
 	transferValueInr: DecimalStringSchema,
 	possiblyDueInr: DecimalStringSchema,
+	remainingDueInr: DecimalStringSchema.optional(),
 	txIds: z.array(z.string()),
 });
 export const BalanceSchema = z.object({

@@ -517,6 +517,7 @@ it("imports all public examples without errors and computes a FY 2025-26 report"
 			rowsRead: count,
 			rowsInserted: count,
 			rowsError: 0,
+			sourceLabel: "Generic CSV · Examples trades",
 			status: "imported",
 		});
 	}
@@ -855,6 +856,76 @@ it("group acknowledgement covers the current rows while stale Review keeps pendi
 	).toMatchObject([{ id: third }]);
 });
 
+it("marks stale warnings and unresolved slices for a deleted row", async () => {
+	const sale = await (
+		await call("createTransaction", "POST", {
+			body: {
+				sourceRef: "deleted-sale",
+				importId: null,
+				timestamp: "2025-09-01T00:00:00.000Z",
+				type: "sell",
+				assetOut: "BTC",
+				amountOut: "1",
+				inrValue: "12000",
+				raw: {},
+				reviewFlags: [
+					{ code: "parse_warning", message: "Check source value." },
+				],
+			},
+		})
+	).json();
+	expect((await call("computeReport", "POST")).status).toBe(200);
+	const deleted = await handle(
+		"deleteTransaction",
+		new Request(`http://localhost/api/transactions/${sale.id}`, {
+			method: "DELETE",
+		}),
+		{ id: sale.id },
+	);
+	expect(deleted.status).toBe(204);
+	const reviewQuery = { query: "?taxYear=2025-26" };
+	const stale = await (await call("review", "GET", reviewQuery)).json();
+	expect(stale.reportStatus).toBe("stale");
+	expect(stale.groups).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				code: "parse_warning",
+				items: [],
+				reportItems: [
+					expect.objectContaining({
+						kind: "warning",
+						rowDeleted: true,
+						message: "Check source value. (row deleted)",
+					}),
+				],
+			}),
+			expect.objectContaining({
+				code: "missing_history",
+				items: [],
+				reportItems: expect.arrayContaining([
+					expect.objectContaining({
+						kind: "unresolved",
+						rowDeleted: true,
+						unresolved: expect.objectContaining({ txId: sale.id }),
+					}),
+				]),
+			}),
+		]),
+	);
+	const warning = stale.groups.find(
+		(group: { code: string }) => group.code === "parse_warning",
+	).reportItems[0].warning;
+	expect(warning).not.toHaveProperty("txId");
+	expect(warning).not.toHaveProperty("txIds");
+	expect((await call("computeReport", "POST")).status).toBe(200);
+	expect(await (await call("review", "GET", reviewQuery)).json()).toMatchObject(
+		{
+			reportStatus: "current",
+			totals: { action: 0 },
+		},
+	);
+});
+
 it("retains current reports for equivalent Settings saves and derives the fresh default in IST", async () => {
 	vi.setSystemTime(new Date("2027-03-31T18:29:59.999Z"));
 	const result = () => call("getSettings").then((response) => response.json());
@@ -884,6 +955,31 @@ it("retains current reports for equivalent Settings saves and derives the fresh 
 	).toMatchObject({
 		reportStatus: "stale",
 	});
+});
+
+it("reuses the same pending import for simultaneous and repeated uploads of identical bytes", async () => {
+	const bytes = new TextEncoder().encode(
+		[
+			"When,Action,Coin,Quote,Qty,Value",
+			"2025-06-01 00:00:00,BUY,BTC,INR,1,100",
+		].join("\n"),
+	).buffer;
+	const send = (name: string) => upload(name, bytes, "IST", "generic");
+	const [first, second] = await Promise.all([
+		send("first.csv"),
+		send("second.csv"),
+	]);
+	expect(first.status).toBe(201);
+	expect(second.status).toBe(201);
+	const pending = await first.json();
+	expect(pending).toMatchObject({
+		status: "pending_recipe",
+		sourceLabel: "Generic CSV",
+	});
+	expect(await second.json()).toEqual(pending);
+	expect(await (await send("third.csv")).json()).toEqual(pending);
+	expect(await (await call("listImports")).json()).toEqual([pending]);
+	expect((await database()).rawRows.list(pending.id)).toHaveLength(1);
 });
 
 it("explains pending mappings and shows the recipe name in Review, reports and TDS exports", async () => {
@@ -943,8 +1039,35 @@ it("explains pending mappings and shows the recipe name in Review, reports and T
 		{ id: pending.id },
 	);
 	expect(confirm.status).toBe(200);
-	const report = await (await call("computeReport", "POST")).json();
 	const sourceLabel = "Generic CSV · Unknown exchange example";
+	expect(await confirm.json()).toMatchObject({
+		source: "generic",
+		sourceLabel,
+	});
+	const db = await database();
+	const stored = db.imports.get(pending.id);
+	if (!stored) throw new Error("Confirmed import was not stored.");
+	db.imports.save({
+		...stored,
+		sheets: stored.sheets?.map(({ recipeName: _recipeName, ...row }) => row),
+	});
+	expect(await (await call("listImports")).json()).toMatchObject([
+		{ sourceLabel },
+	]);
+	const detail = await handle(
+		"getImport",
+		new Request(`http://localhost/api/imports/${pending.id}`),
+		{ id: pending.id },
+	);
+	expect(await detail.json()).toMatchObject({ sourceLabel });
+	expect(
+		await (await upload(fileName, data.buffer, "IST", "generic")).json(),
+	).toMatchObject({
+		status: "imported",
+		rowsDuplicate: 2,
+		sourceLabel,
+	});
+	const report = await (await call("computeReport", "POST")).json();
 	expect(report.tds.bySource).toMatchObject([
 		{ source: `csv:${fingerprint}`, sourceLabel },
 	]);
@@ -961,6 +1084,70 @@ it("explains pending mappings and shows the recipe name in Review, reports and T
 	expect(csv).toContain(sourceLabel);
 	expect(csv).not.toContain(fingerprint);
 });
+
+it.each([
+	["81", "0.00"],
+	["20", "61.00"],
+	[undefined, "81.00"],
+])(
+	"uses the same TDS shortfall in the report and export with recorded TDS %s",
+	async (tdsInr, remainingDueInr) => {
+		const generic = `csv:${"c".repeat(64)}`;
+		const sell = {
+			importId: null,
+			timestamp: "2025-09-01T00:00:00.000Z",
+			type: "sell" as const,
+			assetOut: "BTC",
+			amountOut: "1",
+			raw: {},
+			reviewFlags: [],
+		};
+		const db = await database();
+		const id = "00000000-0000-4000-8000-000000000001";
+		db.transactions.insert([
+			{
+				tx: {
+					...sell,
+					id,
+					source: generic,
+					sourceRef: "generic-sell",
+					inrValue: "8100",
+					tdsInr,
+				},
+			},
+			{
+				tx: {
+					...sell,
+					id: "00000000-0000-4000-8000-000000000002",
+					source: "coindcx",
+					sourceRef: "coindcx-sell",
+					inrValue: "2000",
+				},
+			},
+		]);
+		const report = await (await call("computeReport", "POST")).json();
+		expect(report.tds.bySource).toContainEqual(
+			expect.objectContaining({
+				source: generic,
+				possiblyDueInr: "81.00",
+				remainingDueInr,
+			}),
+		);
+		expect(
+			report.warnings.some(
+				(warning: { code: string }) => warning.code === "tds_not_deducted",
+			),
+		).toBe(tdsInr === undefined);
+		const csv = await (
+			await call("exportReport", "GET", {
+				query: "?kind=tds&format=csv",
+			})
+		).text();
+		expect(csv).toContain(
+			`"Generic CSV","","${tdsInr ?? "0"}.00","8100.00","${remainingDueInr}"`,
+		);
+	},
+);
 
 it("asks for a fresh acknowledgement when a warning disappears and later returns", async () => {
 	const txHash = "synthetic-transfer";

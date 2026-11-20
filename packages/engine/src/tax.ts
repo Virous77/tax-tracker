@@ -72,7 +72,12 @@ export class TdsBook {
 				message:
 					"Platform does not deduct TDS; review buyer obligations and reconcile Form 26AS/AIS.",
 			});
-		if (isDisposal && source !== "binance" && source !== "coindcx")
+		if (
+			isDisposal &&
+			source !== "binance" &&
+			source !== "coindcx" &&
+			!D(tx.tdsInr ?? "0").gt("0")
+		)
 			warn({
 				txId: tx.id,
 				code: "tds_not_deducted",

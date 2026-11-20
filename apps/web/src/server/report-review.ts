@@ -43,10 +43,26 @@ function reviewSnapshot(
 		taxYear: year,
 		...db.reports.snapshot(year),
 	}));
-	const ledger = (
-		includeSuperseded ? db.transactions.all() : db.transactions.active()
-	).filter((tx) => !taxYear || taxYearOf(tx.timestamp) === taxYear);
+	const transactions = db.transactions.all();
+	const superseded = new Set(
+		includeSuperseded
+			? []
+			: db.transactions.superseded().map((row) => row.txId),
+	);
+	const ledger = transactions.filter(
+		(tx) =>
+			!superseded.has(tx.id) &&
+			(!taxYear || taxYearOf(tx.timestamp) === taxYear),
+	);
 	const visible = new Map(ledger.map((tx) => [tx.id, tx]));
+	const existingIds = new Set(transactions.map((tx) => tx.id));
+	const staleYears = new Set(
+		reports
+			.filter(({ status }) => status === "stale")
+			.map(({ taxYear }) => taxYear),
+	);
+	const wasDeleted = (year: string, id: string) =>
+		staleYears.has(year) && !existingIds.has(id);
 	const entries = new Map<string, ReviewEntry>();
 	const add = (entry: ReviewEntry) => {
 		entries.set(resolutionKey(entry), entry);
@@ -89,19 +105,27 @@ function reviewSnapshot(
 			add({ ...entry, flag });
 		} else {
 			const sourceId = source ?? tx?.source;
+			const rowDeleted = Boolean(txId) && wasDeleted(taxYear, txId);
 			add({
 				...entry,
 				item: {
 					kind: "warning",
 					taxYear,
-					message,
+					message: rowDeleted ? `${message} (row deleted)` : message,
 					warning: {
 						...warning,
 						...flag,
-						...(txId ? { txIds: [txId], count: 1 } : {}),
+						...(txId
+							? {
+									count: 1,
+									txId: rowDeleted ? undefined : txId,
+									txIds: rowDeleted ? undefined : [txId],
+								}
+							: {}),
 					},
 					severity,
 					sourceLabel: sourceId ? label(sourceId) : undefined,
+					rowDeleted: rowDeleted ? true : undefined,
 				},
 			});
 		}
@@ -119,6 +143,8 @@ function reviewSnapshot(
 		const balanceWarnings = new Set<string>();
 		for (const balance of report.balances) {
 			const sourceLabel = balance.source ? label(balance.source) : undefined;
+			const txIds = balance.txIds.filter((id) => !wasDeleted(taxYear, id));
+			const rowDeleted = balance.txIds.length > 0 && txIds.length === 0;
 			const addBalance = (code: ReviewCode, before: string, after: string) => {
 				balanceWarnings.add(
 					JSON.stringify([
@@ -135,9 +161,10 @@ function reviewSnapshot(
 						kind: "balance",
 						severity: "action",
 						taxYear,
-						balance,
+						balance: { ...balance, txIds },
 						sourceLabel,
-						message: `${before}${sourceLabel ? ` at ${sourceLabel}` : ""}${after}`,
+						rowDeleted: rowDeleted ? true : undefined,
+						message: `${before}${sourceLabel ? ` at ${sourceLabel}` : ""}${after}${rowDeleted ? " (rows deleted)" : ""}`,
 					},
 				});
 			};
@@ -158,6 +185,7 @@ function reviewSnapshot(
 		for (const unresolved of report.unresolved) {
 			const { txId, reason: code } = unresolved;
 			const tx = reportLedger.get(txId);
+			const rowDeleted = wasDeleted(taxYear, txId);
 			const signature = itemKey(
 				"unresolved",
 				unresolved,
@@ -177,7 +205,8 @@ function reviewSnapshot(
 					taxYear,
 					unresolved,
 					sourceLabel: tx ? label(tx.source) : undefined,
-					message: `Unresolved ${unresolved.quantity} ${unresolved.asset}: ${code}.`,
+					rowDeleted: rowDeleted ? true : undefined,
+					message: `Unresolved ${unresolved.quantity} ${unresolved.asset}: ${code}.${rowDeleted ? " (row deleted)" : ""}`,
 				},
 			});
 		}

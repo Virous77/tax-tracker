@@ -1,4 +1,10 @@
-import type { ReviewFlag, ReviewSeverity, VdaReport } from "@tax/core";
+import {
+	D,
+	type ReviewFlag,
+	type ReviewSeverity,
+	roundInr,
+	type VdaReport,
+} from "@tax/core";
 import { presentWarningMessage } from "./source-labels";
 
 export function warningSeverity(warning: ReviewFlag): ReviewSeverity {
@@ -34,10 +40,14 @@ export function presentReport(
 		})),
 		tds: {
 			...report.tds,
-			bySource: report.tds.bySource.map((row) => ({
-				...row,
-				sourceLabel: label(row.source),
-			})),
+			bySource: report.tds.bySource.map((row) => {
+				const shortfall = D(row.possiblyDueInr).minus(row.tdsInr);
+				return {
+					...row,
+					sourceLabel: label(row.source),
+					remainingDueInr: roundInr(shortfall.gt("0") ? shortfall : "0"),
+				};
+			}),
 			checklist: report.tds.checklist.map((item) => {
 				const row = report.tds.bySource.find(({ source }) =>
 					item.startsWith(`${source}: `),

@@ -63,7 +63,7 @@ function saveResult(
 	db: TaxDatabase,
 	imported: ImportDetail,
 	result: ImportResult,
-	recipeId: string | null,
+	recipe: Recipe | null,
 ): ImportDetail {
 	const rawRows = db.rawRows.list(imported.id);
 	const queues = new Map<string, string[]>();
@@ -118,7 +118,14 @@ function saveResult(
 			rowsError: result.rowErrors.length,
 			rowsSkipped: result.skippedRows?.length ?? 0,
 			skippedRows: result.skippedRows ?? [],
-			recipeId,
+			recipeId: recipe?.id ?? null,
+			sheets: recipe
+				? imported.sheets?.map((sheet) =>
+						sheet.name === result.sheets?.[0]?.name
+							? { ...sheet, recipeName: recipe.name }
+							: sheet,
+					)
+				: imported.sheets,
 			rowErrors: result.rowErrors,
 			warnings: result.warnings,
 			reportKind: result.reportKind ?? null,
@@ -281,7 +288,11 @@ export async function createImport(
 		sheets.reduce((count, sheet) => count + sheet.rows.length, 0),
 		sheets,
 	);
-	db.atomic(() => {
+	const existing = db.atomic(() => {
+		if (source === "generic") {
+			const pending = db.imports.findPendingGenericFile(imported.fileSha256);
+			if (pending) return pending;
+		}
 		db.imports.save(imported);
 		db.rawRows.insert(
 			sheets.flatMap((sheet) =>
@@ -295,7 +306,8 @@ export async function createImport(
 				})),
 			),
 		);
-	});
+	}, "immediate");
+	if (existing) return existing;
 	return runJob(db, "import", { importId: imported.id }, async () => {
 		try {
 			const options = { timezone: input.timezone };
@@ -327,9 +339,9 @@ export async function createImport(
 					db,
 					imported,
 					applyRecipe(sheets, recipe, options, input.fileName),
-					recipe.id,
+					recipe,
 				);
-			return imported;
+			return required(db.imports.get(imported.id));
 		} catch (error) {
 			if (error instanceof ApiError) throw error;
 			db.imports.save({
@@ -407,7 +419,7 @@ export async function confirmImport(
 					);
 				db.recipes.save(recipe);
 			}
-			return saveResult(db, imported, result, recipe.id);
+			return saveResult(db, imported, result, recipe);
 		}),
 	);
 }

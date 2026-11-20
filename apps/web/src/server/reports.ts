@@ -3,7 +3,6 @@ import {
 	type ActualBalance,
 	EngineSettingsSchema,
 	type ReportWarning,
-	type ReviewFlag,
 	taxYearBounds,
 	VdaReportSchema,
 	venueForSource,
@@ -17,7 +16,9 @@ import { runJob } from "./context";
 import { demoStatus } from "./demo";
 import { ApiError } from "./errors";
 import { presentReport, warningSeverity } from "./report-presentation";
+import { expireReviewResolutions } from "./report-review";
 import { getSettings } from "./settings";
+import { pendingMappingMessage, sourceLabels } from "./source-labels";
 export function groupWarnings(warnings: ReportWarning[]): ReportWarning[] {
 	const groups = new Map<string, ReportWarning>();
 	for (const warning of warnings) {
@@ -28,12 +29,14 @@ export function groupWarnings(warnings: ReportWarning[]): ReportWarning[] {
 			warning.message,
 			warning.asset,
 			warning.source,
+			warning.importId,
 		]);
 		const group = groups.get(key) ?? {
 			code: warning.code,
 			severity,
 			...(warning.asset ? { asset: warning.asset } : {}),
 			...(warning.source ? { source: warning.source } : {}),
+			...(warning.importId ? { importId: warning.importId } : {}),
 			message: warning.message,
 			count: 0,
 			txIds: [],
@@ -91,25 +94,7 @@ export function putBalances(
 export async function computeReport(db: TaxDatabase, taxYear: string) {
 	checkYear(taxYear);
 	return runJob(db, "compute", { taxYear }, async () => {
-		const warnings: ReviewFlag[] = db.imports
-			.list()
-			.filter((item) => item.status !== "imported" || item.rowsError > 0)
-			.map((item) => ({
-				code: "import_incomplete",
-				message: `Import ${item.fileName}: ${item.rowsError} excluded rows; status ${item.status}. Review the import before relying on this report.`,
-			}));
-		warnings.push(
-			...db.imports
-				.list()
-				.flatMap((item) =>
-					item.warnings.filter(
-						(flag) =>
-							flag.code !== "parse_warning" ||
-							flag.message !==
-								"Unsupported sheets and invalid rows are listed in row errors and are excluded from calculations.",
-					),
-				),
-		);
+		const warnings: ReportWarning[] = [];
 		let fx = (() => null) as ReturnType<typeof createFxLookup>;
 		try {
 			fx = createFxLookup(
@@ -134,72 +119,114 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 					"Bundled SBI rates are unavailable; FX-dependent rows remain unresolved.",
 			});
 		}
-		const settings = EngineSettingsSchema.parse(getSettings(db));
-		const actualBalances = db.actualBalances.get(taxYear);
-		if (
-			actualBalances.some((row) =>
-				settings.lotPool === "global" ? row.source !== undefined : !row.source,
+		return db.atomic(() => {
+			for (const item of db.imports.list()) {
+				if (item.status !== "imported" || item.rowsError > 0)
+					warnings.push({
+						code: "import_incomplete",
+						importId: item.id,
+						message:
+							item.status === "pending_recipe" && item.kind !== "api_sync"
+								? pendingMappingMessage(item.fileName)
+								: item.status !== "imported"
+									? `${item.fileName} has not finished importing. Review it in Imports before relying on this report.`
+									: `${item.fileName} has ${item.rowsError} excluded rows. Review them in Imports before relying on this report.`,
+					});
+				for (const flag of item.warnings) {
+					if (
+						flag.code === "parse_warning" &&
+						flag.message ===
+							"Unsupported sheets and invalid rows are listed in row errors and are excluded from calculations."
+					)
+						continue;
+					warnings.push({ ...flag, importId: item.id });
+				}
+			}
+			const settings = EngineSettingsSchema.parse(getSettings(db));
+			const actualBalances = db.actualBalances.get(taxYear);
+			if (
+				actualBalances.some((row) =>
+					settings.lotPool === "global"
+						? row.source !== undefined
+						: !row.source,
+				)
 			)
-		)
-			throw new ApiError(
-				409,
-				"balance_pool_conflict",
-				"Update actual balances to match the selected lot pool.",
-			);
-		const { startUtc, endExclusiveUtc: bound } = taxYearBounds(taxYear);
-		const transactions = db.transactions
-			.active()
-			.filter((tx) => tx.timestamp < bound);
-		const demoImports = new Set(db.imports.demoIds());
-		const report = VdaReportSchema.parse({
-			...computeVdaReport({
-				transactions,
-				rules: loadRules("india-vda", taxYear),
-				settings,
-				taxYear,
-				actualBalances,
-				fx,
-				priceLookup: priceLookupFromCache(
-					db.prices.all(),
-					db.prices.mappings(),
+				throw new ApiError(
+					409,
+					"balance_pool_conflict",
+					"Update actual balances to match the selected lot pool.",
+				);
+			const { startUtc, endExclusiveUtc: bound } = taxYearBounds(taxYear);
+			const transactions = db.transactions
+				.active()
+				.filter((tx) => tx.timestamp < bound);
+			const demoImports = new Set(db.imports.demoIds());
+			const report = VdaReportSchema.parse({
+				...computeVdaReport({
+					transactions,
+					rules: loadRules("india-vda", taxYear),
+					settings,
+					taxYear,
+					actualBalances,
+					fx,
+					priceLookup: priceLookupFromCache(
+						db.prices.all(),
+						db.prices.mappings(),
+					),
+				}),
+				includesDemoData: transactions.some(
+					(tx) =>
+						tx.timestamp >= startUtc &&
+						tx.importId &&
+						demoImports.has(tx.importId),
 				),
-			}),
-			includesDemoData: transactions.some(
-				(tx) =>
-					tx.timestamp >= startUtc &&
-					tx.importId &&
-					demoImports.has(tx.importId),
-			),
-		});
-		const throughYear = new Set(
-			db.transactions
-				.all()
-				.filter((tx) => tx.timestamp < bound)
-				.map((tx) => tx.id),
-		);
-		report.excluded.push(
-			...db.transactions
-				.superseded()
-				.filter((row) => throughYear.has(row.txId))
-				.map(({ txId }) => ({ txId, reason: "superseded" })),
-		);
-		report.warnings = groupWarnings([...report.warnings, ...warnings]);
-		return presentReport(
-			db.reports.save(report),
-			report.includesDemoData ?? false,
-		);
+			});
+			const throughYear = new Set(
+				db.transactions
+					.all()
+					.filter((tx) => tx.timestamp < bound)
+					.map((tx) => tx.id),
+			);
+			report.excluded.push(
+				...db.transactions
+					.superseded()
+					.filter((row) => throughYear.has(row.txId))
+					.map(({ txId }) => ({ txId, reason: "superseded" })),
+			);
+			report.warnings = groupWarnings([...report.warnings, ...warnings]);
+			db.reports.save(report);
+			expireReviewResolutions(db, taxYear);
+			return presentReport(
+				report,
+				report.includesDemoData ?? false,
+				sourceLabels(db),
+			);
+		}, "immediate");
 	});
 }
-export function getReportState(db: TaxDatabase, taxYear: string) {
+export function getReportState(
+	db: TaxDatabase,
+	taxYear: string,
+	allowStale = true,
+) {
 	checkYear(taxYear);
-	const report = db.reports.latest(taxYear);
-	return report
-		? presentReport(report, demoStatus(db).taxYears.includes(taxYear))
-		: { status: "missing" as const, ...db.reports.missingDetails(taxYear) };
+	const { report, status } = db.reports.snapshot(taxYear);
+	if (!report || (status === "stale" && !allowStale))
+		return {
+			status: "missing" as const,
+			...db.reports.missingDetails(taxYear),
+		};
+	return presentReport(
+		status === "stale" ? { ...report, stale: true } : report,
+		status === "stale"
+			? (report.includesDemoData ?? false)
+			: demoStatus(db).taxYears.includes(taxYear),
+		sourceLabels(db),
+	);
 }
 
 export function getReport(db: TaxDatabase, taxYear: string) {
-	const result = getReportState(db, taxYear);
+	const result = getReportState(db, taxYear, false);
 	if ("status" in result) {
 		const { invalidatedAt, cause } = result;
 		throw new ApiError(

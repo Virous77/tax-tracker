@@ -90,7 +90,7 @@ describe("database", () => {
 		db.close();
 		const sqlite = new Database(join(dir, "tax-tracker.db"));
 		sqlite.exec(
-			"DELETE FROM __drizzle_migrations WHERE created_at >= (SELECT created_at FROM __drizzle_migrations ORDER BY created_at LIMIT 1 OFFSET 7); ALTER TABLE imports DROP COLUMN demo;",
+			"DELETE FROM __drizzle_migrations WHERE created_at >= (SELECT created_at FROM __drizzle_migrations ORDER BY created_at LIMIT 1 OFFSET 7); ALTER TABLE imports DROP COLUMN demo; DROP TABLE review_resolutions;",
 		);
 		sqlite.close();
 		const upgraded = await openDatabase(dir);

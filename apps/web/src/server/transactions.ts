@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+	D,
 	LedgerTxSchema,
 	mergeReviewFlags,
 	type ReviewCode,
@@ -10,36 +11,28 @@ import {
 	CreateTransactionRequestSchema,
 	PatchTransactionRequestSchema,
 	type ReportReviewItem,
+	type ResolveReviewRequestSchema,
 	type TransactionsQuery,
 } from "@tax/core/api";
 import type { TaxDatabase } from "@tax/db";
-import { listTaxYears } from "@tax/rules";
+import type { z } from "zod";
 import { listConnections } from "./connections";
 import { ApiError, required } from "./errors";
 import { warningSeverity } from "./report-presentation";
-import { reportReviewItems } from "./report-review";
+import { readReview, saveReviewResolutions } from "./report-review";
 
-function reviewedLedger(
-	db: TaxDatabase,
-	years = listTaxYears().map((year) => year.id),
-) {
-	const ledger = db.transactions.all();
-	const flags = years.flatMap(
-		(year) => db.reports.latest(year)?.warnings ?? [],
-	);
+function reviewedLedger(db: TaxDatabase) {
+	const { ledger, entries } = readReview(db, undefined, true);
+	const flags = new Map<string, (typeof ledger)[number]["reviewFlags"]>();
+	for (const entry of entries) {
+		if (!("flag" in entry)) continue;
+		const reasons = flags.get(entry.txId) ?? [];
+		reasons.push(entry.flag);
+		flags.set(entry.txId, reasons);
+	}
 	return ledger.map((tx) => ({
 		...tx,
-		reviewFlags: mergeReviewFlags([
-			...tx.reviewFlags,
-			...flags.filter(
-				(flag) =>
-					(flag.txId === tx.id || flag.txIds?.includes(tx.id)) &&
-					!tx.reviewFlags.some(
-						(original) =>
-							original.code === flag.code && original.message === flag.message,
-					),
-			),
-		]),
+		reviewFlags: mergeReviewFlags(flags.get(tx.id) ?? []),
 	}));
 }
 export function listTransactions(db: TaxDatabase, query: TransactionsQuery) {
@@ -66,6 +59,7 @@ export function listTransactions(db: TaxDatabase, query: TransactionsQuery) {
 					[
 						tx.source,
 						tx.sourceRef,
+						tx.sourceLabel,
 						tx.assetIn,
 						tx.assetOut,
 						tx.userNote,
@@ -123,25 +117,42 @@ export function createTransaction(db: TaxDatabase, input: unknown) {
 	return tx;
 }
 export function patchTransaction(db: TaxDatabase, id: string, input: unknown) {
-	const current = required(db.transactions.get(id));
 	const { resolveFlags, ...patch } = PatchTransactionRequestSchema.parse(input);
-	if (patch.venue !== undefined && current.source !== "manual")
-		throw new ApiError(
-			400,
-			"validation_error",
-			"Venue can only be changed for manual transactions.",
-		);
-	const tx = LedgerTxSchema.parse({
-		...current,
-		...patch,
-		...(patch.type && patch.type !== "income" ? { incomeKind: undefined } : {}),
-		...(patch.inrValue !== undefined ? { inrRateSource: "manual" } : {}),
-		reviewFlags: current.reviewFlags.filter(
-			(flag) => !resolveFlags?.includes(flag.code),
-		),
-	});
-	db.transactions.update(tx);
-	return tx;
+	return db.atomic(() => {
+		const current = required(db.transactions.get(id));
+		if (patch.venue !== undefined && current.source !== "manual")
+			throw new ApiError(
+				400,
+				"validation_error",
+				"Venue can only be changed for manual transactions.",
+			);
+		if (resolveFlags?.length) {
+			const { entries } = readReview(db, undefined, true);
+			saveReviewResolutions(
+				db,
+				entries.filter(
+					(entry) => entry.txId === id && resolveFlags.includes(entry.code),
+				),
+				false,
+				patch.userNote,
+			);
+		}
+		const inrChanged =
+			patch.inrValue !== undefined &&
+			(current.inrValue === undefined ||
+				!D(current.inrValue).eq(patch.inrValue));
+		const tx = LedgerTxSchema.parse({
+			...current,
+			...patch,
+			...(patch.type && patch.type !== "income"
+				? { incomeKind: undefined }
+				: {}),
+			inrValue: inrChanged ? patch.inrValue : current.inrValue,
+			inrRateSource: inrChanged ? "manual" : current.inrRateSource,
+		});
+		if (Object.keys(patch).length) db.transactions.update(tx);
+		return required(reviewedLedger(db).find((row) => row.id === id));
+	}, "immediate");
 }
 export function deleteTransaction(db: TaxDatabase, id: string): void {
 	const tx = required(db.transactions.get(id));
@@ -154,41 +165,23 @@ export function deleteTransaction(db: TaxDatabase, id: string): void {
 	db.transactions.deleteManual(id);
 }
 export function review(db: TaxDatabase, taxYear?: string) {
-	const years = taxYear ? [taxYear] : listTaxYears().map((year) => year.id);
-	const reports = years.flatMap((year) => {
-		const report = db.reports.latest(year);
-		return report ? [report] : [];
-	});
-
-	const superseded = new Set(
-		db.transactions.superseded().map(({ txId }) => txId),
-	);
-	const ledger = reviewedLedger(db, years).filter(
-		(tx) =>
-			!superseded.has(tx.id) &&
-			(!taxYear || taxYearOf(tx.timestamp) === taxYear),
-	);
-	const reportItems = reportReviewItems(
-		reports,
-		new Set(ledger.map((tx) => tx.id)),
-	);
-	const represented = new Set(
-		reportItems.flatMap(({ code, item }) => {
-			if (item.kind === "unresolved")
-				return [JSON.stringify([code, item.unresolved.txId])];
-			return [];
-		}),
-	);
-	const balanceWarnings = new Set(
-		reportItems
-			.filter(({ item }) => item.kind === "balance")
-			.map(({ code, item }) => JSON.stringify([code, item.message])),
-	);
+	const { ledger, entries, reportStatuses } = readReview(db, taxYear);
+	const visible = displayedReviewEntries(entries);
+	const rows = new Map<
+		string,
+		{
+			tx: (typeof ledger)[number];
+			flags: (typeof ledger)[number]["reviewFlags"];
+		}
+	>();
+	for (const tx of ledger) rows.set(tx.id, { tx, flags: [] });
+	for (const entry of visible)
+		if ("flag" in entry) rows.get(entry.txId)?.flags.push(entry.flag);
 	type Group = {
 		code: ReviewCode;
 		severity: ReviewSeverity;
 		count: number;
-		items: ReturnType<typeof db.transactions.all>;
+		items: typeof ledger;
 		reportItems: ReportReviewItem[];
 	};
 	const groups = new Map<string, Group>();
@@ -205,34 +198,32 @@ export function review(db: TaxDatabase, taxYear?: string) {
 		group.count++;
 		return group;
 	};
-	for (const tx of ledger) {
-		for (const flag of tx.reviewFlags) {
-			if (
-				balanceWarnings.has(JSON.stringify([flag.code, flag.message])) ||
-				represented.has(JSON.stringify([flag.code, tx.id]))
-			)
-				continue;
-			getGroup(flag.code, warningSeverity(flag)).items.push(tx);
-		}
+	for (const { tx, flags } of rows.values()) {
+		const pending = mergeReviewFlags(flags);
+		for (const flag of pending)
+			getGroup(flag.code, warningSeverity(flag)).items.push({
+				...tx,
+				reviewFlags: pending,
+			});
 	}
-	for (const { code, item } of reportItems)
-		getGroup(code, item.severity).reportItems.push(item);
+	for (const entry of visible)
+		if ("item" in entry)
+			getGroup(entry.code, entry.item.severity).reportItems.push(entry.item);
 	const totals = { action: 0, info: 0 };
 	for (const group of groups.values()) totals[group.severity] += group.count;
-	const reportStatuses = years.map((year) => ({
-		taxYear: year,
-		status: reports.some((report) => report.taxYear === year)
-			? ("current" as const)
-			: ("missing" as const),
-	}));
+	const reportStatus = reportStatuses.some(({ status }) => status === "stale")
+		? "stale"
+		: reportStatuses.some(({ status }) => status === "missing")
+			? "missing"
+			: "current";
 	return {
 		connections: listConnections(db).filter((row) =>
 			["failed", "incomplete"].includes(row.lastSyncStatus ?? ""),
 		),
-		reportStatus: reports.length === years.length ? "current" : "missing",
+		reportStatus,
 		reportStatuses,
 		computeTaxYears: reportStatuses
-			.filter((entry) => entry.status === "missing")
+			.filter((entry) => entry.status !== "current")
 			.map((entry) => entry.taxYear),
 		groups: [...groups.values()].sort(
 			(a, b) =>
@@ -240,4 +231,39 @@ export function review(db: TaxDatabase, taxYear?: string) {
 		),
 		totals,
 	};
+}
+
+function displayedReviewEntries(
+	entries: ReturnType<typeof readReview>["entries"],
+) {
+	const key = ({ taxYear, code, txId }: (typeof entries)[number]) =>
+		JSON.stringify([taxYear, code, txId]);
+	const represented = new Set(
+		entries
+			.filter((entry) => "item" in entry && entry.item.kind === "unresolved")
+			.map(key),
+	);
+	return entries.filter(
+		(entry) => !("flag" in entry) || !represented.has(key(entry)),
+	);
+}
+
+export function resolveReview(
+	db: TaxDatabase,
+	{ code, taxYear, txIds, note }: z.infer<typeof ResolveReviewRequestSchema>,
+) {
+	return db.atomic(() => {
+		const { entries } = readReview(db, taxYear);
+		const ids = txIds && new Set(txIds);
+		const selected = entries.filter(
+			(entry) => entry.code === code && (!ids || ids.has(entry.txId)),
+		);
+		saveReviewResolutions(db, selected, txIds === undefined, note);
+		const visible = displayedReviewEntries(selected);
+		return {
+			resolved: new Set(
+				visible.map((entry) => ("flag" in entry ? entry.txId : entry.itemKey)),
+			).size,
+		};
+	}, "immediate");
 }

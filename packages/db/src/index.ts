@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
 	type ActualBalance,
 	ActualBalanceSchema,
 	D,
+	EngineSettingsSchema,
 	eventFingerprint,
 	type LedgerTx,
 	LedgerTxSchema,
 	type Recipe,
 	RecipeSchema,
 	siblingChannel,
+	transactionTaxInputs,
 	type VdaReport,
 	VdaReportSchema,
 } from "@tax/core";
@@ -71,18 +74,42 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 		const years = orm
 			.selectDistinct({ taxYear: schema.reports.taxYear })
 			.from(schema.reports)
-			.where(scope)
+			.leftJoin(
+				schema.reportInvalidations,
+				eq(schema.reportInvalidations.taxYear, schema.reports.taxYear),
+			)
+			.where(and(scope, isNull(schema.reportInvalidations.taxYear)))
 			.all();
 		for (const { taxYear } of years)
 			orm
 				.insert(schema.reportInvalidations)
 				.values({ taxYear, invalidatedAt, cause })
-				.onConflictDoUpdate({
-					target: schema.reportInvalidations.taxYear,
-					set: { invalidatedAt, cause },
-				})
+				.onConflictDoNothing()
 				.run();
-		orm.delete(schema.reports).where(scope).run();
+	};
+	const reportSnapshot = (taxYear: string) => {
+		const row = orm
+			.select({
+				report: schema.reports.reportJson,
+				stale: schema.reportInvalidations.invalidatedAt,
+			})
+			.from(schema.reports)
+			.leftJoin(
+				schema.reportInvalidations,
+				eq(schema.reportInvalidations.taxYear, schema.reports.taxYear),
+			)
+			.where(eq(schema.reports.taxYear, taxYear))
+			.orderBy(
+				desc(schema.reports.computedAt),
+				sql`${schema.reports}.rowid DESC`,
+			)
+			.get();
+		return row
+			? {
+					report: VdaReportSchema.parse(row.report),
+					status: row.stale ? ("stale" as const) : ("current" as const),
+				}
+			: { report: undefined, status: "missing" as const };
 	};
 	const txValues = (tx: LedgerTx) => ({
 		...tx,
@@ -200,15 +227,29 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 						})
 					: undefined;
 			},
-			save: (value: ImportDetail) => {
-				const row = GetImportResponseSchema.parse(value);
-				orm
-					.insert(schema.imports)
-					.values(row)
-					.onConflictDoUpdate({ target: schema.imports.id, set: row })
-					.run();
-				return row;
-			},
+			save: (value: ImportDetail) =>
+				orm.transaction(() => {
+					const row = GetImportResponseSchema.parse(value);
+					const previous = orm
+						.select()
+						.from(schema.imports)
+						.where(eq(schema.imports.id, row.id))
+						.get();
+					orm
+						.insert(schema.imports)
+						.values(row)
+						.onConflictDoUpdate({ target: schema.imports.id, set: row })
+						.run();
+					if (
+						!previous ||
+						previous.status !== row.status ||
+						previous.fileName !== row.fileName ||
+						previous.rowsError !== row.rowsError ||
+						!isDeepStrictEqual(previous.warnings, row.warnings)
+					)
+						invalidateReports("ledger_changed");
+					return row;
+				}),
 			delete: (id: string) =>
 				orm.transaction(() => {
 					const imported = orm
@@ -234,7 +275,7 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 						.delete(schema.imports)
 						.where(eq(schema.imports.id, id))
 						.run();
-					invalidateReports("ledger_changed");
+					if (result.changes) invalidateReports("ledger_changed");
 					return result.changes > 0;
 				}),
 		},
@@ -468,6 +509,7 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 			update: (tx: LedgerTx) =>
 				orm.transaction(() => {
 					const value = LedgerTxSchema.parse(tx);
+					const previous = repositories.transactions.get(value.id);
 					const result = orm
 						.update(schema.transactions)
 						.set({
@@ -477,7 +519,14 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 						})
 						.where(eq(schema.transactions.id, value.id))
 						.run();
-					invalidateReports("ledger_changed");
+					if (
+						previous &&
+						!isDeepStrictEqual(
+							transactionTaxInputs(previous),
+							transactionTaxInputs(value),
+						)
+					)
+						invalidateReports("ledger_changed");
 					return result.changes > 0;
 				}),
 			deleteManual: (id: string) =>
@@ -491,7 +540,7 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 							),
 						)
 						.run();
-					invalidateReports("ledger_changed");
+					if (result.changes) invalidateReports("ledger_changed");
 					return result.changes > 0;
 				}),
 		},
@@ -551,12 +600,19 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 						.values({ key, value })
 						.onConflictDoUpdate({ target: schema.settings.key, set: { value } })
 						.run();
-					// Only engine settings feed the tax computation; AI or UI preferences must not clear reports.
-					if (
-						key === "engine" &&
-						JSON.stringify(previous) !== JSON.stringify(value)
-					)
-						invalidateReports("settings_changed");
+					if (key === "engine") {
+						const normalize = (input: unknown) => {
+							const engine = EngineSettingsSchema.parse(input ?? {});
+							return {
+								...engine,
+								transferAmountTolerance: D(
+									engine.transferAmountTolerance,
+								).toFixed(),
+							};
+						};
+						if (!isDeepStrictEqual(normalize(previous), normalize(value)))
+							invalidateReports("settings_changed");
+					}
 				}),
 		},
 		actualBalances: {
@@ -576,6 +632,22 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 			replace: (taxYear: string, values: ActualBalance[]) =>
 				orm.transaction(() => {
 					const rows = ActualBalanceSchema.array().parse(values);
+					const stored = repositories.actualBalances.get(taxYear);
+					const previous = new Map(
+						stored.map((row) => [
+							JSON.stringify([row.asset, row.source]),
+							row.amount,
+						]),
+					);
+					const changed =
+						rows.length !== stored.length ||
+						rows.some((row) => {
+							const key = JSON.stringify([row.asset, row.source]);
+							const amount = previous.get(key);
+							previous.delete(key);
+							return amount === undefined || !D(row.amount).eq(amount);
+						});
+					if (!changed) return stored;
 					orm
 						.delete(schema.actualBalances)
 						.where(eq(schema.actualBalances.taxYear, taxYear))
@@ -591,6 +663,7 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 		},
 		reports: {
 			invalidate: () => invalidateReports("ledger_changed"),
+			snapshot: reportSnapshot,
 			missingDetails: (taxYear: string): ReportMissingDetails =>
 				orm
 					.select({
@@ -600,28 +673,62 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 					.from(schema.reportInvalidations)
 					.where(eq(schema.reportInvalidations.taxYear, taxYear))
 					.get() ?? { invalidatedAt: null, cause: "never_computed" },
-			save: (report: VdaReport) => {
-				const value = VdaReportSchema.parse(report);
-				orm
-					.insert(schema.reports)
-					.values({
-						id: randomUUID(),
-						taxYear: value.taxYear,
-						computedAt: new Date().toISOString(),
-						settingsJson: value.generatedFrom.settings,
-						reportJson: value,
-					})
-					.run();
-				return value;
-			},
+			save: (report: VdaReport) =>
+				orm.transaction(() => {
+					const value = VdaReportSchema.parse(report);
+					orm
+						.delete(schema.reports)
+						.where(eq(schema.reports.taxYear, value.taxYear))
+						.run();
+					orm
+						.insert(schema.reports)
+						.values({
+							id: randomUUID(),
+							taxYear: value.taxYear,
+							computedAt: new Date().toISOString(),
+							settingsJson: value.generatedFrom.settings,
+							reportJson: value,
+						})
+						.run();
+					orm
+						.delete(schema.reportInvalidations)
+						.where(eq(schema.reportInvalidations.taxYear, value.taxYear))
+						.run();
+					return value;
+				}),
 			latest: (taxYear: string) => {
-				const row = orm
+				const snapshot = reportSnapshot(taxYear);
+				return snapshot.status === "current" ? snapshot.report : undefined;
+			},
+		},
+		reviewResolutions: {
+			list: (years: string[]) =>
+				orm
 					.select()
-					.from(schema.reports)
-					.where(eq(schema.reports.taxYear, taxYear))
-					.orderBy(desc(schema.reports.computedAt), desc(schema.reports.id))
-					.get();
-				return row ? VdaReportSchema.parse(row.reportJson) : undefined;
+					.from(schema.reviewResolutions)
+					.where(inArray(schema.reviewResolutions.taxYear, years))
+					.all(),
+			save: (rows: (typeof schema.reviewResolutions.$inferInsert)[]) => {
+				for (const row of rows)
+					orm
+						.insert(schema.reviewResolutions)
+						.values(row)
+						.onConflictDoNothing()
+						.run();
+			},
+			remove: (rows: (typeof schema.reviewResolutions.$inferSelect)[]) => {
+				for (const row of rows)
+					orm
+						.delete(schema.reviewResolutions)
+						.where(
+							and(
+								eq(schema.reviewResolutions.taxYear, row.taxYear),
+								eq(schema.reviewResolutions.code, row.code),
+								eq(schema.reviewResolutions.txId, row.txId),
+								eq(schema.reviewResolutions.itemKey, row.itemKey),
+							),
+						)
+						.run();
 			},
 		},
 		jobs: {

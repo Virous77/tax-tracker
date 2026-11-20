@@ -24,10 +24,10 @@ beforeEach(async () => {
 
 afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
-function makeDemoMigrationPending() {
+function makeReviewMigrationPending() {
 	const db = new Database(dbPath);
 	try {
-		db.exec(`ALTER TABLE imports DROP COLUMN demo;
+		db.exec(`DROP TABLE review_resolutions;
 			DELETE FROM __drizzle_migrations WHERE created_at =
 				(SELECT MAX(created_at) FROM __drizzle_migrations);`);
 	} finally {
@@ -42,10 +42,10 @@ it("backs up the pre-migration schema, retaining the five newest snapshots", asy
 	expect(readdirSync(directory)).not.toContain("backups");
 
 	for (let run = 0; run < 6; run++) {
-		makeDemoMigrationPending();
+		makeReviewMigrationPending();
 		const db = await openDatabase(directory);
 		try {
-			expect(db.imports.demoIds()).toEqual([]);
+			expect(db.reviewResolutions.list(["2025-26"])).toEqual([]);
 			expect(db.settings.get("synthetic")).toBe("before migration");
 		} finally {
 			db.close();
@@ -55,7 +55,7 @@ it("backs up the pre-migration schema, retaining the five newest snapshots", asy
 	const names = readdirSync(backupDir).sort();
 	expect(names).toHaveLength(5);
 	const path = join(backupDir, names.at(-1) ?? "");
-	expect(path).toMatch(/tax-tracker-.*Z-pre-0008_phase4_demo\.db$/);
+	expect(path).toMatch(/tax-tracker-.*Z-pre-0009_review_resolutions\.db$/);
 	expect(statSync(path).mode & 0o777).toBe(0o600);
 	const snapshot = new Database(path, { readonly: true });
 	try {
@@ -69,7 +69,7 @@ it("backs up the pre-migration schema, retaining the five newest snapshots", asy
 		expect(
 			snapshot
 				.prepare(
-					"SELECT name FROM pragma_table_info('imports') WHERE name='demo'",
+					"SELECT name FROM sqlite_schema WHERE name='review_resolutions'",
 				)
 				.get(),
 		).toBeUndefined();
@@ -79,7 +79,7 @@ it("backs up the pre-migration schema, retaining the five newest snapshots", asy
 });
 
 it("leaves the pending migration unapplied if the snapshot cannot be written", async () => {
-	makeDemoMigrationPending();
+	makeReviewMigrationPending();
 	writeFileSync(join(directory, "backups"), "");
 	await expect(openDatabase(directory)).rejects.toThrow();
 	const db = new Database(dbPath, { readonly: true });
@@ -87,7 +87,7 @@ it("leaves the pending migration unapplied if the snapshot cannot be written", a
 		expect(
 			db
 				.prepare(
-					"SELECT name FROM pragma_table_info('imports') WHERE name='demo'",
+					"SELECT name FROM sqlite_schema WHERE name='review_resolutions'",
 				)
 				.get(),
 		).toBeUndefined();

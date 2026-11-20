@@ -89,6 +89,7 @@ export const VdaTotalsSchema = z.object({
 });
 export const TdsSourceSchema = z.object({
 	source: z.string(),
+	sourceLabel: z.string().optional(),
 	deductedByPlatform: z.boolean().nullable(),
 	tdsInr: DecimalStringSchema,
 	transferValueInr: DecimalStringSchema,
@@ -114,6 +115,7 @@ export const UnresolvedSchema = z.object({
 export const ReportWarningSchema = ReviewFlagSchema.extend({
 	asset: AssetSchema.optional(),
 	source: z.string().optional(),
+	importId: z.string().optional(),
 	count: z.number().int().positive().optional(),
 	txIds: z.array(z.string()).optional(),
 });
@@ -156,6 +158,8 @@ export const VdaReportSchema = z.object({
 	includesDemoData: z.boolean().optional(),
 	/** When true, totals reflect resolved slices and net payable is provisional. */
 	incomplete: z.boolean().optional(),
+	/** Set on a stored snapshot when its inputs have changed since compute. */
+	stale: z.literal(true).optional(),
 });
 export type VdaReport = z.infer<typeof VdaReportSchema>;
 export type VdaTotals = z.infer<typeof VdaTotalsSchema>;

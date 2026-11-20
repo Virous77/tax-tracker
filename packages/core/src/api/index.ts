@@ -364,8 +364,12 @@ export const PaginationResponseSchema = z.object({
 	page: z.number().int().positive(),
 	pageSize: z.number().int().positive().max(200),
 });
-export const TransactionListItemSchema = z.intersection(
+const PresentedTransactionSchema = z.intersection(
 	LedgerTxSchema,
+	z.object({ sourceLabel: z.string().optional() }),
+);
+export const TransactionListItemSchema = z.intersection(
+	PresentedTransactionSchema,
 	z.object({ supersededBy: z.string().nullable() }),
 );
 export const ListTransactionsResponseSchema = PaginationResponseSchema.extend({
@@ -399,7 +403,7 @@ export const PatchTransactionRequestSchema = z
 		venue: ManualVenueSchema.optional(),
 	})
 	.strict();
-export const PatchTransactionResponseSchema = LedgerTxSchema;
+export const PatchTransactionResponseSchema = PresentedTransactionSchema;
 export const DeleteTransactionRequestSchema = IdParamsSchema;
 export const DeleteTransactionResponseSchema = NoContentResponseSchema;
 export const ReportReviewStatusSchema = z.enum(["current", "stale", "missing"]);
@@ -426,6 +430,7 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 		taxYear: TaxYearSchema,
 		message: z.string(),
 		warning: ReportWarningSchema,
+		sourceLabel: z.string().optional(),
 		/** "info" notes explain how a file was read and need no action; they never block "all reviewed". */
 		severity: ReviewSeveritySchema.default("action"),
 	}),
@@ -434,6 +439,7 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 		taxYear: TaxYearSchema,
 		message: z.string(),
 		balance: BalanceSchema,
+		sourceLabel: z.string().optional(),
 		severity: z.literal("action").default("action"),
 	}),
 	z.object({
@@ -441,6 +447,7 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 		taxYear: TaxYearSchema,
 		message: z.string(),
 		unresolved: UnresolvedSchema,
+		sourceLabel: z.string().optional(),
 		severity: z.literal("action").default("action"),
 	}),
 ]);
@@ -461,7 +468,7 @@ export const ReviewResponseSchema = z.object({
 			code: ReviewCodeSchema,
 			count: z.number().int().nonnegative(),
 			severity: ReviewSeveritySchema.default("action"),
-			items: z.array(LedgerTxSchema),
+			items: z.array(PresentedTransactionSchema),
 			reportItems: z.array(ReportReviewItemSchema),
 		}),
 	),
@@ -482,6 +489,7 @@ export const ComputeReportRequestSchema = EmptyRequestSchema;
 export const ComputeReportResponseSchema = VdaReportSchema;
 export const GetReportRequestSchema = TaxYearParamsSchema;
 export const GetReportQuerySchema = z.strictObject({
+	/** Opt in to stale snapshots and the structured missing-report response. */
 	allowMissing: z.literal("true").optional(),
 });
 export const GetReportResponseSchema = VdaReportSchema;

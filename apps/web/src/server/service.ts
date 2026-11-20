@@ -27,6 +27,7 @@ import {
 	deleteTransaction,
 	listTransactions,
 	patchTransaction,
+	resolveReview,
 	review,
 } from "./transactions";
 import { vaultSession } from "./vault";
@@ -151,6 +152,9 @@ export async function execute(
 			break;
 		case "review":
 			value = review(db, api.ReviewRequestSchema.parse(input).taxYear);
+			break;
+		case "resolveReview":
+			value = resolveReview(db, api.ResolveReviewRequestSchema.parse(input));
 			break;
 		case "listBalanceSnapshots":
 			value = listBalanceSnapshots(db);

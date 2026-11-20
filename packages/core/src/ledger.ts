@@ -177,6 +177,32 @@ export const LedgerTxSchema = LedgerTxFieldsSchema.superRefine((tx, ctx) => {
 		});
 });
 export type LedgerTx = z.infer<typeof LedgerTxSchema>;
+
+export function transactionTaxInputs(tx: LedgerTx) {
+	return [
+		tx.source,
+		tx.sourceRef,
+		tx.importId,
+		tx.timestamp,
+		tx.type,
+		tx.venue,
+		tx.incomeKind,
+		tx.assetIn,
+		tx.amountIn,
+		tx.assetOut,
+		tx.amountOut,
+		tx.feeAsset,
+		tx.feeAmount,
+		tx.gstInr,
+		tx.inrValue,
+		tx.inrRateSource,
+		tx.priceQuote,
+		tx.tdsInr,
+		tx.txHash,
+		tx.chain,
+		tx.reviewFlags.some(({ code }) => code === "suspected_spam"),
+	];
+}
 export type TxType = z.infer<typeof TxTypeSchema>;
 export type IncomeKind = z.infer<typeof IncomeKindSchema>;
 export type InrRateSource = z.infer<typeof InrRateSourceSchema>;

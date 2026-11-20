@@ -6,6 +6,6 @@ Stable Drizzle 0.45 uses better-sqlite3. The documented Node built-in SQLite ada
 
 Generate a schema migration with `pnpm --filter @tax/db exec drizzle-kit generate`. Commit the SQL, snapshot and journal together. Tests open temporary databases, including migration re-entry, persistence, rollback, cascade and duplicate protection.
 
-Transactions use TEXT amounts and unique `(source, sourceRef)`. Insert conflicts never update existing transactions, including user-edited ones. Deleting an import removes only transactions owned by that import; a duplicate import does not take ownership of an existing transaction. Ledger/settings/balance changes invalidate stored reports. Reports must then be recomputed.
+Transactions use TEXT amounts and unique `(source, sourceRef)`. Insert conflicts never update existing transactions, including user-edited ones. Deleting an import removes only transactions owned by that import; a duplicate import does not take ownership of an existing transaction. Changes to tax inputs mark the latest report stale until recompute. Review can still read the stored snapshot. Review acknowledgements are keyed by year, code, transaction or group scope, and item fingerprint.
 
 The database uses WAL: for a backup, stop the app before copying the database (or use SQLite's backup facility). Copying only a live `.db` file can omit uncheckpointed changes. API keys are server-side settings and are included in a database backup; protect it accordingly.

@@ -36,7 +36,7 @@ Computing reports reads the price cache and bundled FX only. It never contacts a
 
 Empty `BINANCE_API_BASE`, `BINANCE_DATA_BASE`, `COINDCX_API_BASE`, `ETHERSCAN_API_BASE`, `BLOCKSCOUT_API_BASE` and `COINGECKO_API_BASE` use the connectors' production defaults. Set overrides only for a service the user intends to contact; Docker passes them through. No startup network calls are made.
 
-Reports load all recorded history through the requested IST year end, bundled SBI FX, rules, engine settings and actual balances. Missing FX data remains an explicit warning. Report warnings are merged into transaction/review responses, so engine-generated issues appear after computation. Data changes invalidate stored reports; recompute to refresh those flags. Exports contain the disclaimer, settings and section-verification status. CSV prefixes formula-leading cells; XLSX writes literal strings. Full exports also contain totals, balances, unresolved items, valuations, warnings and the ledger trail.
+Reports load all recorded history through the requested IST year end, bundled SBI FX, rules, engine settings and actual balances. Missing FX data remains an explicit warning. Report warnings are merged into transaction/review responses, so engine-generated issues appear after computation. Tax input changes mark the last report stale. Review keeps its report-derived items until the next compute. Exports contain the disclaimer, settings and section-verification status. CSV prefixes formula-leading cells; XLSX writes literal strings. Full exports also contain totals, balances, unresolved items, valuations, warnings and the ledger trail.
 
 `.env.example` lists server variables. Next development reads `apps/web/.env.local`; Docker Compose reads a repository-root `.env`. Keep those and DATA_DIR out of commits. Stop the app before copying a SQLite backup, since WAL may contain recent changes.
 
@@ -47,9 +47,9 @@ Generic ledger identities use `csv:<header fingerprint>` instead of a recipe id.
 `GET /api/review` returns:
 
 - `connections: Connection[]`: connections whose last sync failed or was incomplete.
-- `reportStatus: "current" | "missing"`: compatibility aggregate, current only when every requested year has a stored report. The unreachable `"stale"` value has been removed from the schema.
-- `reportStatuses: {taxYear: string, status: "current" | "missing"}[]`: one entry for the requested `taxYear`, or every supported year in rule order when no filter is supplied.
-- `computeTaxYears: string[]`: exactly the missing years from `reportStatuses`. All-years compute controls must use these years, rather than repeatedly computing the default year.
+- `reportStatus` is `"stale"` if any requested report is stale, `"missing"` if a requested snapshot is absent, and `"current"` when every requested report is current.
+- `reportStatuses` gives the same status per year, in rule order when no filter is supplied.
+- `computeTaxYears` lists years whose reports are stale or missing.
 - `groups: {code: ReviewCode, severity: "action" | "info", count: number, items: LedgerTx[], reportItems: ReportReviewItem[]}[]`. A code can have separate action and information groups. Each group's count is the sum of its two array lengths.
 - `totals: {action: number, info: number}`. Counts the items in each severity across all groups. Import interpretation notes and the CA verification notice are informational.
 
@@ -59,11 +59,15 @@ Report items share `taxYear: string` and `message: string`, with three variants:
 - `{kind: "unresolved", unresolved: Unresolved}` for every unresolved slice and reason, including `missing_inr_value`. The corresponding transaction/code is omitted from ledger items. Separate slices remain separate review items.
 - `{kind: "warning", warning: ReportWarning}` for report-wide warnings and warnings whose associated transactions lie outside the selected ledger year. The latter retain their original transaction links. Linked warnings on visible ledger rows remain ledger items. Balance warnings are represented only by balance items, so their ledger associations do not inflate counts.
 
-All of these items come only from stored, current reports. A missing report can still leave importer/manual ledger flags in Review. `items` are grouped once per transaction/code; their `reviewFlags` retain every distinct message.
+Stale snapshots continue to supply report items. Importer and manual ledger flags can appear before any report is computed. Review groups transaction items once per transaction and code, with the pending reasons in `reviewFlags`.
 
-`GET /api/reports/:taxYear` (and export when its report is absent) returns HTTP 404 with `error.code: "report_not_computed"`, `error.message: string`, and `error.details: {invalidatedAt: string | null, cause: "ledger_changed" | "settings_changed" | "balances_changed" | "never_computed"}`. `invalidatedAt` is a UTC ISO timestamp for the change that deleted a stored report; subsequent changes while it is missing retain that first reason. `never_computed` has `invalidatedAt: null` when no invalidation has been recorded for that year. The database persists invalidation metadata across restarts; recomputing restores GET to 200. Unsupported rule years still return `not_found`.
+`POST /api/review/resolve` acknowledges the selected year and code. Supply `txIds` to check linked items or omit it to check the current group, including report items without a transaction. Transaction PATCH with `resolveFlags` records the same acknowledgement for the transaction's currently visible flags. SQLite stores the tax year, review code, transaction or group scope, item fingerprint and optional note. Acknowledgements survive unchanged recomputes, and an item that disappears on a recompute needs a fresh acknowledgement if it returns. New or changed items remain visible. The calculation continues to use the original ledger and computed warnings. Acknowledged items drop out of Review totals immediately.
 
-`GET /api/reports/:taxYear?allowMissing=true` returns HTTP 200 with `{status: "missing", invalidatedAt, cause}` when a supported year has no stored report. A ready report keeps its existing shape. Its `incomplete` flag marks provisional totals when there are unresolved disposals. The API serves only resolved slices in `scheduleVdaRows` and keeps unresolved slices available in `unresolved`.
+Review transactions and report review items can include `sourceLabel`. TDS rows expose it alongside the source ID, and the TDS export uses it in the source column. Generic CSV labels use the saved or bundled recipe name when available.
+
+`GET /api/reports/:taxYear` (and export when its report is missing or stale) returns HTTP 404 with `error.code: "report_not_computed"`, `error.message: string`, and `error.details: {invalidatedAt: string | null, cause: "ledger_changed" | "settings_changed" | "balances_changed" | "never_computed"}`. `invalidatedAt` is a UTC ISO timestamp for the first input change after the last compute. `never_computed` has `invalidatedAt: null` when no invalidation has been recorded for that year. The database persists invalidation metadata across restarts; recomputing restores GET to 200. Unsupported rule years still return `not_found`.
+
+`GET /api/reports/:taxYear?allowMissing=true` returns the last computed report with `stale: true` when its inputs have changed. A current report keeps its existing shape. A supported year without a stored snapshot returns HTTP 200 with `{status: "missing", invalidatedAt, cause}`. The report's `incomplete` flag marks provisional totals when there are unresolved disposals. The API serves only resolved slices in `scheduleVdaRows` and keeps unresolved slices available in `unresolved`.
 
 Every import summary endpoint returns `rowsSkipped: number` and `skippedRows: {rowIndex: number, sheet: string, reason: string, kind?: "cancelled_order"}[]`. Row indices are zero-based data-row indices within the named sheet, matching row errors. Reasons include orders with zero executed quantity and statement legs already preserved in a grouped transaction. Raw skipped rows remain in `raw_rows`. For completed imports, `rowsRead = rowsInserted + rowsDuplicate + rowsError + rowsSkipped`, and `rowsSkipped === skippedRows.length`. Pending recipes have not yet classified their rows.
 
@@ -75,11 +79,11 @@ CSV and each XLSX sheet begin with the disclaimer and contain the same readable 
 
 `balances[].difference` is always **actual minus computed**, in coin quantities as a decimal string. Full CSV and XLSX exports write this same field without recalculating it.
 
-Server report `warnings` are grouped by exact code, message, asset and source. Each includes `count` (number of original warnings) and `txIds` (distinct associated ledger ids), retaining `txId` only when exactly one transaction is associated. Transaction/review flags still expand these associations to each affected ledger row.
+Server report `warnings` are grouped by exact code, severity, message, asset, source and import ID when present. Each includes `count` (number of original warnings) and `txIds` (distinct associated ledger ids), retaining `txId` only when exactly one transaction is associated. Transaction/review flags still expand these associations to each affected ledger row.
 
 Report warnings add optional `asset: string` and `source: string` context. Balance mismatch and negative-holding warnings carry the affected asset, a source only for per-source pools, and `txIds` for every ledger row contributing to that balance. A mismatch on an actual-only asset legitimately has `txIds: []`, with `asset`/`source` identifying the problem. A balance warning's `count` is one problem, regardless of the number of ledger links.
 
-Review clients must handle warning, balance and unresolved report-item variants, current/missing report statuses and every review code. Report clients should preserve `report_not_computed` details. Import lists should display skipped-row counts and reasons separately from errors.
+Review clients must handle warning, balance and unresolved report-item variants, current, stale and missing report statuses and every review code. Report clients should preserve `report_not_computed` details. Import lists should display skipped-row counts and reasons separately from errors.
 
 The multichain/import handoff is specified field by field in `docs/SPEC-phase2.md` §9. Provider names add Alchemy and NodeReal; Etherscan stores a free/paid tier. Chain ids are exported once as `SUPPORTED_EVM_CHAIN_IDS` from core. Connection views expose nullable `runningJobId` and `lastSyncJobId`; poll their retained `/api/jobs/:id` rows to recover progress and per-stream results after reload.
 

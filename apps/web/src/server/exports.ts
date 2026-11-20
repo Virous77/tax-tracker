@@ -88,7 +88,12 @@ export async function exportReport(
 		{
 			name: "tds",
 			rows: [
-				...table(report.tds.bySource),
+				...table(
+					report.tds.bySource.map(({ source, sourceLabel, ...row }) => ({
+						source: sourceLabel ?? source,
+						...row,
+					})),
+				),
 				["Reconciliation checklist"],
 				...report.tds.checklist.map((value) => [value]),
 			],

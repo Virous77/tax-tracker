@@ -553,7 +553,7 @@ it("rolls back a demo reload when stale sample ledger references exist", async (
 	expect(db.transactions.active()).toEqual(before);
 });
 
-it("serves the opted-in missing report state with its cause and keeps legacy API status codes", async () => {
+it("returns stale snapshots when opted in and keeps strict report reads and exports current", async () => {
 	const options = { query: "?allowMissing=true" };
 	const missing = await call("getReport", "GET", options);
 	expect(missing.status).toBe(200);
@@ -568,14 +568,28 @@ it("serves the opted-in missing report state with its cause and keeps legacy API
 	expect(
 		await (await call("review", "GET", { query: "?taxYear=2025-26" })).json(),
 	).toMatchObject({ totals: { action: 0, info: 1 } });
-	expect(await (await call("getReport", "GET", options)).json()).toMatchObject({
+	const computed = await (await call("getReport", "GET", options)).json();
+	expect(computed).toMatchObject({
 		taxYear: "2025-26",
 	});
+	expect(computed).not.toHaveProperty("stale");
 	expect((await call("loadDemo", "POST")).status).toBe(201);
+	const stale = await call("getReport", "GET", options);
+	expect(stale.status).toBe(200);
+	expect(await stale.json()).toEqual({
+		...computed,
+		stale: true,
+	});
+	expect((await call("getReport")).status).toBe(404);
+	expect(
+		(await call("exportReport", "GET", { query: "?kind=tds&format=csv" }))
+			.status,
+	).toBe(404);
+	expect((await call("computeReport", "POST")).status).toBe(200);
+	expect((await call("removeDemo", "DELETE")).status).toBe(204);
 	expect(await (await call("getReport", "GET", options)).json()).toMatchObject({
-		status: "missing",
-		cause: "ledger_changed",
-		invalidatedAt: expect.any(String),
+		stale: true,
+		includesDemoData: true,
 	});
 });
 
@@ -682,4 +696,335 @@ it("streams a consistent SQLite snapshot and cleans up after completion or cance
 	expect(
 		(await readdir(directory)).filter((name) => name.startsWith(".backup-")),
 	).toEqual([]);
+});
+
+it("keeps acknowledged transaction warnings resolved after restart and recompute", async () => {
+	const db = await database();
+	db.transactions.insert([
+		{
+			tx: {
+				id: "00000000-0000-4000-8000-000000000001",
+				source: "binance",
+				sourceRef: "buy",
+				importId: null,
+				timestamp: "2025-06-01T00:00:00.000Z",
+				type: "buy",
+				assetIn: "BTC",
+				amountIn: "2",
+				inrValue: "100000",
+				raw: {},
+				reviewFlags: [],
+			},
+		},
+		{
+			tx: {
+				id: "00000000-0000-4000-8000-000000000002",
+				source: "binance",
+				sourceRef: "sell",
+				importId: null,
+				timestamp: "2025-07-01T00:00:00.000Z",
+				type: "sell",
+				assetOut: "BTC",
+				amountOut: "1",
+				inrValue: "70000",
+				feeAsset: "BTC",
+				feeAmount: "0.01",
+				raw: {},
+				reviewFlags: [],
+			},
+		},
+	]);
+	const id = "00000000-0000-4000-8000-000000000002";
+	const initial = await (await call("computeReport", "POST")).json();
+	const reviewQuery = { query: "?taxYear=2025-26" };
+	expect(await (await call("review", "GET", reviewQuery)).json()).toMatchObject(
+		{
+			reportStatus: "current",
+			totals: { action: 2, info: 1 },
+		},
+	);
+	const patch = await handle(
+		"patchTransaction",
+		new Request(`http://localhost/api/transactions/${id}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				resolveFlags: ["fee_review_required", "tds_not_deducted"],
+				userNote: "Checked the fee and TDS",
+			}),
+		}),
+		{ id },
+	);
+	expect(patch.status).toBe(200);
+	expect(await patch.json()).toMatchObject({
+		reviewFlags: [],
+		userNote: "Checked the fee and TDS",
+	});
+	expect(db.reviewResolutions.list(["2025-26"])).toMatchObject([
+		{ txId: id, code: "fee_review_required", note: "Checked the fee and TDS" },
+		{ txId: id, code: "tds_not_deducted", note: "Checked the fee and TDS" },
+	]);
+	expect((await call("getReport")).status).toBe(200);
+	await closeDatabases();
+
+	const recomputed = await (await call("computeReport", "POST")).json();
+	expect(recomputed.totals).toEqual(initial.totals);
+	expect(recomputed.warnings).toEqual(initial.warnings);
+	expect(await (await call("review", "GET", reviewQuery)).json()).toMatchObject(
+		{
+			reportStatus: "current",
+			totals: { action: 0, info: 1 },
+		},
+	);
+
+	const changed = await handle(
+		"patchTransaction",
+		new Request(`http://localhost/api/transactions/${id}`, {
+			method: "PATCH",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ inrValue: "75000" }),
+		}),
+		{ id },
+	);
+	expect(changed.status).toBe(200);
+	expect((await call("computeReport", "POST")).status).toBe(200);
+	expect(await (await call("review", "GET", reviewQuery)).json()).toMatchObject(
+		{
+			totals: { action: 2, info: 1 },
+		},
+	);
+});
+
+it("group acknowledgement covers the current rows while stale Review keeps pending report warnings", async () => {
+	const addDeposit = async (sourceRef: string) => {
+		const created = await call("createTransaction", "POST", {
+			body: {
+				sourceRef,
+				importId: null,
+				timestamp: "2025-08-01T00:00:00.000Z",
+				type: "deposit",
+				assetIn: "ETH",
+				amountIn: "1",
+				raw: {},
+				reviewFlags: [],
+			},
+		});
+		expect(created.status).toBe(201);
+		return (await created.json()).id;
+	};
+	const query = { query: "?taxYear=2025-26" };
+	const code = "unmatched_transfer";
+	const taxYear = "2025-26";
+	const read = async () => (await call("review", "GET", query)).json();
+	const first = await addDeposit("first");
+	const second = await addDeposit("second");
+	expect((await call("computeReport", "POST")).status).toBe(200);
+	expect((await read()).totals.action).toBe(2);
+	const item = await call("resolveReview", "POST", {
+		body: { code, taxYear, txIds: [first], note: "Checked first deposit" },
+	});
+	expect(await item.json()).toEqual({ resolved: 1 });
+
+	const third = await addDeposit("third");
+	const stale = await read();
+	expect(stale).toMatchObject({
+		reportStatus: "stale",
+		reportStatuses: [{ taxYear, status: "stale" }],
+		computeTaxYears: [taxYear],
+		totals: { action: 1 },
+	});
+	expect(
+		stale.groups.find((group: { code: string }) => group.code === code)?.items,
+	).toMatchObject([{ id: second }]);
+	expect((await call("getReport")).status).toBe(404);
+
+	const resolveGroup = () =>
+		call("resolveReview", "POST", { body: { code, taxYear } });
+	expect(await (await resolveGroup()).json()).toEqual({ resolved: 1 });
+	expect(await (await resolveGroup()).json()).toEqual({ resolved: 0 });
+	expect((await read()).totals.action).toBe(0);
+	expect((await call("computeReport", "POST")).status).toBe(200);
+	const current = await read();
+	expect(current).toMatchObject({
+		reportStatus: "current",
+		totals: { action: 1 },
+	});
+	expect(
+		current.groups.find((group: { code: string }) => group.code === code)
+			?.items,
+	).toMatchObject([{ id: third }]);
+});
+
+it("retains current reports for equivalent Settings saves and derives the fresh default in IST", async () => {
+	vi.setSystemTime(new Date("2027-03-31T18:29:59.999Z"));
+	const result = () => call("getSettings").then((response) => response.json());
+	expect((await result()).defaultTaxYear).toBe("2025-26");
+	vi.setSystemTime(new Date("2027-03-31T18:30:00.000Z"));
+	expect((await result()).defaultTaxYear).toBe("2026-27");
+
+	expect((await call("computeReport", "POST")).status).toBe(200);
+	const save = (body: unknown) => call("putSettings", "PUT", { body });
+	expect(
+		(
+			await save({
+				defaultTaxYear: "2025-26",
+				transferAmountTolerance: "0.010",
+				feeTreatment: "exclude",
+				ai: { baseUrl: "http://localhost:11434/v1", model: "test-model" },
+				prices: { coingeckoFallback: false },
+			})
+		).status,
+	).toBe(200);
+	expect((await result()).defaultTaxYear).toBe("2025-26");
+	expect((await call("getReport")).status).toBe(200);
+
+	expect((await save({ feeTreatment: "include" })).status).toBe(200);
+	expect(
+		await (await call("review", "GET", { query: "?taxYear=2025-26" })).json(),
+	).toMatchObject({
+		reportStatus: "stale",
+	});
+});
+
+it("explains pending mappings and shows the recipe name in Review, reports and TDS exports", async () => {
+	const fileName = "unmapped-example.csv";
+	const header = "When,Action,Coin,Quote,Qty,Value,Ref";
+	const data = new TextEncoder().encode(
+		[
+			header,
+			"2025-06-01 00:00:00,BUY,BTC,INR,1,100,1",
+			"2025-07-01 00:00:00,SELL,BTC,INR,1,150,2",
+		].join("\n"),
+	);
+	const pending = await (
+		await upload(fileName, data.buffer, "IST", "generic")
+	).json();
+	expect(pending.status).toBe("pending_recipe");
+	expect((await call("computeReport", "POST")).status).toBe(200);
+	const read = async () =>
+		(await call("review", "GET", { query: "?taxYear=2025-26" })).json();
+	const incomplete = (await read()).groups.find(
+		(group: { code: string }) => group.code === "import_incomplete",
+	);
+	expect(incomplete.reportItems).toMatchObject([
+		{
+			message: `${fileName} is still waiting for a column mapping — open Imports → Map columns, or delete it.`,
+		},
+	]);
+
+	const fingerprint = headerFingerprint(header.split(","));
+	const confirm = await handle(
+		"confirmImport",
+		new Request(`http://localhost/api/imports/${pending.id}/confirm`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				saveRecipe: true,
+				recipe: {
+					id: "unmapped-example",
+					name: "Unknown exchange example",
+					version: 1,
+					sheet: "CSV",
+					fingerprint,
+					columns: {
+						timestamp: "When",
+						side: "Action",
+						baseAsset: "Coin",
+						quoteAsset: "Quote",
+						amount: "Qty",
+						total: "Value",
+						id: "Ref",
+					},
+					dateFormat: "yyyy-MM-dd HH:mm:ss",
+					signStyle: "side_column",
+				},
+			}),
+		}),
+		{ id: pending.id },
+	);
+	expect(confirm.status).toBe(200);
+	const report = await (await call("computeReport", "POST")).json();
+	const sourceLabel = "Generic CSV · Unknown exchange example";
+	expect(report.tds.bySource).toMatchObject([
+		{ source: `csv:${fingerprint}`, sourceLabel },
+	]);
+	expect(report.tds.checklist[0]).toContain(sourceLabel);
+	const tds = (await read()).groups.find(
+		(group: { code: string }) => group.code === "tds_not_deducted",
+	);
+	expect(tds.items).toMatchObject([{ sourceLabel }]);
+	expect(tds.items[0].reviewFlags[0].message).toContain(sourceLabel);
+	const exported = await call("exportReport", "GET", {
+		query: "?kind=tds&format=csv",
+	});
+	const csv = await exported.text();
+	expect(csv).toContain(sourceLabel);
+	expect(csv).not.toContain(fingerprint);
+});
+
+it("asks for a fresh acknowledgement when a warning disappears and later returns", async () => {
+	const txHash = "synthetic-transfer";
+	const base = { importId: null, raw: {}, reviewFlags: [], txHash };
+	const add = async (body: Record<string, unknown>) => {
+		const response = await call("createTransaction", "POST", {
+			body: { ...base, ...body },
+		});
+		expect(response.status).toBe(201);
+		return response.json();
+	};
+	const deposit = await add({
+		sourceRef: "receipt",
+		timestamp: "2025-08-02T00:00:00.000Z",
+		type: "deposit",
+		assetIn: "ETH",
+		amountIn: "1",
+	});
+	const compute = async () =>
+		expect((await call("computeReport", "POST")).status).toBe(200);
+	const code = "unmatched_transfer";
+	const taxYear = "2025-26";
+	const getGroup = async () => {
+		const response = await call("review", "GET", {
+			query: `?taxYear=${taxYear}`,
+		});
+		const { groups } = await response.json();
+		return groups.find((group: { code: string }) => group.code === code);
+	};
+
+	await compute();
+	expect((await getGroup()).count).toBe(1);
+	const checked = await call("resolveReview", "POST", {
+		body: { code, taxYear, txIds: [deposit.id] },
+	});
+	expect(await checked.json()).toEqual({ resolved: 1 });
+
+	await add({
+		sourceRef: "acquisition",
+		timestamp: "2025-07-01T00:00:00.000Z",
+		type: "buy",
+		assetIn: "ETH",
+		amountIn: "1",
+		inrValue: "100",
+	});
+	const withdrawal = await add({
+		sourceRef: "sent",
+		timestamp: "2025-08-01T00:00:00.000Z",
+		type: "withdrawal",
+		assetOut: "ETH",
+		amountOut: "1",
+	});
+	await compute();
+	expect(await getGroup()).toBeUndefined();
+	expect((await database()).reviewResolutions.list([taxYear])).toEqual([]);
+
+	const deleted = await handle(
+		"deleteTransaction",
+		new Request(`http://localhost/api/transactions/${withdrawal.id}`, {
+			method: "DELETE",
+		}),
+		{ id: withdrawal.id },
+	);
+	expect(deleted.status).toBe(204);
+	await compute();
+	expect((await getGroup()).items).toMatchObject([{ id: deposit.id }]);
 });

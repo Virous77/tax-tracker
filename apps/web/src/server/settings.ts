@@ -1,4 +1,4 @@
-import { EngineSettingsSchema, isLocalAiEndpoint } from "@tax/core";
+import { EngineSettingsSchema, isLocalAiEndpoint, istDate } from "@tax/core";
 import { SettingsResponseSchema, type SettingsUpdate } from "@tax/core/api";
 import type { TaxDatabase } from "@tax/db";
 import { listTaxYears } from "@tax/rules";
@@ -20,6 +20,13 @@ export function aiConfiguration(db: TaxDatabase) {
 		cloudAcknowledged: value?.cloudAcknowledged ?? false,
 	};
 }
+function defaultFilingYear(now: Date): string {
+	const today = istDate(now.toISOString());
+	const years = listTaxYears().sort((a, b) => b.end.localeCompare(a.end));
+	const year = years.find(({ end }) => end < today) ?? years.at(-1);
+	if (!year) throw new Error("No tax year rules are available.");
+	return year.id;
+}
 export function getSettings(db: TaxDatabase) {
 	const ai = aiConfiguration(db);
 	return SettingsResponseSchema.parse({
@@ -27,7 +34,8 @@ export function getSettings(db: TaxDatabase) {
 		prices: db.settings.get("prices") ?? {},
 		disclaimerAcceptedAt: db.settings.get("disclaimerAcceptedAt"),
 		settingsSavedAt: db.settings.get("settingsSavedAt"),
-		defaultTaxYear: db.settings.get("defaultTaxYear") ?? "2026-27",
+		defaultTaxYear:
+			db.settings.get("defaultTaxYear") ?? defaultFilingYear(new Date()),
 		ai: {
 			baseUrl: ai.baseUrl,
 			model: ai.model,
@@ -77,10 +85,10 @@ export function putSettings(db: TaxDatabase, patch: SettingsUpdate) {
 			"validation_error",
 			"Default tax year must have an available rule file.",
 		);
-	const current = getSettings(db);
-	const nextAi = { ...aiConfiguration(db), ...ai };
-	if (ai) checkAiEndpoint(nextAi);
-	db.atomic(() => {
+	return db.atomic(() => {
+		const current = getSettings(db);
+		const nextAi = { ...aiConfiguration(db), ...ai };
+		if (ai) checkAiEndpoint(nextAi);
 		const hasEnginePatch = Object.keys(engine).length > 0;
 		const savedAt = new Date().toISOString();
 		if (hasEnginePatch)
@@ -96,6 +104,6 @@ export function putSettings(db: TaxDatabase, patch: SettingsUpdate) {
 			db.settings.set("defaultTaxYear", defaultTaxYear);
 		if (ai) db.settings.set("ai", nextAi);
 		if (prices) db.settings.set("prices", { ...current.prices, ...prices });
+		return getSettings(db);
 	}, "immediate");
-	return getSettings(db);
 }

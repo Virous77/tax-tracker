@@ -1,5 +1,5 @@
 import type { ReviewFlag, ReviewSeverity, VdaReport } from "@tax/core";
-import { chains } from "@tax/evm";
+import { presentWarningMessage } from "./source-labels";
 
 export function warningSeverity(warning: ReviewFlag): ReviewSeverity {
 	if (warning.code === "ca_verification_pending") return "info";
@@ -15,25 +15,10 @@ export function warningSeverity(warning: ReviewFlag): ReviewSeverity {
 	return "action";
 }
 
-function venueLabel(source: string): string {
-	switch (source) {
-		case "binance":
-			return "Binance";
-		case "coindcx":
-			return "CoinDCX";
-		case "manual":
-			return "Manual";
-	}
-	if (source.startsWith("evm:")) {
-		const chain = chains.find(({ chainId }) => `evm:${chainId}` === source);
-		return chain ? `${chain.name} wallet` : "EVM wallet";
-	}
-	return source.startsWith("csv:") ? "Generic CSV" : source;
-}
-
 export function presentReport(
 	report: VdaReport,
 	includesDemoData: boolean,
+	label: (source: string) => string,
 ): VdaReport {
 	return {
 		...report,
@@ -44,16 +29,21 @@ export function presentReport(
 		),
 		warnings: report.warnings.map((warning) => ({
 			...warning,
+			message: presentWarningMessage(warning, label),
 			severity: warningSeverity(warning),
 		})),
 		tds: {
 			...report.tds,
+			bySource: report.tds.bySource.map((row) => ({
+				...row,
+				sourceLabel: label(row.source),
+			})),
 			checklist: report.tds.checklist.map((item) => {
 				const row = report.tds.bySource.find(({ source }) =>
 					item.startsWith(`${source}: `),
 				);
 				return row
-					? `${venueLabel(row.source)}${item.slice(row.source.length)}`
+					? `${label(row.source)}${item.slice(row.source.length)}`
 					: item;
 			}),
 		},

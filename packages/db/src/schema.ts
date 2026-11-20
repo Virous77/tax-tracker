@@ -1,4 +1,10 @@
-import type { ActualBalance, LedgerTx, Recipe, VdaReport } from "@tax/core";
+import type {
+	ActualBalance,
+	LedgerTx,
+	Recipe,
+	ReviewCode,
+	VdaReport,
+} from "@tax/core";
 import type {
 	BalanceSnapshot,
 	ImportDetail,
@@ -274,6 +280,18 @@ export const reportInvalidations = sqliteTable("report_invalidations", {
 		enum: ["ledger_changed", "settings_changed", "balances_changed"],
 	}).notNull(),
 });
+
+export const reviewResolutions = sqliteTable(
+	"review_resolutions",
+	{
+		taxYear: text("tax_year").notNull(),
+		code: text("code").$type<ReviewCode>().notNull(),
+		txId: text("tx_id").notNull(),
+		itemKey: text("item_key").notNull(),
+		note: text("note"),
+	},
+	(t) => [primaryKey({ columns: [t.taxYear, t.code, t.txId, t.itemKey] })],
+);
 
 export const balanceSnapshots = sqliteTable("balance_snapshots", {
 	id: text("id").primaryKey(),

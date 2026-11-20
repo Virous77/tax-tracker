@@ -18,6 +18,8 @@ import {
 } from "@/lib/client/api";
 import { formatIncomeKind } from "@/lib/client/format";
 
+const DEFAULT_DATE_TIME = "2026-04-01T12:00";
+
 export type ManualPreset = "buy" | "gift" | "income" | "sell";
 
 export function AddManualTxDrawer({
@@ -25,6 +27,7 @@ export function AddManualTxDrawer({
 	initialPreset = "buy",
 	initialAsset = "",
 	initialVenue = "manual",
+	initialDateTime,
 	onClose,
 	onCreated,
 }: {
@@ -32,12 +35,16 @@ export function AddManualTxDrawer({
 	initialPreset?: ManualPreset;
 	initialAsset?: string;
 	initialVenue?: ManualVenue;
+	/** IST `YYYY-MM-DDTHH:mm`; defaults to the start of 2026-27. */
+	initialDateTime?: string;
 	onClose: () => void;
 	onCreated: (tx: LedgerTx) => void;
 }) {
 	const [type, setType] = useState<TxType>(initialPreset);
 	const [venue, setVenue] = useState<ManualVenue>(initialVenue);
-	const [istDateTime, setIstDateTime] = useState("2026-04-01T12:00");
+	const [istDateTime, setIstDateTime] = useState(
+		initialDateTime ?? DEFAULT_DATE_TIME,
+	);
 	const [assetIn, setAssetIn] = useState(initialAsset);
 	const [amountIn, setAmountIn] = useState("");
 	const [assetOut, setAssetOut] = useState("");
@@ -82,6 +89,7 @@ export function AddManualTxDrawer({
 			setAssetIn(initialAsset.toUpperCase());
 			setAssetOut("");
 		}
+		setIstDateTime(initialDateTime ?? DEFAULT_DATE_TIME);
 		setAmountIn("");
 		setAmountOut("");
 		setInrValue("");
@@ -89,7 +97,7 @@ export function AddManualTxDrawer({
 		setUserNote("");
 		setError(null);
 		setFieldErrors({});
-	}, [open, initialPreset, initialAsset, initialVenue]);
+	}, [open, initialPreset, initialAsset, initialVenue, initialDateTime]);
 
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault();

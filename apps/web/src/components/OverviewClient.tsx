@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_ENGINE_SETTINGS, type VdaReport } from "@tax/core";
+import type { VdaReport } from "@tax/core";
 import {
 	AlertTriangle,
 	ArrowRight,
@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { useDemo } from "@/components/demo/DemoProvider";
 import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
 import { GettingStarted } from "@/components/GettingStarted";
 import { Badge } from "@/components/ui/Badge";
@@ -22,32 +23,29 @@ import {
 	TaxYearSelect,
 } from "@/components/ui/TaxYearSelect";
 import {
-	type AppSettings,
 	api,
 	getErrorMessage,
+	REPORT_NOT_COMPUTED,
 	type ReportMissingDetails,
 	type TaxYearInfo,
 } from "@/lib/client/api";
 import {
+	formatIncompleteSummary,
 	formatInr,
 	formatReportMissingState,
 	isNegativeDecimal,
 	isPositiveDecimal,
+	isReportIncomplete,
 	pluralise,
+	reportHasActivity,
 } from "@/lib/client/format";
-import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
-
-function hasCustomisedEngineSettings(settings: AppSettings): boolean {
-	return Object.entries(DEFAULT_ENGINE_SETTINGS).some(
-		([key, value]) =>
-			settings[key as keyof typeof DEFAULT_ENGINE_SETTINGS] !== value,
-	);
-}
+import { reviewActionCount } from "@/lib/client/review-codes";
 
 export function OverviewClient() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const urlTaxYear = searchParams.get("taxYear") ?? "";
+	const { taxYear: demoTaxYear } = useDemo();
 
 	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
 	const [taxYear, setTaxYear] = useState<string>(urlTaxYear || "2026-27");
@@ -56,7 +54,9 @@ export function OverviewClient() {
 		useState<ReportMissingDetails | null>(null);
 	const [txTotal, setTxTotal] = useState<number | null>(null);
 	const [reviewCount, setReviewCount] = useState<number>(0);
-	const [settingsCustomised, setSettingsCustomised] = useState(false);
+	const [settingsSaved, setSettingsSaved] = useState(false);
+	const [hasOwnImport, setHasOwnImport] = useState(false);
+	const [defaultTaxYear, setDefaultTaxYear] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [computing, setComputing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -66,18 +66,16 @@ export function OverviewClient() {
 		let cancelled = false;
 		async function initMeta() {
 			try {
-				const [years, settings] = await Promise.all([
+				const [years, settings, imports] = await Promise.all([
 					api.getTaxYears().catch(() => FALLBACK_TAX_YEARS),
 					api.getSettings().catch(() => null),
+					api.listImports().catch(() => []),
 				]);
 				if (cancelled) return;
 				if (years.length > 0) setTaxYears(years);
-				if (settings) {
-					setSettingsCustomised(hasCustomisedEngineSettings(settings));
-				}
-				if (!urlTaxYear && settings?.defaultTaxYear) {
-					setTaxYear(settings.defaultTaxYear);
-				}
+				setSettingsSaved(Boolean(settings?.settingsSavedAt));
+				setDefaultTaxYear(settings?.defaultTaxYear ?? null);
+				setHasOwnImport(imports.some((imp) => !imp.demo));
 			} catch {
 				// handled by individual fetch
 			}
@@ -86,22 +84,25 @@ export function OverviewClient() {
 		return () => {
 			cancelled = true;
 		};
-	}, [urlTaxYear]);
+	}, []);
 
 	useEffect(() => {
-		if (urlTaxYear) setTaxYear(urlTaxYear);
-	}, [urlTaxYear]);
+		const year = urlTaxYear || demoTaxYear || defaultTaxYear;
+		if (year) setTaxYear(year);
+	}, [urlTaxYear, demoTaxYear, defaultTaxYear]);
 
 	const loadData = useCallback(async (year: string) => {
 		setLoading(true);
 		setError(null);
 		try {
-			const [repState, review, txPage] = await Promise.all([
-				api.getReportState(year),
-				api
-					.getReview(year)
-					.catch(() => ({ reportStatus: "missing" as const, groups: [] })),
-				api.listTransactions({ page: 1, pageSize: 1 }).catch(() => null),
+			const txPage = await api
+				.listTransactions({ page: 1, pageSize: 1 })
+				.catch(() => null);
+			const [repState, review] = await Promise.all([
+				txPage?.total === 0
+					? Promise.resolve(REPORT_NOT_COMPUTED)
+					: api.getReportState(year),
+				api.getReview(year).catch(() => null),
 			]);
 			if (repState.status === "ready") {
 				setReport(repState.report);
@@ -110,10 +111,7 @@ export function OverviewClient() {
 				setReport(null);
 				setReportMissing(repState.missing);
 			}
-			const totalFlags = review.groups
-				.filter((g) => REVIEW_CODE_INFO[g.code].severity !== "info")
-				.reduce((acc, g) => acc + g.count, 0);
-			setReviewCount(totalFlags);
+			setReviewCount(review ? reviewActionCount(review) : 0);
 			setTxTotal(txPage ? txPage.total : null);
 		} catch (err) {
 			setError(getErrorMessage(err));
@@ -145,10 +143,8 @@ export function OverviewClient() {
 			setStatusMessage(
 				`Report computed for tax year ${taxYear} (${computed.generatedFrom.txCount} ${pluralise(computed.generatedFrom.txCount, "transaction")} evaluated).`,
 			);
-			const review = await api
-				.getReview(taxYear)
-				.catch(() => ({ reportStatus: "missing" as const, groups: [] }));
-			setReviewCount(review.groups.reduce((acc, g) => acc + g.count, 0));
+			const review = await api.getReview(taxYear).catch(() => null);
+			setReviewCount(review ? reviewActionCount(review) : 0);
 		} catch (err) {
 			setError(getErrorMessage(err));
 		} finally {
@@ -156,9 +152,9 @@ export function OverviewClient() {
 		}
 	}
 
-	const netIsRefund = report
-		? isNegativeDecimal(report.totals.netPayable)
-		: false;
+	const incomplete = report ? isReportIncomplete(report) : false;
+	const netIsRefund =
+		report && !incomplete ? isNegativeDecimal(report.totals.netPayable) : false;
 	const hasLosses = report
 		? isPositiveDecimal(report.totals.lossesNotSetOff)
 		: false;
@@ -258,9 +254,9 @@ export function OverviewClient() {
 				<GettingStarted
 					facts={{
 						taxYear,
-						settingsCustomised,
-						hasData: (txTotal ?? 0) > 0,
-						reportReady: report !== null,
+						settingsSaved,
+						hasOwnImport,
+						reportReady: report !== null && reportHasActivity(report),
 						openReviewItems: reviewCount,
 					}}
 				/>
@@ -438,18 +434,33 @@ export function OverviewClient() {
 							<p className="text-xs font-medium text-[var(--text-secondary)]">
 								{netIsRefund ? "Net Tax Refundable" : "Net Tax Payable"}
 							</p>
-							<p
-								className={`num mt-2 text-2xl font-semibold tracking-tight ${
-									netIsRefund ? "text-[var(--positive)]" : ""
-								}`}
-							>
-								{formatInr(report.totals.netPayable)}
-							</p>
+							{incomplete ? (
+								<p className="mt-2 text-base font-semibold leading-snug text-[var(--loss)]">
+									{formatIncompleteSummary(report)}
+								</p>
+							) : (
+								<p
+									className={`num mt-2 text-2xl font-semibold tracking-tight ${
+										netIsRefund ? "text-[var(--positive)]" : ""
+									}`}
+								>
+									{formatInr(report.totals.netPayable)}
+								</p>
+							)}
 							<p className="mt-3 border-t border-[var(--border)] pt-2.5 text-xs text-[var(--text-secondary)]">
-								Total tax minus TDS credit. Rounded total tax:{" "}
-								<span className="num font-medium text-[var(--text-primary)]">
-									{formatInr(report.totals.totalTaxRounded)}
-								</span>
+								{incomplete ? (
+									<>
+										Fix the unresolved sales to see what you owe. Total so far
+										excludes them.
+									</>
+								) : (
+									<>
+										Total tax minus TDS credit. Rounded total tax:{" "}
+										<span className="num font-medium text-[var(--text-primary)]">
+											{formatInr(report.totals.totalTaxRounded)}
+										</span>
+									</>
+								)}
 							</p>
 						</div>
 

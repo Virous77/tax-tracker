@@ -17,6 +17,7 @@ import {
 	type ImportSummary,
 } from "@/lib/client/api";
 import {
+	effectiveTimezone,
 	formatIstDate,
 	formatIstDateTime,
 	formatQty,
@@ -180,7 +181,12 @@ export function ImportsClient() {
 											<p className="mt-0.5 text-xs text-[var(--text-secondary)]">
 												{formatSourceLabel(imp.source)}
 												{imp.connectionLabel ? ` · ${imp.connectionLabel}` : ""}{" "}
-												· {imp.timezone} · {formatIstDateTime(imp.createdAt)}
+												· {effectiveTimezone(imp)} (
+												{formatTimezoneSourceLabel(
+													imp.timezoneSource,
+													imp.timezoneOrigin,
+												)}
+												) · {formatIstDateTime(imp.createdAt)}
 											</p>
 										</div>
 										<Badge
@@ -336,7 +342,13 @@ export function ImportsClient() {
 													{formatSourceLabel(imp.source)}
 												</td>
 												<td className="px-4 py-2.5 whitespace-nowrap">
-													<Badge tone="neutral">{imp.timezone}</Badge>
+													<Badge tone="neutral">{effectiveTimezone(imp)}</Badge>
+													<span className="block text-[11px] text-[var(--text-muted)]">
+														{formatTimezoneSourceLabel(
+															imp.timezoneSource,
+															imp.timezoneOrigin,
+														)}
+													</span>
 												</td>
 												<td className="px-4 py-2.5 whitespace-nowrap">
 													<Badge
@@ -494,7 +506,7 @@ export function ImportsClient() {
 							<div>
 								<dt className="text-[var(--text-muted)]">Time zone</dt>
 								<dd className="mt-0.5 font-medium">
-									{detail.detectedTimezone ?? detail.timezone}{" "}
+									{effectiveTimezone(detail)}{" "}
 									<span className="font-normal text-[var(--text-secondary)]">
 										(
 										{formatTimezoneSourceLabel(

@@ -400,6 +400,24 @@ export type ReportState =
 	| { status: "ready"; report: VdaReport }
 	| { status: "missing"; missing: ReportMissingDetails | null };
 
+export const REPORT_NOT_COMPUTED: ReportState = {
+	status: "missing",
+	missing: null,
+};
+
+/** A report that does not exist yet comes back as `{ status: "missing", ... }`, optionally carrying the cause. */
+function parseMissingReportBody(
+	body: unknown,
+): { details: ReportMissingDetails | null } | null {
+	if (typeof body !== "object" || body === null) return null;
+	const record = body as Record<string, unknown>;
+	if (record.status !== "missing") return null;
+	const parsed = ReportMissingDetailsSchema.safeParse(
+		record.missing ?? record.details ?? record,
+	);
+	return { details: parsed.success ? parsed.data : null };
+}
+
 export type AppHealth = z.infer<typeof HealthResponseSchema>;
 
 const BACKUP_FILE_FALLBACK = "tax-tracker-backup.db";
@@ -670,11 +688,15 @@ export const api = {
 
 	async getReportState(taxYear: string): Promise<ReportState> {
 		try {
-			const report = await requestJson(
-				`/api/reports/${encodeURIComponent(taxYear)}`,
-				{ schema: GetReportResponseSchema },
+			const body = await requestJson<unknown>(
+				`/api/reports/${encodeURIComponent(taxYear)}?allowMissing=true`,
 			);
-			return { status: "ready", report };
+			const missing = parseMissingReportBody(body);
+			if (missing) return { status: "missing", missing: missing.details };
+			return {
+				status: "ready",
+				report: parseInDev(GetReportResponseSchema, body),
+			};
 		} catch (err) {
 			if (err instanceof ApiError && err.status === 404) {
 				if (err.code === "report_not_computed") {

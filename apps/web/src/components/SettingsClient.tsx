@@ -21,6 +21,26 @@ import {
 	type TaxYearInfo,
 } from "@/lib/client/api";
 
+const RESTORE_STEPS = [
+	{
+		text: "Stop the app, so nothing writes to the database:",
+		command: "docker compose stop",
+	},
+	{
+		text: "Delete the write-ahead log files. A leftover -wal file belongs to the old database and can roll back or corrupt the restored one:",
+		command: "rm -f data/tax-tracker.db-wal data/tax-tracker.db-shm",
+	},
+	{
+		text: "Replace the database with your backup:",
+		command: "cp /path/to/backup.db data/tax-tracker.db",
+	},
+	{
+		text: "Linux only: give the file to uid 1000, the user the app runs as:",
+		command: "sudo chown 1000:1000 data/tax-tracker.db",
+	},
+	{ text: "Start the app again:", command: "docker compose start" },
+];
+
 export function SettingsClient() {
 	const router = useRouter();
 	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
@@ -772,14 +792,14 @@ export function SettingsClient() {
 						<h2 className="font-semibold">Local Data &amp; Backups</h2>
 						<p className="text-xs leading-relaxed text-[var(--text-secondary)]">
 							All imports, raw source rows, edited transactions, saved recipes,
-							and computed reports are stored locally in a single SQLite file:{" "}
+							and computed reports are stored locally in a single SQLite file,{" "}
 							<code className="font-mono-code rounded bg-[var(--bg-subtle)] px-1.5 py-0.5">
-								{"$"}
-								{"{DATA_DIR:-./data}/tax-tracker.db"}
-							</code>{" "}
-							(mounted at{" "}
-							<code className="font-mono-code">/data/tax-tracker.db</code> in
-							Docker).
+								tax-tracker.db
+							</code>
+							, in the data folder you mounted (
+							<code className="font-mono-code">./data</code> by default). Inside
+							Docker that is{" "}
+							<code className="font-mono-code">/data/tax-tracker.db</code>.
 						</p>
 					</div>
 				</div>
@@ -811,16 +831,28 @@ export function SettingsClient() {
 						<p className="font-medium text-[var(--text-primary)]">
 							To restore a backup
 						</p>
-						<ol className="mt-1 list-decimal space-y-0.5 pl-5">
-							<li>Stop the app.</li>
-							<li>
-								Replace{" "}
-								<code className="font-mono-code">data/tax-tracker.db</code> with
-								your backup file, renamed to{" "}
-								<code className="font-mono-code">tax-tracker.db</code>.
-							</li>
-							<li>Start the app again.</li>
+						<p className="mt-1">
+							There is no restore button, on purpose. Run these from the
+							repository folder, in this order:
+						</p>
+						<ol className="mt-1.5 list-decimal space-y-2 pl-5">
+							{RESTORE_STEPS.map((step) => (
+								<li key={step.command}>
+									{step.text}
+									<pre className="font-mono-code mt-1 overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-subtle)] p-2 text-[11px] text-[var(--text-primary)]">
+										{step.command}
+									</pre>
+								</li>
+							))}
 						</ol>
+						<p className="mt-1.5">
+							If you set <code className="font-mono-code">DATA_HOST_DIR</code>,
+							use that folder instead of{" "}
+							<code className="font-mono-code">data/</code>. Your vault
+							passphrase is the one that was in use when the backup was taken.
+							Stored reports come back with the backup; recompute them if you
+							changed settings since.
+						</p>
 					</div>
 					<p>
 						A backup is also made automatically before upgrades that change the

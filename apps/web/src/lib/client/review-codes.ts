@@ -1,4 +1,41 @@
 import type { LedgerTx, ReviewCode } from "@tax/core";
+import type { ReviewData } from "@/lib/client/api";
+
+type ReviewGroup = ReviewData["groups"][number];
+
+export function splitReviewGroups(groups: readonly ReviewGroup[]): {
+	action: ReviewGroup[];
+	info: ReviewGroup[];
+} {
+	return {
+		action: groups.filter((g) => g.severity !== "info"),
+		info: groups.filter((g) => g.severity === "info"),
+	};
+}
+
+/** Items that need the user to act; "info" notes never count. */
+export function reviewActionCount(
+	review: Pick<ReviewData, "totals" | "groups">,
+): number {
+	const { action, info } = review.totals;
+	if (action + info > 0) return action;
+	return splitReviewGroups(review.groups).action.reduce(
+		(sum, g) => sum + g.count,
+		0,
+	);
+}
+
+export function addMissingBuyHref(
+	asset: string,
+	taxYear?: string,
+	saleTimestamp?: string,
+): string {
+	const params = new URLSearchParams({ add: "buy" });
+	if (asset) params.set("asset", asset);
+	if (taxYear) params.set("taxYear", taxYear);
+	if (saleTimestamp) params.set("before", saleTimestamp);
+	return `/transactions?${params.toString()}`;
+}
 
 export interface ReviewCodeInfo {
 	code: ReviewCode;

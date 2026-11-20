@@ -27,6 +27,7 @@ import {
 } from "@/lib/client/api";
 import { EVM_CHAINS } from "@/lib/client/chains";
 import {
+	defaultMissingBuyDateTime,
 	formatInrNullable,
 	formatIstDateTime,
 	formatManualVenueLabel,
@@ -65,6 +66,7 @@ export function TransactionsClient() {
 	const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
 	const addParam = searchParams.get("add");
 	const venueParam = searchParams.get("venue");
+	const beforeParam = searchParams.get("before");
 
 	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
 	const [data, setData] = useState<TransactionsPage | null>(null);
@@ -142,6 +144,7 @@ export function TransactionsClient() {
 		const params = new URLSearchParams(searchParams.toString());
 		params.delete("add");
 		params.delete("venue");
+		params.delete("before");
 		for (const [k, v] of Object.entries(updates)) {
 			if (v === null || v === "") params.delete(k);
 			else params.set(k, v);
@@ -167,6 +170,14 @@ export function TransactionsClient() {
 		venueParam === "binance" || venueParam === "coindcx"
 			? venueParam
 			: "manual";
+
+	const initialDateTime =
+		manualPreset === "buy"
+			? defaultMissingBuyDateTime(
+					beforeParam,
+					taxYears.find((y) => y.id === taxYear),
+				)
+			: undefined;
 
 	return (
 		<div className="space-y-5">
@@ -517,6 +528,7 @@ export function TransactionsClient() {
 				initialPreset={manualPreset}
 				initialAsset={asset}
 				initialVenue={initialVenue}
+				{...(initialDateTime ? { initialDateTime } : {})}
 				onClose={() => {
 					setAddOpen(false);
 					if (addParam || venueParam) {

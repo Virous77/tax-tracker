@@ -1,4 +1,11 @@
-import { D, formatDecimal, formatInr, istDate, type TxType } from "@tax/core";
+import {
+	D,
+	formatDecimal,
+	formatInr,
+	istDate,
+	type TxType,
+	type VdaReport,
+} from "@tax/core";
 import type { ReportMissingDetails } from "@tax/core/api";
 import { getEvmChain } from "@/lib/client/chains";
 
@@ -407,4 +414,57 @@ export function formatTimezoneSourceLabel(
 	if (timezoneOrigin === "header") return "from the column header";
 	if (timezoneOrigin === "file_name") return "from the file name";
 	return "from the file";
+}
+
+export function effectiveTimezone(imp: {
+	timezone: string;
+	detectedTimezone: string | null;
+	timezoneSource: "file" | "user";
+}): string {
+	return imp.timezoneSource === "file"
+		? (imp.detectedTimezone ?? imp.timezone)
+		: imp.timezone;
+}
+
+const IST_OFFSET_MS = 330 * 60_000;
+const DAY_MS = 86_400_000;
+
+/** Value for a datetime-local input showing the given instant in IST. */
+function istDateTimeInputValue(ms: number): string {
+	return new Date(ms + IST_OFFSET_MS).toISOString().slice(0, 16);
+}
+
+/** A purchase has to come before the sale it covers: one day before it, else the year's first day. */
+export function defaultMissingBuyDateTime(
+	saleTimestamp: string | null,
+	taxYear: { start: string } | undefined,
+): string | undefined {
+	const saleMs = saleTimestamp ? Date.parse(saleTimestamp) : Number.NaN;
+	if (Number.isFinite(saleMs)) return istDateTimeInputValue(saleMs - DAY_MS);
+	return taxYear ? `${taxYear.start}T00:00` : undefined;
+}
+
+export function reportHasActivity(report: VdaReport): boolean {
+	return (
+		report.scheduleVdaRows.length +
+			report.income.rows.length +
+			report.unresolved.length +
+			report.excluded.length >
+		0
+	);
+}
+
+/** Any unresolved disposal makes the totals provisional, whatever the server flag says. */
+export function isReportIncomplete(report: VdaReport): boolean {
+	return report.incomplete ?? report.unresolved.length > 0;
+}
+
+export function formatIncompleteSummary(report: VdaReport): string {
+	const sales = new Set(report.unresolved.map((u) => u.txId)).size;
+	const noHistory = report.unresolved.every(
+		(u) => u.reason === "missing_history",
+	);
+	return noHistory
+		? `Incomplete — ${sales} ${pluralise(sales, "sale has", "sales have")} no purchase history`
+		: `Incomplete — ${sales} ${pluralise(sales, "sale is", "sales are")} unresolved`;
 }

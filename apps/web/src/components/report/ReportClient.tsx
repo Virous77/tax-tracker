@@ -22,6 +22,7 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useDemo } from "@/components/demo/DemoProvider";
 import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
 import { TrailDrawer } from "@/components/report/TrailDrawer";
 import { Badge } from "@/components/ui/Badge";
@@ -40,6 +41,7 @@ import {
 	type JobStatus,
 	type PriceFillSummary,
 	type PricesStatus,
+	REPORT_NOT_COMPUTED,
 	type ReportMissingDetails,
 	type TaxYearInfo,
 } from "@/lib/client/api";
@@ -48,6 +50,7 @@ import {
 	formatEngineSettingValue,
 	formatExcludedReason,
 	formatIncomeKind,
+	formatIncompleteSummary,
 	formatInr,
 	formatInrNullable,
 	formatIstDate,
@@ -57,10 +60,11 @@ import {
 	formatSourceLabel,
 	formatTxType,
 	isPositiveDecimal,
+	isReportIncomplete,
 	isZeroDecimal,
 	pluralise,
 } from "@/lib/client/format";
-import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
+import { addMissingBuyHref, REVIEW_CODE_INFO } from "@/lib/client/review-codes";
 
 function balanceKey(asset: string, source?: string): string {
 	return `${asset}::${source ?? ""}`;
@@ -142,6 +146,8 @@ export function ReportClient() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const urlTaxYear = searchParams.get("taxYear") ?? "";
+	const { taxYear: demoTaxYear } = useDemo();
+	const [defaultTaxYear, setDefaultTaxYear] = useState<string | null>(null);
 
 	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
 	const [taxYear, setTaxYear] = useState<string>(urlTaxYear || "2026-27");
@@ -205,9 +211,7 @@ export function ReportClient() {
 				]);
 				if (cancelled) return;
 				if (years.length > 0) setTaxYears(years);
-				if (!urlTaxYear && settings?.defaultTaxYear) {
-					setTaxYear(settings.defaultTaxYear);
-				}
+				setDefaultTaxYear(settings?.defaultTaxYear ?? null);
 			} catch {
 				// handled per call
 			}
@@ -216,11 +220,12 @@ export function ReportClient() {
 		return () => {
 			cancelled = true;
 		};
-	}, [urlTaxYear]);
+	}, []);
 
 	useEffect(() => {
-		if (urlTaxYear) setTaxYear(urlTaxYear);
-	}, [urlTaxYear]);
+		const year = urlTaxYear || demoTaxYear || defaultTaxYear;
+		if (year) setTaxYear(year);
+	}, [urlTaxYear, demoTaxYear, defaultTaxYear]);
 
 	const loadReport = useCallback(async (year: string) => {
 		if (pricePollRef.current) {
@@ -237,14 +242,17 @@ export function ReportClient() {
 		setPriceFillError(null);
 		setMissingExpanded(false);
 		try {
-			const [repState, savedActuals, pStatus, snapList, txPage] =
-				await Promise.all([
-					api.getReportState(year),
-					api.getActualBalances(year).catch(() => []),
-					api.getPricesStatus(year).catch(() => null),
-					api.listBalanceSnapshots().catch(() => []),
-					api.listTransactions({ page: 1, pageSize: 1 }).catch(() => null),
-				]);
+			const txPage = await api
+				.listTransactions({ page: 1, pageSize: 1 })
+				.catch(() => null);
+			const [repState, savedActuals, pStatus, snapList] = await Promise.all([
+				txPage?.total === 0
+					? Promise.resolve(REPORT_NOT_COMPUTED)
+					: api.getReportState(year),
+				api.getActualBalances(year).catch(() => []),
+				api.getPricesStatus(year).catch(() => null),
+				api.listBalanceSnapshots().catch(() => []),
+			]);
 			if (!mountedRef.current) return;
 			setLedgerEmpty(txPage?.total === 0);
 			const rep = repState.status === "ready" ? repState.report : null;
@@ -794,45 +802,45 @@ export function ReportClient() {
 						taxYear,
 						"report",
 					);
-					if (ledgerEmpty) {
-						return (
-							<EmptyState
-								icon={<Upload className="h-8 w-8" />}
-								title="No transactions yet — import an export file"
-								description="The report is built from your ledger. Import a Binance, CoinDCX, or CSV export, or load sample data to see a full report first."
-								action={
-									<div className="flex flex-wrap justify-center gap-3">
-										<Link
-											href="/import"
-											className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-										>
-											<Upload className="h-4 w-4" aria-hidden="true" />
-											Import file
-										</Link>
-										<TrySampleDataButton />
-									</div>
-								}
-							/>
-						);
-					}
+					const emptyState = ledgerEmpty ? (
+						<EmptyState
+							icon={<Upload className="h-8 w-8" />}
+							title="No transactions yet — import an export file"
+							description="The report is built from your ledger. Import a Binance, CoinDCX, or CSV export, or load sample data to see a full report first."
+							action={
+								<div className="flex flex-wrap justify-center gap-3">
+									<Link
+										href="/import"
+										className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+									>
+										<Upload className="h-4 w-4" aria-hidden="true" />
+										Import file
+									</Link>
+									<TrySampleDataButton />
+								</div>
+							}
+						/>
+					) : (
+						<EmptyState
+							icon={<FileSpreadsheet className="h-8 w-8" />}
+							title={missingCopy.title}
+							description={missingCopy.description}
+							action={
+								<button
+									type="button"
+									disabled={computing}
+									onClick={handleCompute}
+									className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+								>
+									<Calculator className="h-4 w-4" aria-hidden="true" />
+									{computing ? "Computing…" : `Compute ${taxYear} report`}
+								</button>
+							}
+						/>
+					);
 					return (
 						<div className="space-y-6">
-							<EmptyState
-								icon={<FileSpreadsheet className="h-8 w-8" />}
-								title={missingCopy.title}
-								description={missingCopy.description}
-								action={
-									<button
-										type="button"
-										disabled={computing}
-										onClick={handleCompute}
-										className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-									>
-										<Calculator className="h-4 w-4" aria-hidden="true" />
-										{computing ? "Computing…" : `Compute ${taxYear} report`}
-									</button>
-								}
-							/>
+							{emptyState}
 							{snapshots.length > 0 ? renderStatementsSection() : null}
 						</div>
 					);
@@ -941,10 +949,17 @@ export function ReportClient() {
 								val: formatInr(report.totals.tdsCredit),
 								tone: "positive" as const,
 							},
-							{
-								label: "Net Payable",
-								val: formatInr(report.totals.netPayable),
-							},
+							isReportIncomplete(report)
+								? {
+										label: "Net Payable",
+										val: "Incomplete",
+										tone: "loss" as const,
+										note: formatIncompleteSummary(report),
+									}
+								: {
+										label: "Net Payable",
+										val: formatInr(report.totals.netPayable),
+									},
 						].map((item) => (
 							<div
 								key={item.label}
@@ -955,11 +970,20 @@ export function ReportClient() {
 								</p>
 								<p
 									className={`num mt-1 text-base font-semibold ${
-										item.tone === "positive" ? "text-[var(--positive)]" : ""
+										item.tone === "positive"
+											? "text-[var(--positive)]"
+											: item.tone === "loss"
+												? "text-[var(--loss)]"
+												: ""
 									}`}
 								>
 									{item.val}
 								</p>
+								{"note" in item ? (
+									<p className="mt-1 text-[11px] leading-snug text-[var(--text-secondary)]">
+										{item.note}
+									</p>
+								) : null}
 							</div>
 						))}
 					</section>
@@ -988,10 +1012,17 @@ export function ReportClient() {
 									Resolve in Review Queue
 								</Link>
 							</div>
+							{isReportIncomplete(report) ? (
+								<p className="text-xs text-[var(--text-primary)]">
+									{formatIncompleteSummary(report)}. These sales are left out of
+									Schedule VDA and net payable is not shown until you fix them.
+								</p>
+							) : null}
 							<div className="overflow-x-auto rounded border border-[var(--loss)]/25 bg-[var(--bg-surface)]">
 								<table className="w-full border-collapse text-left text-xs">
 									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 										<tr>
+											<th className="px-3 py-2 font-medium">Sold on</th>
 											<th className="px-3 py-2 font-medium">Asset</th>
 											<th className="num-right px-3 py-2 font-medium">
 												Uncovered Qty
@@ -1001,30 +1032,40 @@ export function ReportClient() {
 										</tr>
 									</thead>
 									<tbody>
-										{report.unresolved.map((u) => (
-											<tr
-												key={`${u.txId}:${u.asset}:${u.reason}`}
-												className="border-b border-[var(--border)] last:border-b-0"
-											>
-												<td className="px-3 py-2 font-medium">{u.asset}</td>
-												<td className="num-right px-3 py-2">
-													{formatQty(u.quantity)}
-												</td>
-												<td className="px-3 py-2">
-													<Badge tone="loss">
-														{REVIEW_CODE_INFO[u.reason]?.title ?? u.reason}
-													</Badge>
-												</td>
-												<td className="px-3 py-2 text-right">
-													<Link
-														href={`/transactions?add=buy&asset=${encodeURIComponent(u.asset)}`}
-														className="font-medium text-[var(--accent-text)] hover:underline"
-													>
-														Add missing buy
-													</Link>
-												</td>
-											</tr>
-										))}
+										{report.unresolved.map((u) => {
+											const sale = report.ledger.find((t) => t.id === u.txId);
+											return (
+												<tr
+													key={`${u.txId}:${u.asset}:${u.reason}`}
+													className="border-b border-[var(--border)] last:border-b-0"
+												>
+													<td className="px-3 py-2 whitespace-nowrap">
+														{sale ? formatIstDate(sale.timestamp) : "—"}
+													</td>
+													<td className="px-3 py-2 font-medium">{u.asset}</td>
+													<td className="num-right px-3 py-2">
+														{formatQty(u.quantity)}
+													</td>
+													<td className="px-3 py-2">
+														<Badge tone="loss">
+															{REVIEW_CODE_INFO[u.reason]?.title ?? u.reason}
+														</Badge>
+													</td>
+													<td className="px-3 py-2 text-right">
+														<Link
+															href={addMissingBuyHref(
+																u.asset,
+																taxYear,
+																sale?.timestamp,
+															)}
+															className="font-medium text-[var(--accent-text)] hover:underline"
+														>
+															Add missing buy
+														</Link>
+													</td>
+												</tr>
+											);
+										})}
 									</tbody>
 								</table>
 							</div>

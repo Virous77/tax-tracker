@@ -328,7 +328,7 @@ test.describe("sample data", () => {
 		await settled(page);
 		const list = checklist(page);
 		await expect(list).toBeVisible();
-		await expect(list.getByRole("link").nth(1)).toContainText("— done");
+		await expect(list.getByRole("link").nth(1)).toContainText("— not done");
 		await expect(list.getByRole("link").nth(4)).toContainText("— not done");
 	});
 
@@ -413,7 +413,10 @@ test.describe("sample data", () => {
 		).toBeVisible();
 		await settled(page);
 		await expect(banner(page)).toHaveCount(0);
-		expect(await demoStatus(page)).toEqual({ loaded: false, importIds: [] });
+		expect(await demoStatus(page)).toMatchObject({
+			loaded: false,
+			importIds: [],
+		});
 		const tx = (await (
 			await page.request.get("/api/transactions?pageSize=1")
 		).json()) as { total: number };

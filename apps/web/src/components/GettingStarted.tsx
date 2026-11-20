@@ -8,8 +8,10 @@ const DISMISSED_KEY = "tax-tracker-getting-started-dismissed";
 
 export type GettingStartedFacts = {
 	taxYear: string;
-	settingsCustomised: boolean;
-	hasData: boolean;
+	settingsSaved: boolean;
+	/** At least one import that is not sample data. */
+	hasOwnImport: boolean;
+	/** The report for this year is computed and the year has something in it. */
 	reportReady: boolean;
 	openReviewItems: number;
 };
@@ -28,19 +30,19 @@ function buildSteps(facts: GettingStartedFacts): Step[] {
 			title: "Choose your tax year and settings",
 			hint: "The defaults suit most people; open this to confirm them.",
 			href: "/settings",
-			done: facts.settingsCustomised || facts.hasData,
+			done: facts.settingsSaved,
 		},
 		{
 			title: "Import a file or connect an exchange",
 			hint: "Binance, CoinDCX or any CSV, or a read-only API key or wallet address.",
 			href: "/import",
-			done: facts.hasData,
+			done: facts.hasOwnImport,
 		},
 		{
 			title: "Resolve Review items",
 			hint: "Missing buy history, unmatched transfers and other flagged rows.",
 			href: `/review?taxYear=${year}`,
-			done: facts.hasData && facts.reportReady && facts.openReviewItems === 0,
+			done: facts.reportReady && facts.openReviewItems === 0,
 		},
 		{
 			title: "Open the report",

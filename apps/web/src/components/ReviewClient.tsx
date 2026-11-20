@@ -7,6 +7,7 @@ import {
 	ArrowRight,
 	Calculator,
 	CheckCircle2,
+	ChevronDown,
 	Edit3,
 } from "lucide-react";
 import Link from "next/link";
@@ -36,11 +37,20 @@ import {
 	isNegativeDecimal,
 	pluralise,
 } from "@/lib/client/format";
-import { groupReviewFlags, REVIEW_CODE_INFO } from "@/lib/client/review-codes";
+import {
+	addMissingBuyHref,
+	groupReviewFlags,
+	REVIEW_CODE_INFO,
+	reviewActionCount,
+	splitReviewGroups,
+} from "@/lib/client/review-codes";
+
+type ReviewGroup = ReviewData["groups"][number];
 
 function reportItemActions(
 	code: keyof typeof REVIEW_CODE_INFO,
 	item: ReportReviewItem,
+	options: { note: boolean; saleTimestamp: string | undefined },
 ): {
 	txHref: string | null;
 	txLabel: string | null;
@@ -58,15 +68,10 @@ function reportItemActions(
 				: null;
 
 		if (code === "missing_history") {
-			const params = new URLSearchParams({
-				add: "buy",
-				asset: item.balance.asset,
-				taxYear: item.taxYear,
-			});
 			return {
 				txHref,
 				txLabel,
-				fixHref: `/transactions?${params.toString()}`,
+				fixHref: addMissingBuyHref(item.balance.asset, item.taxYear),
 				fixLabel: "Add missing buy",
 			};
 		}
@@ -88,15 +93,14 @@ function reportItemActions(
 		const txLabel = "View transaction";
 
 		if (reason === "missing_history") {
-			const params = new URLSearchParams({
-				add: "buy",
-				asset: item.unresolved.asset,
-				taxYear: item.taxYear,
-			});
 			return {
 				txHref,
 				txLabel,
-				fixHref: `/transactions?${params.toString()}`,
+				fixHref: addMissingBuyHref(
+					item.unresolved.asset,
+					item.taxYear,
+					options.saleTimestamp,
+				),
 				fixLabel: "Add missing buy",
 			};
 		}
@@ -142,6 +146,9 @@ function reportItemActions(
 				: `View ${item.warning.asset} transactions`;
 	}
 
+	if (options.note) {
+		return { txHref, txLabel, fixHref: "/imports", fixLabel: "View import" };
+	}
 	if (code === "import_incomplete") {
 		return {
 			txHref,
@@ -159,15 +166,10 @@ function reportItemActions(
 		};
 	}
 	if (code === "missing_history" && item.warning.asset) {
-		const params = new URLSearchParams({
-			add: "buy",
-			asset: item.warning.asset,
-			taxYear: item.taxYear,
-		});
 		return {
 			txHref,
 			txLabel,
-			fixHref: `/transactions?${params.toString()}`,
+			fixHref: addMissingBuyHref(item.warning.asset, item.taxYear),
 			fixLabel: "Add missing buy",
 		};
 	}
@@ -186,7 +188,7 @@ function reportItemActions(
 		fixHref: txHref
 			? null
 			: `/report?taxYear=${encodeURIComponent(item.taxYear)}`,
-		fixLabel: txHref ? null : REVIEW_CODE_INFO[code].fixLabel,
+		fixLabel: txHref ? null : "View in Report",
 	};
 }
 
@@ -301,8 +303,18 @@ export function ReviewClient() {
 		}
 	}
 
-	const totalItems = data?.groups.reduce((sum, g) => sum + g.count, 0) ?? 0;
 	const connectionIssues = data?.connections ?? [];
+	const actionTotal = data ? reviewActionCount(data) : 0;
+	const { action: actionGroups, info: noteGroups } = splitReviewGroups(
+		data?.groups ?? [],
+	);
+	const noActionItems = actionTotal === 0 && connectionIssues.length === 0;
+	const noteTotal = noteGroups.reduce((sum, g) => sum + g.count, 0);
+	const saleTimestamps = new Map(
+		(data?.groups ?? []).flatMap((g) =>
+			g.items.map((tx) => [tx.id, tx.timestamp] as const),
+		),
+	);
 	const reportMissing = data && data.reportStatus === "missing";
 	const missingListText =
 		missingYears.length > 0
@@ -315,6 +327,247 @@ export function ReviewClient() {
 				? `Computing ${computeProgress.year}…`
 				: "Computing…"
 		: formatComputeLabel(computeTargets);
+
+	function renderGroup(group: ReviewGroup, neutral: boolean) {
+		const info = REVIEW_CODE_INFO[group.code];
+		const tone = neutral
+			? "neutral"
+			: info.severity === "error"
+				? "loss"
+				: info.severity === "warning"
+					? "warning"
+					: "accent";
+		return (
+			<section
+				key={group.code}
+				className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]"
+			>
+				<div className="border-b border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-3">
+					<div className="flex flex-wrap items-center justify-between gap-2">
+						<div className="flex items-center gap-2">
+							<h2 className="text-sm font-semibold">{info.title}</h2>
+							<Badge tone={tone}>
+								<span className="num">{group.count}</span>{" "}
+								{pluralise(group.count, "item")}
+							</Badge>
+						</div>
+						<code className="font-mono-code text-xs text-[var(--text-muted)]">
+							{group.code}
+						</code>
+					</div>
+					<p className="mt-1.5 text-xs leading-relaxed text-[var(--text-secondary)]">
+						{info.explanation}
+					</p>
+				</div>
+
+				<div className="overflow-x-auto">
+					<table className="w-full border-collapse text-left text-xs">
+						<thead className="border-b border-[var(--border)] text-[var(--text-muted)]">
+							<tr>
+								<th className="px-4 py-2 font-medium">Date (IST)</th>
+								<th className="px-4 py-2 font-medium">Type</th>
+								<th className="px-4 py-2 font-medium">Source</th>
+								<th className="px-4 py-2 font-medium">Amounts</th>
+								<th className="num-right px-4 py-2 font-medium">INR Value</th>
+								<th className="px-4 py-2 font-medium">Details</th>
+								<th className="px-4 py-2 text-right font-medium">Fix Action</th>
+							</tr>
+						</thead>
+						<tbody>
+							{group.items.map((tx) => {
+								const matchingMessages =
+									groupReviewFlags(
+										tx.reviewFlags.filter((f) => f.code === group.code),
+									)[0]?.messages ?? [];
+								return (
+									<tr
+										key={`${group.code}-${tx.id}`}
+										className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
+									>
+										<td className="px-4 py-2.5 whitespace-nowrap">
+											{formatIstDateTime(tx.timestamp)}
+										</td>
+										<td className="px-4 py-2.5 whitespace-nowrap">
+											<Badge tone="neutral">{formatTxType(tx.type)}</Badge>
+										</td>
+										<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
+											{formatSourceLabel(tx.source)}
+										</td>
+										<td className="num px-4 py-2.5 whitespace-nowrap">
+											{tx.assetIn
+												? `+${formatQty(tx.amountIn)} ${tx.assetIn}`
+												: ""}
+											{tx.assetIn && tx.assetOut ? " / " : ""}
+											{tx.assetOut
+												? `-${formatQty(tx.amountOut)} ${tx.assetOut}`
+												: ""}
+										</td>
+										<td className="num-right px-4 py-2.5 whitespace-nowrap">
+											{formatInrNullable(tx.inrValue)}
+										</td>
+										<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
+											{matchingMessages.length === 0 ? (
+												"—"
+											) : matchingMessages.length === 1 ? (
+												<span>{matchingMessages[0]}</span>
+											) : (
+												<ul className="list-disc space-y-1 pl-4">
+													{matchingMessages.map((msg) => (
+														<li key={msg}>{msg}</li>
+													))}
+												</ul>
+											)}
+										</td>
+										<td className="px-4 py-2.5 text-right whitespace-nowrap">
+											<div className="inline-flex items-center gap-2">
+												<button
+													type="button"
+													onClick={() => setSelectedTx(tx)}
+													className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium hover:bg-[var(--bg-hover)]"
+												>
+													<Edit3 className="h-3 w-3" aria-hidden="true" />
+													Inspect
+												</button>
+												<Link
+													href={info.fixHref(tx, taxYear || undefined)}
+													className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
+												>
+													{info.fixLabel}
+													<ArrowRight className="h-3 w-3" aria-hidden="true" />
+												</Link>
+											</div>
+										</td>
+									</tr>
+								);
+							})}
+							{group.reportItems.map((ri, idx) => {
+								const key =
+									ri.kind === "balance"
+										? `${group.code}-bal-${ri.taxYear}-${ri.balance.asset}-${ri.balance.source ?? "global"}-${idx}`
+										: ri.kind === "unresolved"
+											? `${group.code}-unres-${ri.taxYear}-${ri.unresolved.txId}-${ri.unresolved.asset}-${ri.unresolved.reason}-${idx}`
+											: `${group.code}-warn-${ri.taxYear}-${ri.warning.asset ?? ""}-${ri.warning.source ?? ""}-${idx}`;
+								const actions = reportItemActions(group.code, ri, {
+									note: neutral,
+									saleTimestamp:
+										ri.kind === "unresolved"
+											? saleTimestamps.get(ri.unresolved.txId)
+											: undefined,
+								});
+								const isNegativeBalance =
+									ri.kind === "balance" &&
+									isNegativeDecimal(ri.balance.computed) &&
+									group.code === "missing_history";
+								return (
+									<tr
+										key={key}
+										className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
+									>
+										<td className="px-4 py-2.5 whitespace-nowrap">
+											Tax year {ri.taxYear}
+										</td>
+										<td className="px-4 py-2.5 whitespace-nowrap">
+											{ri.kind === "balance" ? (
+												<Badge tone={isNegativeBalance ? "loss" : "neutral"}>
+													{isNegativeBalance
+														? "Negative holding"
+														: "Year-end balance"}
+												</Badge>
+											) : ri.kind === "unresolved" ? (
+												<Badge tone="loss">Unresolved slice</Badge>
+											) : (
+												<Badge
+													tone={
+														group.code === "ca_verification_pending"
+															? "accent"
+															: "neutral"
+													}
+												>
+													{group.code === "ca_verification_pending"
+														? "Report notice"
+														: "Report warning"}
+												</Badge>
+											)}
+										</td>
+										<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
+											{ri.kind === "balance"
+												? ri.balance.source
+													? formatSourceLabel(ri.balance.source)
+													: "Global"
+												: ri.kind === "warning" && ri.warning.source
+													? formatSourceLabel(ri.warning.source)
+													: "Computed report"}
+										</td>
+										<td className="num px-4 py-2.5 whitespace-nowrap">
+											{ri.kind === "balance"
+												? `${ri.balance.asset}: computed ${formatQty(ri.balance.computed)}${
+														ri.balance.actual !== undefined
+															? `, actual ${formatQty(ri.balance.actual)}`
+															: ""
+													}`
+												: ri.kind === "unresolved"
+													? `${formatQty(ri.unresolved.quantity)} ${ri.unresolved.asset}`
+													: (ri.warning.asset ?? "—")}
+										</td>
+										<td className="num-right px-4 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
+											—
+										</td>
+										<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
+											{ri.kind === "unresolved" ? (
+												<div className="space-y-0.5">
+													<p>{ri.message}</p>
+													<p className="text-[11px] text-[var(--text-muted)]">
+														Reason:{" "}
+														{REVIEW_CODE_INFO[ri.unresolved.reason]?.title ??
+															ri.unresolved.reason}
+													</p>
+												</div>
+											) : ri.kind === "warning" &&
+												ri.warning.count &&
+												ri.warning.count > 1 ? (
+												<span>
+													{ri.message}{" "}
+													<span className="font-medium text-[var(--text-primary)]">
+														(×{ri.warning.count})
+													</span>
+												</span>
+											) : (
+												ri.message
+											)}
+										</td>
+										<td className="px-4 py-2.5 text-right whitespace-nowrap">
+											<div className="inline-flex items-center gap-2">
+												{actions.txHref && actions.txLabel ? (
+													<Link
+														href={actions.txHref}
+														className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+													>
+														{actions.txLabel}
+													</Link>
+												) : null}
+												{actions.fixHref && actions.fixLabel ? (
+													<Link
+														href={actions.fixHref}
+														className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
+													>
+														{actions.fixLabel}
+														<ArrowRight
+															className="h-3 w-3"
+															aria-hidden="true"
+														/>
+													</Link>
+												) : null}
+											</div>
+										</td>
+									</tr>
+								);
+							})}
+						</tbody>
+					</table>
+				</div>
+			</section>
+		);
+	}
 
 	return (
 		<div className="space-y-6">
@@ -338,7 +591,7 @@ export function ReviewClient() {
 
 			{!loading &&
 			reportMissing &&
-			(totalItems > 0 || connectionIssues.length > 0) ? (
+			(actionTotal + noteTotal > 0 || connectionIssues.length > 0) ? (
 				<div
 					role="status"
 					className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning-soft)] px-4 py-3 text-sm"
@@ -376,54 +629,57 @@ export function ReviewClient() {
 
 			{loading ? (
 				<div className="h-48 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]" />
-			) : !data ? null : totalItems === 0 && connectionIssues.length === 0 ? (
-				data.reportStatus === "current" ? (
-					<EmptyState
-						icon={<CheckCircle2 className="h-8 w-8 text-[var(--positive)]" />}
-						title="No review flags found"
-						description={
-							taxYear
-								? `All ledger transactions in ${taxYear} are clean.`
-								: "All ledger transactions are clean."
-						}
-						action={
-							<Link
-								href={
-									taxYear
-										? `/report?taxYear=${encodeURIComponent(taxYear)}`
-										: "/report"
-								}
-								className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-							>
-								Open Schedule VDA report
-								<ArrowRight className="h-4 w-4" aria-hidden="true" />
-							</Link>
-						}
-					/>
-				) : (
-					<EmptyState
-						icon={<Calculator className="h-8 w-8 text-[var(--warning)]" />}
-						title={
-							missingYears.length > 1
-								? `Reports not computed for ${missingListText}`
-								: `Report not computed for ${missingListText}`
-						}
-						description={`Some checks (balances, missing history, FIFO valuation) appear only after computing ${missingYears.length > 1 ? `reports for ${missingListText}` : `the ${missingListText} report`}.`}
-						action={
-							<button
-								type="button"
-								disabled={computing}
-								onClick={handleCompute}
-								className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-							>
-								<Calculator className="h-4 w-4" aria-hidden="true" />
-								{computeButtonText}
-							</button>
-						}
-					/>
-				)
-			) : (
+			) : !data ? null : (
 				<div className="space-y-5">
+					{noActionItems ? (
+						data.reportStatus === "current" ? (
+							<EmptyState
+								icon={
+									<CheckCircle2 className="h-8 w-8 text-[var(--positive)]" />
+								}
+								title="No review flags found"
+								description={
+									taxYear
+										? `All ledger transactions in ${taxYear} are clean.`
+										: "All ledger transactions are clean."
+								}
+								action={
+									<Link
+										href={
+											taxYear
+												? `/report?taxYear=${encodeURIComponent(taxYear)}`
+												: "/report"
+										}
+										className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+									>
+										Open Schedule VDA report
+										<ArrowRight className="h-4 w-4" aria-hidden="true" />
+									</Link>
+								}
+							/>
+						) : (
+							<EmptyState
+								icon={<Calculator className="h-8 w-8 text-[var(--warning)]" />}
+								title={
+									missingYears.length > 1
+										? `Reports not computed for ${missingListText}`
+										: `Report not computed for ${missingListText}`
+								}
+								description={`Some checks (balances, missing history, FIFO valuation) appear only after computing ${missingYears.length > 1 ? `reports for ${missingListText}` : `the ${missingListText} report`}.`}
+								action={
+									<button
+										type="button"
+										disabled={computing}
+										onClick={handleCompute}
+										className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+									>
+										<Calculator className="h-4 w-4" aria-hidden="true" />
+										{computeButtonText}
+									</button>
+								}
+							/>
+						)
+					) : null}
 					{connectionIssues.length > 0 ? (
 						<section className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
 							<div className="border-b border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-3">
@@ -528,253 +784,33 @@ export function ReviewClient() {
 							</div>
 						</section>
 					) : null}
-					{data.groups.map((group) => {
-						const info = REVIEW_CODE_INFO[group.code];
-						const tone =
-							info.severity === "error"
-								? "loss"
-								: info.severity === "warning"
-									? "warning"
-									: "accent";
-						return (
-							<section
-								key={group.code}
-								className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]"
-							>
-								<div className="border-b border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-3">
-									<div className="flex flex-wrap items-center justify-between gap-2">
-										<div className="flex items-center gap-2">
-											<h2 className="text-sm font-semibold">{info.title}</h2>
-											<Badge tone={tone}>
-												<span className="num">{group.count}</span>{" "}
-												{pluralise(group.count, "item")}
-											</Badge>
-										</div>
-										<code className="font-mono-code text-xs text-[var(--text-muted)]">
-											{group.code}
-										</code>
-									</div>
-									<p className="mt-1.5 text-xs leading-relaxed text-[var(--text-secondary)]">
-										{info.explanation}
-									</p>
-								</div>
-
-								<div className="overflow-x-auto">
-									<table className="w-full border-collapse text-left text-xs">
-										<thead className="border-b border-[var(--border)] text-[var(--text-muted)]">
-											<tr>
-												<th className="px-4 py-2 font-medium">Date (IST)</th>
-												<th className="px-4 py-2 font-medium">Type</th>
-												<th className="px-4 py-2 font-medium">Source</th>
-												<th className="px-4 py-2 font-medium">Amounts</th>
-												<th className="num-right px-4 py-2 font-medium">
-													INR Value
-												</th>
-												<th className="px-4 py-2 font-medium">Details</th>
-												<th className="px-4 py-2 text-right font-medium">
-													Fix Action
-												</th>
-											</tr>
-										</thead>
-										<tbody>
-											{group.items.map((tx) => {
-												const matchingMessages =
-													groupReviewFlags(
-														tx.reviewFlags.filter((f) => f.code === group.code),
-													)[0]?.messages ?? [];
-												return (
-													<tr
-														key={`${group.code}-${tx.id}`}
-														className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
-													>
-														<td className="px-4 py-2.5 whitespace-nowrap">
-															{formatIstDateTime(tx.timestamp)}
-														</td>
-														<td className="px-4 py-2.5 whitespace-nowrap">
-															<Badge tone="neutral">
-																{formatTxType(tx.type)}
-															</Badge>
-														</td>
-														<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
-															{formatSourceLabel(tx.source)}
-														</td>
-														<td className="num px-4 py-2.5 whitespace-nowrap">
-															{tx.assetIn
-																? `+${formatQty(tx.amountIn)} ${tx.assetIn}`
-																: ""}
-															{tx.assetIn && tx.assetOut ? " / " : ""}
-															{tx.assetOut
-																? `-${formatQty(tx.amountOut)} ${tx.assetOut}`
-																: ""}
-														</td>
-														<td className="num-right px-4 py-2.5 whitespace-nowrap">
-															{formatInrNullable(tx.inrValue)}
-														</td>
-														<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
-															{matchingMessages.length === 0 ? (
-																"—"
-															) : matchingMessages.length === 1 ? (
-																<span>{matchingMessages[0]}</span>
-															) : (
-																<ul className="list-disc space-y-1 pl-4">
-																	{matchingMessages.map((msg) => (
-																		<li key={msg}>{msg}</li>
-																	))}
-																</ul>
-															)}
-														</td>
-														<td className="px-4 py-2.5 text-right whitespace-nowrap">
-															<div className="inline-flex items-center gap-2">
-																<button
-																	type="button"
-																	onClick={() => setSelectedTx(tx)}
-																	className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium hover:bg-[var(--bg-hover)]"
-																>
-																	<Edit3
-																		className="h-3 w-3"
-																		aria-hidden="true"
-																	/>
-																	Inspect
-																</button>
-																<Link
-																	href={info.fixHref(tx, taxYear || undefined)}
-																	className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
-																>
-																	{info.fixLabel}
-																	<ArrowRight
-																		className="h-3 w-3"
-																		aria-hidden="true"
-																	/>
-																</Link>
-															</div>
-														</td>
-													</tr>
-												);
-											})}
-											{group.reportItems.map((ri, idx) => {
-												const key =
-													ri.kind === "balance"
-														? `${group.code}-bal-${ri.taxYear}-${ri.balance.asset}-${ri.balance.source ?? "global"}-${idx}`
-														: ri.kind === "unresolved"
-															? `${group.code}-unres-${ri.taxYear}-${ri.unresolved.txId}-${ri.unresolved.asset}-${ri.unresolved.reason}-${idx}`
-															: `${group.code}-warn-${ri.taxYear}-${ri.warning.asset ?? ""}-${ri.warning.source ?? ""}-${idx}`;
-												const actions = reportItemActions(group.code, ri);
-												const isNegativeBalance =
-													ri.kind === "balance" &&
-													isNegativeDecimal(ri.balance.computed) &&
-													group.code === "missing_history";
-												return (
-													<tr
-														key={key}
-														className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
-													>
-														<td className="px-4 py-2.5 whitespace-nowrap">
-															Tax year {ri.taxYear}
-														</td>
-														<td className="px-4 py-2.5 whitespace-nowrap">
-															{ri.kind === "balance" ? (
-																<Badge
-																	tone={isNegativeBalance ? "loss" : "neutral"}
-																>
-																	{isNegativeBalance
-																		? "Negative holding"
-																		: "Year-end balance"}
-																</Badge>
-															) : ri.kind === "unresolved" ? (
-																<Badge tone="loss">Unresolved slice</Badge>
-															) : (
-																<Badge
-																	tone={
-																		group.code === "ca_verification_pending"
-																			? "accent"
-																			: "neutral"
-																	}
-																>
-																	{group.code === "ca_verification_pending"
-																		? "Report notice"
-																		: "Report warning"}
-																</Badge>
-															)}
-														</td>
-														<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
-															{ri.kind === "balance"
-																? ri.balance.source
-																	? formatSourceLabel(ri.balance.source)
-																	: "Global"
-																: ri.kind === "warning" && ri.warning.source
-																	? formatSourceLabel(ri.warning.source)
-																	: "Computed report"}
-														</td>
-														<td className="num px-4 py-2.5 whitespace-nowrap">
-															{ri.kind === "balance"
-																? `${ri.balance.asset}: computed ${formatQty(ri.balance.computed)}${
-																		ri.balance.actual !== undefined
-																			? `, actual ${formatQty(ri.balance.actual)}`
-																			: ""
-																	}`
-																: ri.kind === "unresolved"
-																	? `${formatQty(ri.unresolved.quantity)} ${ri.unresolved.asset}`
-																	: (ri.warning.asset ?? "—")}
-														</td>
-														<td className="num-right px-4 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
-															—
-														</td>
-														<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
-															{ri.kind === "unresolved" ? (
-																<div className="space-y-0.5">
-																	<p>{ri.message}</p>
-																	<p className="text-[11px] text-[var(--text-muted)]">
-																		Reason:{" "}
-																		{REVIEW_CODE_INFO[ri.unresolved.reason]
-																			?.title ?? ri.unresolved.reason}
-																	</p>
-																</div>
-															) : ri.kind === "warning" &&
-																ri.warning.count &&
-																ri.warning.count > 1 ? (
-																<span>
-																	{ri.message}{" "}
-																	<span className="font-medium text-[var(--text-primary)]">
-																		(×{ri.warning.count})
-																	</span>
-																</span>
-															) : (
-																ri.message
-															)}
-														</td>
-														<td className="px-4 py-2.5 text-right whitespace-nowrap">
-															<div className="inline-flex items-center gap-2">
-																{actions.txHref && actions.txLabel ? (
-																	<Link
-																		href={actions.txHref}
-																		className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-																	>
-																		{actions.txLabel}
-																	</Link>
-																) : null}
-																{actions.fixHref && actions.fixLabel ? (
-																	<Link
-																		href={actions.fixHref}
-																		className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
-																	>
-																		{actions.fixLabel}
-																		<ArrowRight
-																			className="h-3 w-3"
-																			aria-hidden="true"
-																		/>
-																	</Link>
-																) : null}
-															</div>
-														</td>
-													</tr>
-												);
-											})}
-										</tbody>
-									</table>
-								</div>
-							</section>
-						);
-					})}
+					{actionGroups.map((group) => renderGroup(group, false))}
+					{noteGroups.length > 0 ? (
+						<details className="group rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+							<summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 hover:bg-[var(--bg-hover)]/60">
+								<span className="flex flex-wrap items-center gap-2">
+									<span className="text-sm font-semibold">
+										Notes about your files
+									</span>
+									<Badge tone="neutral">
+										<span className="num">{noteTotal}</span>{" "}
+										{pluralise(noteTotal, "note")}
+									</Badge>
+								</span>
+								<ChevronDown
+									className="h-4 w-4 shrink-0 text-[var(--text-muted)] transition-transform group-open:rotate-180"
+									aria-hidden="true"
+								/>
+							</summary>
+							<div className="space-y-4 border-t border-[var(--border)] p-4">
+								<p className="text-xs text-[var(--text-secondary)]">
+									How your files were read. Nothing here needs action and none
+									of it counts as a review item.
+								</p>
+								{noteGroups.map((group) => renderGroup(group, true))}
+							</div>
+						</details>
+					) : null}
 				</div>
 			)}
 

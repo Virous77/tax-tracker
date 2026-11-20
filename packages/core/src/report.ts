@@ -152,6 +152,8 @@ export const VdaReportSchema = z.object({
 	valuations: z.array(ValuationSchema),
 	ledger: z.array(LedgerTxSchema),
 	disclaimer: z.string(),
+	/** Set by the app when any active row comes from sample data. */
+	includesDemoData: z.boolean().optional(),
 });
 export type VdaReport = z.infer<typeof VdaReportSchema>;
 export type VdaTotals = z.infer<typeof VdaTotalsSchema>;

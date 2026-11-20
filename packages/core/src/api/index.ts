@@ -70,6 +70,8 @@ export const SettingsResponseSchema = EngineSettingsSchema.extend({
 		coingeckoFallback: true,
 	}),
 	defaultTaxYear: TaxYearSchema,
+	/** When the user acknowledged the first-run "not tax advice" notice; null until then. */
+	disclaimerAcceptedAt: z.iso.datetime().nullable().default(null),
 });
 export const GetSettingsRequestSchema = EmptyRequestSchema;
 export const PutSettingsRequestSchema = EngineSettingsPatchSchema.extend({
@@ -84,6 +86,8 @@ export const PutSettingsRequestSchema = EngineSettingsPatchSchema.extend({
 		.strict()
 		.optional(),
 	defaultTaxYear: TaxYearSchema.optional(),
+	/** The server stamps the acknowledgement time; it cannot be cleared through the API. */
+	disclaimerAccepted: z.literal(true).optional(),
 }).strict();
 export const PutSettingsResponseSchema = SettingsResponseSchema;
 export type AppSettings = z.infer<typeof SettingsResponseSchema>;
@@ -176,6 +180,8 @@ export const ReportMissingDetailsSchema = z.object({
 export type ReportMissingDetails = z.infer<typeof ReportMissingDetailsSchema>;
 export const ImportSummarySchema = z.object({
 	id: z.string(),
+	/** Synthetic sample data loaded through /api/demo. */
+	demo: z.boolean().optional(),
 	kind: z.enum(["file", "api_sync"]).optional(),
 	connectionId: z.string().nullable().optional(),
 	connectionLabel: z.string().nullable().optional(),
@@ -634,3 +640,4 @@ export const ApiContract = {
 		response: LogoutResponseSchema,
 	},
 } as const;
+export * from "./phase4.js";

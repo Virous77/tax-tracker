@@ -29,10 +29,11 @@ import {
 	formatIstDateTime,
 	formatManualVenueLabel,
 	formatQty,
-	formatSourceLabel,
+	formatTxTitle,
 	formatTxType,
 } from "@/lib/client/format";
 import { groupReviewFlags } from "@/lib/client/review-codes";
+import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 export function TransactionDrawer({
 	tx,
@@ -45,6 +46,7 @@ export function TransactionDrawer({
 	onUpdated: (updated: LedgerTx) => void;
 	onDeleted: (id: string) => void;
 }) {
+	const sourceLabel = useSourceLabel();
 	const [type, setType] = useState<TxType>("buy");
 	const [incomeKind, setIncomeKind] = useState<IncomeKind | "">("");
 	const [venue, setVenue] = useState<ManualVenue>("manual");
@@ -142,14 +144,10 @@ export function TransactionDrawer({
 			<Drawer
 				open={Boolean(tx)}
 				onClose={onClose}
-				title={
-					tx
-						? `${formatTxType(tx.type)} · ${tx.assetIn ?? tx.assetOut ?? "Transaction"}`
-						: "Transaction"
-				}
+				title={tx ? formatTxTitle(tx) : "Transaction"}
 				subtitle={
 					tx
-						? `${formatIstDateTime(tx.timestamp)} · ${formatSourceLabel(tx.source)} · Ref: ${tx.sourceRef}`
+						? `${formatIstDateTime(tx.timestamp)} · ${sourceLabel(tx.source)} · Ref: ${tx.sourceRef}`
 						: undefined
 				}
 			>

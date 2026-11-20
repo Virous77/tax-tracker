@@ -18,6 +18,7 @@ import {
 import { useEffect, useId, useMemo, useState } from "react";
 import type { z } from "zod";
 import { Badge } from "@/components/ui/Badge";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import {
 	api,
@@ -191,9 +192,71 @@ function guessColumn(
 	return "";
 }
 
+const DEFAULT_KNOWN_QUOTES = ["INR", "USDT", "USDC", "BTC", "ETH"];
+const COMMON_QUOTES = [
+	"USDT",
+	"USDC",
+	"BUSD",
+	"FDUSD",
+	"TUSD",
+	"DAI",
+	"USD",
+	"INR",
+	"EUR",
+	"BTC",
+	"ETH",
+	"BNB",
+];
+
+function columnValues(sheet: ImportSheet, column: string): string[] {
+	return sheet.sampleRows
+		.map((row) => String(row[column] ?? "").trim())
+		.filter(Boolean);
+}
+
+/** A column whose every sampled value is Buy or Sell (any case) is the side column. */
+function findBuySellColumn(sheet: ImportSheet): string {
+	return (
+		sheet.headers.find((header) => {
+			const values = columnValues(sheet, header).map((v) => v.toLowerCase());
+			return (
+				values.length > 0 && values.every((v) => v === "buy" || v === "sell")
+			);
+		}) ?? ""
+	);
+}
+
+/** Quote assets seen in the pair column, or the usual list when none can be read from it. */
+function inferKnownQuotes(sheet: ImportSheet, pairColumn: string): string[] {
+	const seen = new Set<string>();
+	for (const pair of columnValues(sheet, pairColumn)) {
+		const upper = pair.toUpperCase();
+		const parts = upper.split(/[/\-_\s]+/).filter(Boolean);
+		const quote =
+			parts.length > 1
+				? parts[parts.length - 1]
+				: COMMON_QUOTES.find(
+						(q) => upper.length > q.length && upper.endsWith(q),
+					);
+		if (quote) seen.add(quote);
+	}
+	return seen.size > 0 ? [...seen] : DEFAULT_KNOWN_QUOTES;
+}
+
+/** "generic-unknown-exchange.SYNTHETIC.csv" → "generic unknown exchange.SYNTHETIC" */
+function defaultRecipeName(fileName: string, sheetName: string): string {
+	const base = fileName
+		.replace(/\.(csv|tsv|txt|xlsx?|xlsm)$/i, "")
+		.replace(/[-_]+/g, " ")
+		.trim();
+	const sheetSuffix = sheetName && sheetName !== "CSV" ? ` – ${sheetName}` : "";
+	return `${base || "Custom CSV"}${sheetSuffix}`;
+}
+
 function buildInitialRecipe(
 	sheet: ImportSheet,
 	timezone: Recipe["timezone"],
+	fileName: string,
 ): Recipe {
 	const h = sheet.headers;
 	const timestamp =
@@ -217,11 +280,9 @@ function buildInitialRecipe(
 		h[1] ||
 		h[0] ||
 		"amount";
-	const side = guessColumn(
-		h,
-		["side", "action", "direction"],
-		["type", "price", "fee"],
-	);
+	const side =
+		findBuySellColumn(sheet) ||
+		guessColumn(h, ["side", "action", "direction"], ["type", "price", "fee"]);
 	const type = guessColumn(
 		h,
 		["type", "operation", "transaction type", "tx type"],
@@ -311,14 +372,14 @@ function buildInitialRecipe(
 
 	return {
 		id: `custom-${Date.now().toString(36)}`,
-		name: sheet.name ? `${sheet.name} CSV` : "Custom CSV",
+		name: defaultRecipeName(fileName, sheet.name),
 		version: 1,
 		fingerprint: computeFingerprint(h, sheet.name || "CSV"),
 		...(sheet.name ? { sheet: sheet.name } : {}),
 		columns: {
 			timestamp,
 			amount,
-			...(type ? { type } : {}),
+			...(type && type !== side ? { type } : {}),
 			...(side ? { side } : {}),
 			...(pair ? { pair } : {}),
 			...(baseAsset ? { baseAsset } : {}),
@@ -334,7 +395,7 @@ function buildInitialRecipe(
 		dateFormat: "yyyy-MM-dd HH:mm:ss",
 		timezone,
 		signStyle: side || type ? "side_column" : "negative_is_sell",
-		pairSplit: { knownQuotes: ["INR", "USDT", "USDC", "BTC", "ETH"] },
+		pairSplit: { knownQuotes: inferKnownQuotes(sheet, pair) },
 	};
 }
 
@@ -359,7 +420,7 @@ export function RecipeWizard({
 	}, [sheets, selectedSheetName]);
 
 	const [recipe, setRecipe] = useState<Recipe>(() =>
-		buildInitialRecipe(currentSheet, importItem.timezone),
+		buildInitialRecipe(currentSheet, importItem.timezone, importItem.fileName),
 	);
 	const initialTz = importItem.timezone;
 	const [tzMode, setTzMode] = useState<"IST" | "UTC" | "custom">(
@@ -370,7 +431,7 @@ export function RecipeWizard({
 	);
 	const [tzError, setTzError] = useState<string | null>(null);
 	const [knownQuotesText, setKnownQuotesText] = useState(
-		"INR, USDT, USDC, BTC, ETH",
+		(recipe.pairSplit?.knownQuotes ?? DEFAULT_KNOWN_QUOTES).join(", "),
 	);
 	const [sideMapEntries, setSideMapEntries] = useState<
 		Array<{ id: string; raw: string; target: SideTarget }>
@@ -388,6 +449,8 @@ export function RecipeWizard({
 	const [saveRecipe, setSaveRecipe] = useState(true);
 	const [recipeName, setRecipeName] = useState(recipe.name);
 	const [error, setError] = useState<string | null>(null);
+	const [confirmingCancel, setConfirmingCancel] = useState(false);
+	const [deleting, setDeleting] = useState(false);
 
 	const sheetSelectId = useId();
 	const nameInputId = useId();
@@ -400,9 +463,16 @@ export function RecipeWizard({
 	const saveNameId = useId();
 
 	useEffect(() => {
-		const next = buildInitialRecipe(currentSheet, importItem.timezone);
+		const next = buildInitialRecipe(
+			currentSheet,
+			importItem.timezone,
+			importItem.fileName,
+		);
 		setRecipe(next);
 		setRecipeName(next.name);
+		setKnownQuotesText(
+			(next.pairSplit?.knownQuotes ?? DEFAULT_KNOWN_QUOTES).join(", "),
+		);
 		setTzMode(
 			importItem.timezone === "IST" || importItem.timezone === "UTC"
 				? importItem.timezone
@@ -415,7 +485,7 @@ export function RecipeWizard({
 		setPayloadPreview(null);
 		setPreviewData(null);
 		setSideMapEntries([]);
-	}, [currentSheet, importItem.timezone]);
+	}, [currentSheet, importItem.timezone, importItem.fileName]);
 
 	function resolveRecipeTimezone(): Recipe["timezone"] | null {
 		if (tzMode === "IST" || tzMode === "UTC") {
@@ -570,6 +640,19 @@ export function RecipeWizard({
 		}
 	}
 
+	async function handleDeletePending() {
+		setDeleting(true);
+		try {
+			await api.deleteImport(importItem.id);
+			onCancel();
+		} catch (err) {
+			setConfirmingCancel(false);
+			setError(getErrorMessage(err));
+		} finally {
+			setDeleting(false);
+		}
+	}
+
 	function detectSideValues() {
 		const col = recipe.columns.side || recipe.columns.type;
 		if (!col) return;
@@ -658,12 +741,24 @@ export function RecipeWizard({
 				</div>
 				<button
 					type="button"
-					onClick={onCancel}
+					onClick={() => setConfirmingCancel(true)}
 					className="rounded border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
 				>
-					Start over
+					Cancel
 				</button>
 			</div>
+
+			<ConfirmDialog
+				open={confirmingCancel}
+				title="Delete this pending import?"
+				description={`"${importItem.fileName}" is still waiting for a column mapping and has no transactions yet. Delete it now, or keep it and map the columns later from Imports.`}
+				confirmLabel="Delete import"
+				cancelLabel="Keep for later"
+				destructive
+				busy={deleting}
+				onConfirm={handleDeletePending}
+				onCancel={onCancel}
+			/>
 
 			{error ? <ErrorBanner message={error} /> : null}
 

@@ -56,6 +56,8 @@ import {
 	type ReportMissingDetails,
 	ReportMissingDetailsSchema,
 	ResetVaultRequestSchema,
+	ResolveReviewRequestSchema,
+	ResolveReviewResponseSchema,
 	ReviewResponseSchema,
 	type SentPayload,
 	SettingsResponseSchema,
@@ -637,6 +639,18 @@ export const api = {
 	getReview(taxYear?: string): Promise<ReviewData> {
 		const qs = taxYear ? `?taxYear=${encodeURIComponent(taxYear)}` : "";
 		return requestJson(`/api/review${qs}`, { schema: ReviewResponseSchema });
+	},
+
+	async resolveReview(
+		input: z.input<typeof ResolveReviewRequestSchema>,
+	): Promise<number> {
+		const body = parseRequest(ResolveReviewRequestSchema, input);
+		const res = await requestJson("/api/review/resolve", {
+			method: "POST",
+			body: JSON.stringify(body),
+			schema: ResolveReviewResponseSchema,
+		});
+		return res.resolved;
 	},
 
 	getActualBalances(taxYear: string): Promise<ActualBalance[]> {

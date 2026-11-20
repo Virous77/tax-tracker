@@ -9,9 +9,9 @@ import {
 	formatIstDate,
 	formatIstDateTime,
 	formatQty,
-	formatSourceLabel,
 	formatTxType,
 } from "@/lib/client/format";
+import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 export function TrailDrawer({
 	row,
@@ -22,6 +22,7 @@ export function TrailDrawer({
 	report: VdaReport | null;
 	onClose: () => void;
 }) {
+	const sourceLabel = useSourceLabel();
 	if (!row || !report) {
 		return (
 			<Drawer open={false} onClose={onClose} title="Audit Trail">
@@ -226,7 +227,7 @@ export function TrailDrawer({
 											{formatTxType(tx.type)}
 										</Badge>
 										<span className="font-medium">
-											{formatSourceLabel(tx.source)}
+											{sourceLabel(tx.source)}
 										</span>
 									</div>
 									<span className="text-[var(--text-secondary)]">
@@ -268,7 +269,7 @@ export function TrailDrawer({
 								className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs"
 							>
 								<p className="font-medium text-[var(--text-secondary)]">
-									{formatSourceLabel(ref.source)} · Ref:{" "}
+									{sourceLabel(ref.source)} · Ref:{" "}
 									<code className="font-mono-code">{ref.sourceRef}</code>
 								</p>
 								<pre className="font-mono-code mt-1.5 max-h-48 overflow-auto rounded border border-[var(--border)] bg-[var(--bg-surface)] p-2 text-[11px] text-[var(--text-secondary)]">

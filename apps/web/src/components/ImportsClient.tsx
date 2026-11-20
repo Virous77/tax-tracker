@@ -3,7 +3,7 @@
 import type { Recipe } from "@tax/core";
 import { Eye, FileSpreadsheet, Info, Plus, Trash2, Wrench } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -27,9 +27,44 @@ import {
 	formatTimezoneSourceLabel,
 } from "@/lib/client/format";
 
+function PendingMappingNote({
+	imp,
+	onDelete,
+}: {
+	imp: ImportSummary;
+	onDelete: (imp: ImportSummary) => void;
+}) {
+	return (
+		<span className="mt-1 block text-xs font-normal text-[var(--warning)]">
+			Waiting for a column mapping —{" "}
+			<Link
+				href={`/import?importId=${encodeURIComponent(imp.id)}`}
+				className="font-medium underline"
+			>
+				Map columns
+			</Link>{" "}
+			/{" "}
+			<button
+				type="button"
+				onClick={() => onDelete(imp)}
+				aria-label={`Delete pending import ${imp.fileName}`}
+				className="font-medium underline"
+			>
+				Delete
+			</button>
+		</span>
+	);
+}
+
 export function ImportsClient() {
 	const [imports, setImports] = useState<ImportSummary[]>([]);
 	const [recipes, setRecipes] = useState<Recipe[]>([]);
+	const recipeNames = useMemo(
+		() => new Map(recipes.map((r) => [r.fingerprint, r.name])),
+		[recipes],
+	);
+	const sourceLabel = (source: string) =>
+		formatSourceLabel(source, recipeNames);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -178,8 +213,14 @@ export function ImportsClient() {
 													{kindLabel}
 												</p>
 											) : null}
+											{imp.status === "pending_recipe" ? (
+												<PendingMappingNote
+													imp={imp}
+													onDelete={setDeleteTarget}
+												/>
+											) : null}
 											<p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-												{formatSourceLabel(imp.source)}
+												{sourceLabel(imp.source)}
 												{imp.connectionLabel ? ` · ${imp.connectionLabel}` : ""}{" "}
 												· {effectiveTimezone(imp)} (
 												{formatTimezoneSourceLabel(
@@ -327,6 +368,12 @@ export function ImportsClient() {
 															{kindLabel}
 														</span>
 													) : null}
+													{imp.status === "pending_recipe" ? (
+														<PendingMappingNote
+															imp={imp}
+															onDelete={setDeleteTarget}
+														/>
+													) : null}
 													{imp.connectionLabel ? (
 														<span className="block text-[11px] font-normal text-[var(--text-secondary)]">
 															{imp.connectionLabel}
@@ -339,7 +386,7 @@ export function ImportsClient() {
 													) : null}
 												</td>
 												<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
-													{formatSourceLabel(imp.source)}
+													{sourceLabel(imp.source)}
 												</td>
 												<td className="px-4 py-2.5 whitespace-nowrap">
 													<Badge tone="neutral">{effectiveTimezone(imp)}</Badge>
@@ -497,7 +544,7 @@ export function ImportsClient() {
 							<div>
 								<dt className="text-[var(--text-muted)]">Source</dt>
 								<dd className="mt-0.5 flex flex-wrap items-center gap-1.5 font-medium">
-									<span>{formatSourceLabel(detail.source)}</span>
+									<span>{sourceLabel(detail.source)}</span>
 									{detail.kind === "api_sync" ? (
 										<Badge tone="accent">Synced</Badge>
 									) : null}

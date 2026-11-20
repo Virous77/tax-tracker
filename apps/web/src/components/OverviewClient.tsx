@@ -10,24 +10,18 @@ import {
 	Upload,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { useDemo } from "@/components/demo/DemoProvider";
 import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
 import { GettingStarted } from "@/components/GettingStarted";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import {
-	FALLBACK_TAX_YEARS,
-	TaxYearSelect,
-} from "@/components/ui/TaxYearSelect";
+import { TaxYearSelect } from "@/components/ui/TaxYearSelect";
 import {
 	api,
 	getErrorMessage,
 	REPORT_NOT_COMPUTED,
 	type ReportMissingDetails,
-	type TaxYearInfo,
 } from "@/lib/client/api";
 import {
 	formatIncompleteSummary,
@@ -40,23 +34,18 @@ import {
 	reportHasActivity,
 } from "@/lib/client/format";
 import { reviewActionCount } from "@/lib/client/review-codes";
+import { useSelectedTaxYear } from "@/lib/client/useSelectedTaxYear";
 
 export function OverviewClient() {
-	const router = useRouter();
-	const searchParams = useSearchParams();
-	const urlTaxYear = searchParams.get("taxYear") ?? "";
-	const { taxYear: demoTaxYear } = useDemo();
-
-	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
-	const [taxYear, setTaxYear] = useState<string>(urlTaxYear || "2026-27");
+	const { taxYear, taxYears, settings, selectTaxYear } =
+		useSelectedTaxYear("/");
 	const [report, setReport] = useState<VdaReport | null>(null);
 	const [reportMissing, setReportMissing] =
 		useState<ReportMissingDetails | null>(null);
 	const [txTotal, setTxTotal] = useState<number | null>(null);
 	const [reviewCount, setReviewCount] = useState<number>(0);
-	const [settingsSaved, setSettingsSaved] = useState(false);
+	const [reviewCurrent, setReviewCurrent] = useState(false);
 	const [hasOwnImport, setHasOwnImport] = useState(false);
-	const [defaultTaxYear, setDefaultTaxYear] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [computing, setComputing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -66,15 +55,8 @@ export function OverviewClient() {
 		let cancelled = false;
 		async function initMeta() {
 			try {
-				const [years, settings, imports] = await Promise.all([
-					api.getTaxYears().catch(() => FALLBACK_TAX_YEARS),
-					api.getSettings().catch(() => null),
-					api.listImports().catch(() => []),
-				]);
+				const imports = await api.listImports().catch(() => []);
 				if (cancelled) return;
-				if (years.length > 0) setTaxYears(years);
-				setSettingsSaved(Boolean(settings?.settingsSavedAt));
-				setDefaultTaxYear(settings?.defaultTaxYear ?? null);
 				setHasOwnImport(imports.some((imp) => !imp.demo));
 			} catch {
 				// handled by individual fetch
@@ -85,11 +67,6 @@ export function OverviewClient() {
 			cancelled = true;
 		};
 	}, []);
-
-	useEffect(() => {
-		const year = urlTaxYear || demoTaxYear || defaultTaxYear;
-		if (year) setTaxYear(year);
-	}, [urlTaxYear, demoTaxYear, defaultTaxYear]);
 
 	const loadData = useCallback(async (year: string) => {
 		setLoading(true);
@@ -112,6 +89,7 @@ export function OverviewClient() {
 				setReportMissing(repState.missing);
 			}
 			setReviewCount(review ? reviewActionCount(review) : 0);
+			setReviewCurrent(review?.reportStatus === "current");
 			setTxTotal(txPage ? txPage.total : null);
 		} catch (err) {
 			setError(getErrorMessage(err));
@@ -125,11 +103,8 @@ export function OverviewClient() {
 	}, [taxYear, loadData]);
 
 	function handleTaxYearChange(next: string) {
-		setTaxYear(next);
 		setStatusMessage(null);
-		const params = new URLSearchParams(searchParams.toString());
-		params.set("taxYear", next);
-		router.replace(`/?${params.toString()}`);
+		selectTaxYear(next);
 	}
 
 	async function handleCompute() {
@@ -145,6 +120,7 @@ export function OverviewClient() {
 			);
 			const review = await api.getReview(taxYear).catch(() => null);
 			setReviewCount(review ? reviewActionCount(review) : 0);
+			setReviewCurrent(review?.reportStatus === "current");
 		} catch (err) {
 			setError(getErrorMessage(err));
 		} finally {
@@ -254,10 +230,11 @@ export function OverviewClient() {
 				<GettingStarted
 					facts={{
 						taxYear,
-						settingsSaved,
+						settingsSaved: Boolean(settings?.settingsSavedAt),
 						hasOwnImport,
 						reportReady: report !== null && reportHasActivity(report),
 						openReviewItems: reviewCount,
+						reviewCurrent,
 					}}
 				/>
 			) : null}

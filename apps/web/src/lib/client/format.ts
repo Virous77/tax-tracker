@@ -3,6 +3,7 @@ import {
 	formatDecimal,
 	formatInr,
 	istDate,
+	type LedgerTx,
 	type TxType,
 	type VdaReport,
 } from "@tax/core";
@@ -145,14 +146,23 @@ export function isZeroDecimal(value: string | null | undefined): boolean {
 	}
 }
 
-export function formatSourceLabel(source: string): string {
+/** Recipe names keyed by the fingerprint a generic CSV source (`csv:<fingerprint>`) carries. */
+export type RecipeNames = ReadonlyMap<string, string>;
+
+export function formatSourceLabel(
+	source: string,
+	recipeNames?: RecipeNames,
+): string {
 	if (source === "binance") return "Binance";
 	if (source === "binance-api") return "Binance (API)";
 	if (source === "coindcx") return "CoinDCX";
 	if (source === "coindcx-api") return "CoinDCX (API)";
 	if (source === "manual") return "Manual";
 	if (source === "generic") return "Generic CSV";
-	if (source.startsWith("csv:")) return `Generic CSV (${source.slice(4)})`;
+	if (source.startsWith("csv:")) {
+		const recipe = recipeNames?.get(source.slice(4));
+		return recipe ? `Generic CSV · ${recipe}` : "Generic CSV";
+	}
 	if (source.startsWith("evm:")) {
 		const rawId = Number(source.slice(4));
 		const chain = Number.isInteger(rawId) ? getEvmChain(rawId) : undefined;
@@ -173,6 +183,27 @@ const TX_TYPE_LABELS: Record<TxType, string> = {
 	dividend: "Dividend",
 	fee: "Fee",
 };
+
+const OUTGOING_TYPES: ReadonlySet<TxType> = new Set([
+	"sell",
+	"withdrawal",
+	"gift",
+	"fee",
+]);
+
+/** "Sell · USDT" names the asset given up; "Buy · BTC" the asset received; a swap names both. */
+export function formatTxTitle(
+	tx: Pick<LedgerTx, "type" | "assetIn" | "assetOut">,
+): string {
+	const type = formatTxType(tx.type);
+	if (tx.type === "swap" && tx.assetIn && tx.assetOut) {
+		return `${type} · ${tx.assetOut} → ${tx.assetIn}`;
+	}
+	const asset = OUTGOING_TYPES.has(tx.type)
+		? (tx.assetOut ?? tx.assetIn)
+		: (tx.assetIn ?? tx.assetOut);
+	return `${type} · ${asset ?? "Transaction"}`;
+}
 
 export function formatTxType(type: TxType): string {
 	return TX_TYPE_LABELS[type] ?? type;

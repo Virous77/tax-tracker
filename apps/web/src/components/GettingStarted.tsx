@@ -14,6 +14,8 @@ export type GettingStartedFacts = {
 	/** The report for this year is computed and the year has something in it. */
 	reportReady: boolean;
 	openReviewItems: number;
+	/** The Review queue was built from the current report, not a stale one. */
+	reviewCurrent: boolean;
 };
 
 type Step = {
@@ -42,7 +44,8 @@ function buildSteps(facts: GettingStartedFacts): Step[] {
 			title: "Resolve Review items",
 			hint: "Missing buy history, unmatched transfers and other flagged rows.",
 			href: `/review?taxYear=${year}`,
-			done: facts.reportReady && facts.openReviewItems === 0,
+			done:
+				facts.reportReady && facts.reviewCurrent && facts.openReviewItems === 0,
 		},
 		{
 			title: "Open the report",

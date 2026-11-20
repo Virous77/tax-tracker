@@ -20,19 +20,15 @@ import {
 	Upload,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useDemo } from "@/components/demo/DemoProvider";
 import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
+import { StaleReportBanner } from "@/components/report/StaleReportBanner";
 import { TrailDrawer } from "@/components/report/TrailDrawer";
 import { Badge } from "@/components/ui/Badge";
 import { Drawer } from "@/components/ui/Drawer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import {
-	FALLBACK_TAX_YEARS,
-	TaxYearSelect,
-} from "@/components/ui/TaxYearSelect";
+import { TaxYearSelect } from "@/components/ui/TaxYearSelect";
 import {
 	ApiError,
 	api,
@@ -43,7 +39,6 @@ import {
 	type PricesStatus,
 	REPORT_NOT_COMPUTED,
 	type ReportMissingDetails,
-	type TaxYearInfo,
 } from "@/lib/client/api";
 import {
 	formatEngineSettingLabel,
@@ -65,6 +60,8 @@ import {
 	pluralise,
 } from "@/lib/client/format";
 import { addMissingBuyHref, REVIEW_CODE_INFO } from "@/lib/client/review-codes";
+import { useSelectedTaxYear } from "@/lib/client/useSelectedTaxYear";
+import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 function balanceKey(asset: string, source?: string): string {
 	return `${asset}::${source ?? ""}`;
@@ -143,14 +140,8 @@ function warningTxHref(
 }
 
 export function ReportClient() {
-	const router = useRouter();
-	const searchParams = useSearchParams();
-	const urlTaxYear = searchParams.get("taxYear") ?? "";
-	const { taxYear: demoTaxYear } = useDemo();
-	const [defaultTaxYear, setDefaultTaxYear] = useState<string | null>(null);
-
-	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
-	const [taxYear, setTaxYear] = useState<string>(urlTaxYear || "2026-27");
+	const sourceLabel = useSourceLabel();
+	const { taxYear, taxYears, selectTaxYear } = useSelectedTaxYear("/report");
 	const [report, setReport] = useState<VdaReport | null>(null);
 	const [reportMissing, setReportMissing] =
 		useState<ReportMissingDetails | null>(null);
@@ -186,6 +177,7 @@ export function ReportClient() {
 	const [priceFillError, setPriceFillError] = useState<string | null>(null);
 	const [missingExpanded, setMissingExpanded] = useState(false);
 	const [ledgerEmpty, setLedgerEmpty] = useState(false);
+	const [reportStale, setReportStale] = useState(false);
 
 	const mountedRef = useRef(true);
 	const pricePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -200,32 +192,6 @@ export function ReportClient() {
 			}
 		};
 	}, []);
-
-	useEffect(() => {
-		let cancelled = false;
-		async function initMeta() {
-			try {
-				const [years, settings] = await Promise.all([
-					api.getTaxYears().catch(() => FALLBACK_TAX_YEARS),
-					api.getSettings().catch(() => null),
-				]);
-				if (cancelled) return;
-				if (years.length > 0) setTaxYears(years);
-				setDefaultTaxYear(settings?.defaultTaxYear ?? null);
-			} catch {
-				// handled per call
-			}
-		}
-		initMeta();
-		return () => {
-			cancelled = true;
-		};
-	}, []);
-
-	useEffect(() => {
-		const year = urlTaxYear || demoTaxYear || defaultTaxYear;
-		if (year) setTaxYear(year);
-	}, [urlTaxYear, demoTaxYear, defaultTaxYear]);
 
 	const loadReport = useCallback(async (year: string) => {
 		if (pricePollRef.current) {
@@ -245,16 +211,19 @@ export function ReportClient() {
 			const txPage = await api
 				.listTransactions({ page: 1, pageSize: 1 })
 				.catch(() => null);
-			const [repState, savedActuals, pStatus, snapList] = await Promise.all([
-				txPage?.total === 0
-					? Promise.resolve(REPORT_NOT_COMPUTED)
-					: api.getReportState(year),
-				api.getActualBalances(year).catch(() => []),
-				api.getPricesStatus(year).catch(() => null),
-				api.listBalanceSnapshots().catch(() => []),
-			]);
+			const [repState, savedActuals, pStatus, snapList, review] =
+				await Promise.all([
+					txPage?.total === 0
+						? Promise.resolve(REPORT_NOT_COMPUTED)
+						: api.getReportState(year),
+					api.getActualBalances(year).catch(() => []),
+					api.getPricesStatus(year).catch(() => null),
+					api.listBalanceSnapshots().catch(() => []),
+					api.getReview(year).catch(() => null),
+				]);
 			if (!mountedRef.current) return;
 			setLedgerEmpty(txPage?.total === 0);
+			setReportStale(review?.reportStatus === "stale");
 			const rep = repState.status === "ready" ? repState.report : null;
 			setReport(rep);
 			setReportMissing(repState.status === "missing" ? repState.missing : null);
@@ -285,13 +254,6 @@ export function ReportClient() {
 		if (taxYear) loadReport(taxYear);
 	}, [taxYear, loadReport]);
 
-	function handleTaxYearChange(next: string) {
-		setTaxYear(next);
-		const params = new URLSearchParams(searchParams.toString());
-		params.set("taxYear", next);
-		router.replace(`/report?${params.toString()}`);
-	}
-
 	async function handleCompute() {
 		setComputing(true);
 		setError(null);
@@ -303,6 +265,7 @@ export function ReportClient() {
 			]);
 			if (!mountedRef.current) return;
 			setReport(rep);
+			setReportStale(false);
 			setReportMissing(null);
 			if (pStatus) setPricesStatus(pStatus);
 		} catch (err) {
@@ -389,6 +352,7 @@ export function ReportClient() {
 			await api.putActualBalances(taxYear, payload);
 			const rep = await api.computeReport(taxYear);
 			setReport(rep);
+			setReportStale(false);
 			setReportMissing(null);
 			setBalanceSavedMsg(
 				"Actual balances saved and reconciliation checks updated.",
@@ -421,6 +385,7 @@ export function ReportClient() {
 				const rep = await api.computeReport(taxYear);
 				if (!mountedRef.current) return;
 				setReport(rep);
+				setReportStale(false);
 				setReportMissing(null);
 			}
 			setSnapshotNotices((prev) => ({
@@ -633,7 +598,7 @@ export function ReportClient() {
 				<div className="flex flex-wrap items-center gap-3">
 					<TaxYearSelect
 						value={taxYear}
-						onChange={handleTaxYearChange}
+						onChange={selectTaxYear}
 						taxYears={taxYears}
 					/>
 					<button
@@ -654,6 +619,10 @@ export function ReportClient() {
 
 			{error ? (
 				<ErrorBanner message={error} onRetry={() => loadReport(taxYear)} />
+			) : null}
+
+			{report && reportStale ? (
+				<StaleReportBanner computing={computing} onRecompute={handleCompute} />
 			) : null}
 
 			{/* Prices status line */}
@@ -1131,7 +1100,7 @@ export function ReportClient() {
 																</p>
 																<p className="text-[11px] text-[var(--text-secondary)]">
 																	{formatIstDate(tx.timestamp)} ·{" "}
-																	{formatSourceLabel(tx.source)}
+																	{sourceLabel(tx.source)}
 																</p>
 															</div>
 														) : (
@@ -1351,7 +1320,7 @@ export function ReportClient() {
 														className="border-b border-[var(--border)] last:border-b-0"
 													>
 														<td className="px-4 py-2.5 font-medium">
-															{formatSourceLabel(src.source)}
+															{sourceLabel(src.source)}
 														</td>
 														<td className="px-4 py-2.5">
 															{src.deductedByPlatform === true ? (
@@ -1635,9 +1604,7 @@ export function ReportClient() {
 															{b.asset}
 														</td>
 														<td className="px-4 py-2.5 text-xs text-[var(--text-secondary)]">
-															{b.source
-																? formatSourceLabel(b.source)
-																: "Global"}
+															{b.source ? sourceLabel(b.source) : "Global"}
 														</td>
 														<td className="num-right px-4 py-2.5">
 															{formatQty(b.computed)}
@@ -1739,7 +1706,7 @@ export function ReportClient() {
 														<span className="ml-1.5 inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]">
 															{w.asset ?? ""}
 															{w.asset && w.source ? " · " : ""}
-															{w.source ? formatSourceLabel(w.source) : ""}
+															{w.source ? sourceLabel(w.source) : ""}
 														</span>
 													) : null}
 													{w.count > 1 ? (

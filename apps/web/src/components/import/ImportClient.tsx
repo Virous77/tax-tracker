@@ -15,6 +15,7 @@ import { useSearchParams } from "next/navigation";
 import { type DragEvent, useEffect, useId, useRef, useState } from "react";
 import { SampleDataPrompt } from "@/components/demo/SampleDataPrompt";
 import { RecipeWizard } from "@/components/import/RecipeWizard";
+import { SourceName } from "@/components/import/SourceName";
 import { Badge } from "@/components/ui/Badge";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import {
@@ -350,7 +351,7 @@ export function ImportClient() {
 									</p>
 								) : null}
 								<p className="text-xs text-[var(--text-secondary)]">
-									Source: {formatSourceLabel(result.source)} · Time zone:{" "}
+									Source: <SourceName source={result.source} /> · Time zone:{" "}
 									<span className="font-medium text-[var(--text-primary)]">
 										{result.detectedTimezone ?? result.timezone}
 									</span>{" "}

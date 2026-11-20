@@ -13,6 +13,8 @@ import {
 import { ApiError, api } from "@/lib/client/api";
 
 type DemoState = {
+	/** The first sample-data status check has finished (or failed), so `taxYear` can be trusted. */
+	ready: boolean;
 	loaded: boolean;
 	/** The newest tax year the sample rows fall in; the year to show while sample data is loaded. */
 	taxYear: string | null;
@@ -51,6 +53,7 @@ async function prepareReportYear(
 
 export function DemoProvider({ children }: { children: ReactNode }) {
 	const pathname = usePathname();
+	const [ready, setReady] = useState(false);
 	const [loaded, setLoaded] = useState(false);
 	const [taxYear, setTaxYear] = useState<string | null>(null);
 
@@ -64,7 +67,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 				setLoaded(status.loaded);
 				setTaxYear(status.loaded ? (status.taxYears[0] ?? null) : null);
 			})
-			.catch(() => {});
+			.catch(() => {})
+			.finally(() => {
+				if (!cancelled) setReady(true);
+			});
 		return () => {
 			cancelled = true;
 		};
@@ -91,8 +97,8 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 	}, []);
 
 	const value = useMemo(
-		() => ({ loaded, taxYear, load, remove }),
-		[loaded, taxYear, load, remove],
+		() => ({ ready, loaded, taxYear, load, remove }),
+		[ready, loaded, taxYear, load, remove],
 	);
 	return <DemoContext.Provider value={value}>{children}</DemoContext.Provider>;
 }

@@ -1,11 +1,12 @@
 "use client";
 
-import type { LedgerTx } from "@tax/core";
+import { type LedgerTx, taxYearOf } from "@tax/core";
 import type { ReportReviewItem } from "@tax/core/api";
 import {
 	AlertTriangle,
 	ArrowRight,
 	Calculator,
+	Check,
 	CheckCircle2,
 	ChevronDown,
 	Edit3,
@@ -13,8 +14,10 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { StaleReportBanner } from "@/components/report/StaleReportBanner";
 import { TransactionDrawer } from "@/components/transactions/TransactionDrawer";
 import { Badge } from "@/components/ui/Badge";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import {
@@ -32,7 +35,6 @@ import {
 	formatInrNullable,
 	formatIstDateTime,
 	formatQty,
-	formatSourceLabel,
 	formatTxType,
 	isNegativeDecimal,
 	pluralise,
@@ -44,6 +46,7 @@ import {
 	reviewActionCount,
 	splitReviewGroups,
 } from "@/lib/client/review-codes";
+import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 type ReviewGroup = ReviewData["groups"][number];
 
@@ -192,6 +195,15 @@ function reportItemActions(
 	};
 }
 
+function groupTaxYears(group: ReviewGroup): string[] {
+	return [
+		...new Set([
+			...group.items.map((tx) => taxYearOf(tx.timestamp)),
+			...group.reportItems.map((item) => item.taxYear),
+		]),
+	];
+}
+
 function formatComputeLabel(years: string[]): string {
 	if (years.length <= 1) {
 		return `Compute ${years[0] ?? ""} report`;
@@ -203,6 +215,7 @@ function formatComputeLabel(years: string[]): string {
 }
 
 export function ReviewClient() {
+	const sourceLabel = useSourceLabel();
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const taxYear = searchParams.get("taxYear") ?? "";
@@ -219,6 +232,9 @@ export function ReviewClient() {
 	} | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [selectedTx, setSelectedTx] = useState<LedgerTx | null>(null);
+	const [confirmGroup, setConfirmGroup] = useState<ReviewGroup | null>(null);
+	const [resolving, setResolving] = useState(false);
+	const [notice, setNotice] = useState<string | null>(null);
 
 	useEffect(() => {
 		api
@@ -235,18 +251,21 @@ export function ReviewClient() {
 			.catch(() => {});
 	}, []);
 
-	const loadReview = useCallback(async () => {
-		setLoading(true);
-		setError(null);
-		try {
-			const res = await api.getReview(taxYear || undefined);
-			setData(res);
-		} catch (err) {
-			setError(getErrorMessage(err));
-		} finally {
-			setLoading(false);
-		}
-	}, [taxYear]);
+	const loadReview = useCallback(
+		async (options?: { keepContent?: boolean }) => {
+			if (!options?.keepContent) setLoading(true);
+			setError(null);
+			try {
+				const res = await api.getReview(taxYear || undefined);
+				setData(res);
+			} catch (err) {
+				setError(getErrorMessage(err));
+			} finally {
+				setLoading(false);
+			}
+		},
+		[taxYear],
+	);
 
 	useEffect(() => {
 		loadReview();
@@ -270,10 +289,16 @@ export function ReviewClient() {
 				.filter((entry) => entry.status === "current")
 				.map((entry) => entry.taxYear)
 		: [];
+	const staleYears = data
+		? data.reportStatuses
+				.filter((entry) => entry.status === "stale")
+				.map((entry) => entry.taxYear)
+		: [];
+	const outdatedYears = [
+		...new Set([...(data?.computeTaxYears ?? []), ...staleYears]),
+	];
 	const computeTargets =
-		data && data.computeTaxYears.length > 0
-			? data.computeTaxYears
-			: [taxYear || defaultTaxYear];
+		outdatedYears.length > 0 ? outdatedYears : [taxYear || defaultTaxYear];
 
 	async function handleCompute() {
 		setComputing(true);
@@ -303,6 +328,43 @@ export function ReviewClient() {
 		}
 	}
 
+	async function resolveItems(
+		group: ReviewGroup,
+		scope: { tx: LedgerTx } | { all: true },
+	) {
+		setResolving(true);
+		setError(null);
+		setNotice(null);
+		try {
+			let resolved = 0;
+			if ("tx" in scope) {
+				resolved = await api.resolveReview({
+					code: group.code,
+					taxYear: taxYear || taxYearOf(scope.tx.timestamp),
+					txIds: [scope.tx.id],
+				});
+			} else {
+				const years = taxYear ? [taxYear] : groupTaxYears(group);
+				for (const year of years) {
+					resolved += await api.resolveReview({
+						code: group.code,
+						taxYear: year,
+					});
+				}
+			}
+			setNotice(
+				`Marked ${resolved} ${pluralise(resolved, "item")} as checked. Your tax figures are unchanged.`,
+			);
+			setConfirmGroup(null);
+			await loadReview({ keepContent: true });
+		} catch (err) {
+			setError(getErrorMessage(err));
+			setConfirmGroup(null);
+		} finally {
+			setResolving(false);
+		}
+	}
+
 	const connectionIssues = data?.connections ?? [];
 	const actionTotal = data ? reviewActionCount(data) : 0;
 	const { action: actionGroups, info: noteGroups } = splitReviewGroups(
@@ -316,6 +378,7 @@ export function ReviewClient() {
 		),
 	);
 	const reportMissing = data && data.reportStatus === "missing";
+	const reportStale = data && data.reportStatus === "stale";
 	const missingListText =
 		missingYears.length > 0
 			? missingYears.join(", ")
@@ -351,9 +414,23 @@ export function ReviewClient() {
 								{pluralise(group.count, "item")}
 							</Badge>
 						</div>
-						<code className="font-mono-code text-xs text-[var(--text-muted)]">
-							{group.code}
-						</code>
+						<div className="flex items-center gap-3">
+							<code className="font-mono-code text-xs text-[var(--text-muted)]">
+								{group.code}
+							</code>
+							{neutral ? null : (
+								<button
+									type="button"
+									disabled={resolving}
+									onClick={() => setConfirmGroup(group)}
+									className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+								>
+									<Check className="h-3 w-3" aria-hidden="true" />
+									Mark all as checked
+									<span className="sr-only"> in {info.title}</span>
+								</button>
+							)}
+						</div>
 					</div>
 					<p className="mt-1.5 text-xs leading-relaxed text-[var(--text-secondary)]">
 						{info.explanation}
@@ -391,7 +468,7 @@ export function ReviewClient() {
 											<Badge tone="neutral">{formatTxType(tx.type)}</Badge>
 										</td>
 										<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
-											{formatSourceLabel(tx.source)}
+											{sourceLabel(tx.source)}
 										</td>
 										<td className="num px-4 py-2.5 whitespace-nowrap">
 											{tx.assetIn
@@ -418,8 +495,8 @@ export function ReviewClient() {
 												</ul>
 											)}
 										</td>
-										<td className="px-4 py-2.5 text-right whitespace-nowrap">
-											<div className="inline-flex items-center gap-2">
+										<td className="px-4 py-2.5">
+											<div className="flex min-w-48 flex-wrap items-center justify-end gap-2">
 												<button
 													type="button"
 													onClick={() => setSelectedTx(tx)}
@@ -428,6 +505,17 @@ export function ReviewClient() {
 													<Edit3 className="h-3 w-3" aria-hidden="true" />
 													Inspect
 												</button>
+												{neutral ? null : (
+													<button
+														type="button"
+														disabled={resolving}
+														onClick={() => resolveItems(group, { tx })}
+														className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+													>
+														<Check className="h-3 w-3" aria-hidden="true" />
+														Mark checked
+													</button>
+												)}
 												<Link
 													href={info.fixHref(tx, taxYear || undefined)}
 													className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
@@ -492,10 +580,10 @@ export function ReviewClient() {
 										<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
 											{ri.kind === "balance"
 												? ri.balance.source
-													? formatSourceLabel(ri.balance.source)
+													? sourceLabel(ri.balance.source)
 													: "Global"
 												: ri.kind === "warning" && ri.warning.source
-													? formatSourceLabel(ri.warning.source)
+													? sourceLabel(ri.warning.source)
 													: "Computed report"}
 										</td>
 										<td className="num px-4 py-2.5 whitespace-nowrap">
@@ -589,6 +677,19 @@ export function ReviewClient() {
 
 			{error ? <ErrorBanner message={error} onRetry={loadReview} /> : null}
 
+			<div role="status">
+				{notice ? (
+					<div className="flex items-center gap-2 rounded-lg border border-[var(--positive)]/40 bg-[var(--positive-soft)] px-4 py-2.5 text-sm text-[var(--positive)]">
+						<CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+						<span>{notice}</span>
+					</div>
+				) : null}
+			</div>
+
+			{!loading && reportStale ? (
+				<StaleReportBanner computing={computing} onRecompute={handleCompute} />
+			) : null}
+
 			{!loading &&
 			reportMissing &&
 			(actionTotal + noteTotal > 0 || connectionIssues.length > 0) ? (
@@ -631,7 +732,7 @@ export function ReviewClient() {
 				<div className="h-48 animate-pulse rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]" />
 			) : !data ? null : (
 				<div className="space-y-5">
-					{noActionItems ? (
+					{noActionItems && !reportStale ? (
 						data.reportStatus === "current" ? (
 							<EmptyState
 								icon={
@@ -813,6 +914,26 @@ export function ReviewClient() {
 					) : null}
 				</div>
 			)}
+
+			<ConfirmDialog
+				open={confirmGroup !== null}
+				title={
+					confirmGroup
+						? `Mark all ${confirmGroup.count} ${pluralise(confirmGroup.count, "item")} as checked?`
+						: ""
+				}
+				description={`This only records that you have looked at ${
+					confirmGroup
+						? `the "${REVIEW_CODE_INFO[confirmGroup.code].title}" items`
+						: "these items"
+				}. It does not change any tax figure, and your checks are kept when you recompute the report.`}
+				confirmLabel="Mark all as checked"
+				busy={resolving}
+				onConfirm={() =>
+					confirmGroup && resolveItems(confirmGroup, { all: true })
+				}
+				onCancel={() => setConfirmGroup(null)}
+			/>
 
 			<TransactionDrawer
 				tx={selectedTx}

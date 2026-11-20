@@ -32,10 +32,10 @@ import {
 	formatIstDateTime,
 	formatManualVenueLabel,
 	formatQty,
-	formatSourceLabel,
 	formatTxType,
 } from "@/lib/client/format";
 import { groupReviewFlags, REVIEW_CODE_INFO } from "@/lib/client/review-codes";
+import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 const SOURCE_FILTER_OPTIONS: readonly string[] = [
 	"binance",
@@ -47,6 +47,7 @@ const SOURCE_FILTER_OPTIONS: readonly string[] = [
 ];
 
 export function TransactionsClient() {
+	const sourceLabel = useSourceLabel();
 	const router = useRouter();
 	const searchParams = useSearchParams();
 
@@ -270,11 +271,11 @@ export function TransactionsClient() {
 						<option value="">All sources</option>
 						{SOURCE_FILTER_OPTIONS.map((opt) => (
 							<option key={opt} value={opt}>
-								{formatSourceLabel(opt)}
+								{sourceLabel(opt)}
 							</option>
 						))}
 						{source && !SOURCE_FILTER_OPTIONS.includes(source) ? (
-							<option value={source}>{formatSourceLabel(source)}</option>
+							<option value={source}>{sourceLabel(source)}</option>
 						) : null}
 					</select>
 				</div>
@@ -432,7 +433,7 @@ export function TransactionsClient() {
 												</div>
 											</td>
 											<td className="px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
-												{formatSourceLabel(tx.source)}
+												{sourceLabel(tx.source)}
 												{tx.source === "manual" &&
 												(txVenue === "binance" || txVenue === "coindcx")
 													? ` (${formatManualVenueLabel(txVenue)})`

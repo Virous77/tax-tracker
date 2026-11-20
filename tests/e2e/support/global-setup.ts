@@ -1,7 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import path from "node:path";
-import { GENERATED, REPO_ROOT, SCREENSHOTS, STACKS } from "./env";
+import {
+	GENERATED,
+	PHASE4_STACKS,
+	REPO_ROOT,
+	SCREENSHOTS,
+	STACKS,
+} from "./env";
 
 // E2E_REUSE_STACK=1 skips (re)creating the containers, for fast local iteration.
 export default async function globalSetup() {
@@ -13,7 +19,9 @@ export default async function globalSetup() {
 		});
 	}
 	if (process.env.E2E_REUSE_STACK !== "1") startStacks();
-	await Promise.all(STACKS.map((s) => waitForHealth(s.port)));
+	await Promise.all(
+		[...STACKS, ...PHASE4_STACKS].map((s) => waitForHealth(s.port)),
+	);
 	await Promise.all(STACKS.map((s) => acceptDisclaimer(s.port, s.password)));
 }
 
@@ -45,14 +53,16 @@ async function acceptDisclaimer(port: number, password: string) {
 }
 
 function startStacks() {
-	for (const stack of STACKS) {
-		compose(stack.project, ["down", "--remove-orphans"], {});
+	for (const stack of [...STACKS, ...PHASE4_STACKS]) {
+		// Phase 4 stacks always start on a fresh data dir: their first-run state is one-way.
+		compose(stack.project, ["down", "--remove-orphans", "-v"], {});
 		const dataDir = mkdtempSync(`/private/tmp/${stack.project}-`);
 		compose(stack.project, ["up", "-d", "--no-build"], {
 			APP_PORT: String(stack.port),
 			DATA_HOST_DIR: dataDir,
 			APP_PASSWORD: stack.password,
 			APP_SECRET: stack.password ? "e2e-session-secret-0123456789abcdef" : "",
+			SOURCE_URL: "sourceUrl" in stack ? stack.sourceUrl : "",
 		});
 	}
 }

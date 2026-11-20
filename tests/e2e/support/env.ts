@@ -13,6 +13,12 @@ export const PASSWORD_PORT = MAIN_PORT + 1;
 export const FRESH_PORT = MAIN_PORT + 2;
 export const MOCK_LLM_PORT = 11502;
 
+export const PHASE4_PORT = MAIN_PORT + 3;
+export const PHASE4_PASSWORD_PORT = MAIN_PORT + 4;
+export const PHASE4_URL = `http://localhost:${PHASE4_PORT}`;
+export const PHASE4_PASSWORD_URL = `http://localhost:${PHASE4_PASSWORD_PORT}`;
+export const SOURCE_URL = "https://example.org/tax-tracker";
+
 export const MAIN_URL = `http://localhost:${MAIN_PORT}`;
 export const PASSWORD_URL = `http://localhost:${PASSWORD_PORT}`;
 export const FRESH_URL = `http://localhost:${FRESH_PORT}`;
@@ -35,6 +41,22 @@ export const STACKS = [
 		project: `${process.env.E2E_PROJECT_PREFIX ?? "taxe2e"}fresh`,
 		port: FRESH_PORT,
 		password: "",
+	},
+] as const;
+
+// Phase 4 first-run stacks: the disclaimer is left unaccepted, and only the first sets SOURCE_URL.
+export const PHASE4_STACKS = [
+	{
+		project: `${process.env.E2E_PROJECT_PREFIX ?? "taxe2e"}4`,
+		port: PHASE4_PORT,
+		password: "",
+		sourceUrl: SOURCE_URL,
+	},
+	{
+		project: `${process.env.E2E_PROJECT_PREFIX ?? "taxe2e"}4pw`,
+		port: PHASE4_PASSWORD_PORT,
+		password: APP_PASSWORD,
+		sourceUrl: "",
 	},
 ] as const;
 

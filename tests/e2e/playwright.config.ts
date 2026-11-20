@@ -4,6 +4,7 @@ import {
 	MAIN_URL,
 	MOCK_LLM_PORT,
 	PASSWORD_URL,
+	PHASE4_URL,
 } from "./support/env";
 
 export default defineConfig({
@@ -48,6 +49,7 @@ export default defineConfig({
 				/empty-states\.spec\.ts/,
 				/password\.spec\.ts/,
 				/phase2-.*\.spec\.ts/,
+				/phase4\.spec\.ts/,
 			],
 			use: { baseURL: MAIN_URL },
 		},
@@ -55,6 +57,11 @@ export default defineConfig({
 			name: "password",
 			testMatch: /password\.spec\.ts/,
 			use: { baseURL: PASSWORD_URL },
+		},
+		{
+			name: "phase4",
+			testMatch: /phase4\.spec\.ts/,
+			use: { baseURL: PHASE4_URL },
 		},
 	],
 });

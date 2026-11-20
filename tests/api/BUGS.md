@@ -535,3 +535,129 @@ No golden tax case was touched.
 - **File↔API dedupe for CoinDCX** (and the TDS supplement from a file) — the mock's CoinDCX trades have no
   matching synthetic Excel export; Binance trades are covered in both orders.
 - **Logout invalidating a running sync's vault access** — logout locking the vault is covered.
+
+---
+
+# Phase 4
+
+## Test round — 2026-11-20
+
+Run against image `tax-tracker-app:local`, built from `main` at `374d1cc` (it includes `a65f931` contract, `ec0a657` UI
+and `31a1caa` server) and not rebuilt. Setup:
+
+- `TAX_TRACKER_IMAGE=tax-tracker-app:local` for every compose call, so nothing is pulled from GHCR;
+- compose project `taxapi3` on port 3111 (`tests/api/phase2.env`);
+- mock-sync on 11601 and mock LLM on 11511;
+- fresh data dir, `pnpm -r build` first.
+
+The suite ran in four parts so that no background shell passed 40 minutes: `01–13`, `14–17`, `18–24` and `25`.
+
+**Result: 867 tests, 867 pass, 0 fail.** That is the previous 793 plus 4 in `09` and 70 in the new `25`. No flakes; nothing was re-run except `25` while it was being written.
+
+| Part / file                | Tests   | Pass    | Fail  |
+| -------------------------- | ------- | ------- | ----- |
+| `01-health-settings`       | 34      | 34      | 0     |
+| `02-imports`               | 36      | 36      | 0     |
+| `03-edge-data`             | 14      | 14      | 0     |
+| `04-recipes`               | 24      | 24      | 0     |
+| `05-transactions`          | 54      | 54      | 0     |
+| `06-review`                | 11      | 11      | 0     |
+| `07-reports`               | 29      | 29      | 0     |
+| `08-exports`               | 19      | 19      | 0     |
+| `09-auth`                  | 60      | 60      | 0     |
+| `10-security`              | 32      | 32      | 0     |
+| `11-research`              | 8       | 8       | 0     |
+| `12-server-round2`         | 13      | 13      | 0     |
+| `13-round3`                | 11      | 11      | 0     |
+| `14-vault`                 | 41      | 41      | 0     |
+| `15-providers-connections` | 74      | 74      | 0     |
+| `16-sync-binance`          | 51      | 51      | 0     |
+| `17-sync-coindcx`          | 13      | 13      | 0     |
+| `18-sync-evm`              | 45      | 45      | 0     |
+| `18b-gate`                 | 32      | 32      | 0     |
+| `19-prices`                | 22      | 22      | 0     |
+| `20-import-kinds`          | 54      | 54      | 0     |
+| `21-pdf-snapshots`         | 27      | 27      | 0     |
+| `22-dedupe-supersede`      | 16      | 16      | 0     |
+| `23-phase2-security`       | 37      | 37      | 0     |
+| `24-regression-round`      | 40      | 40      | 0     |
+| `25-phase4` (new)          | 70      | 70      | 0     |
+| **Total**                  | **867** | **867** | **0** |
+
+`09-auth` grew from 56 to 60 tests: its "401 without a cookie" table is built from `ApiContract`, so it now covers
+`GET/POST/DELETE /api/demo` and `GET /api/backup`. The gate (`18b`) is still zero everywhere. No existing assertion was
+changed.
+
+### What `25-phase4.test.ts` covers
+
+- **Disclaimer.**
+  - `disclaimerAcceptedAt` is `null` on a fresh install and stays `null` after other settings or a full `wipe()`.
+  - `false`, `null`, `"true"`, `1` and a client-sent `disclaimerAcceptedAt` → 400 `validation_error`.
+  - `PUT {disclaimerAccepted:true}` stamps the server time as ISO with milliseconds, and a stored report survives it.
+  - A second `true` keeps the first stamp.
+  - The stamp cannot be cleared (`false`, `disclaimerAcceptedAt: null`), backdated, moved forward or mixed into a
+    valid patch.
+  - It survives `wipe()` and AI/default-year changes.
+- **Demo.**
+  - `GET` → `{loaded:false, importIds:[]}`.
+  - `POST` → 201 with 3 sorted ids (binance, coindcx, evm:1), all `demo:true` in the list and the detail, `status: imported`.
+  - Every demo row keeps its raw row and a `demo:` source reference. Loading changed no real row: a CoinDCX fixture
+    import and a manual row are deep-equal before and after.
+  - A second POST → 409 `demo_already_loaded` with nothing added. `POST {force:true}` → 400.
+  - Two concurrent POSTs → exactly one 201 and one 409.
+  - **Isolation:** the demo's own CoinDCX orders and Binance spot rows, imported for real as CSV, insert 2 + 2 and
+    are not counted as duplicates of the demo.
+  - The report has `includesDemoData: true`. All 8 exports (csv/xlsx × schedule-vda/tds/income/full) contain
+    "Includes sample data".
+  - `DELETE` → 204: the demo imports return 404, no `demo:` rows remain, and every real import and manual row is
+    deep-equal to before. The stored report is cleared (`report_not_computed`), the recomputed one has
+    `includesDemoData: false`, and no export carries the label.
+  - `DELETE` with nothing loaded → 204 with no change. Deleting the demo imports one by one also ends the demo.
+- **Health.**
+  - `version` equals root `package.json` (`0.1.0`), and `sourceUrl` is absent by default.
+  - `SOURCE_URL=https://example.org/tax-tracker` is returned as is.
+  - `javascript:`, `ftp:`, `https://user:secret@…` and a non-URL are hidden, and "secret" never appears.
+- **Password mode.**
+  - Health stays public with its version.
+  - All 4 new routes and the disclaimer PUT → 401 without a session, and no SQLite bytes are sent.
+  - A forged cookie gets no backup or `Content-Disposition`; a logged-out cookie → 401.
+  - Cross-origin `POST/DELETE /api/demo` and the disclaimer PUT → 403 even with a session, and they changed nothing.
+  - Same-origin with a session works on every route.
+  - `/api/backup` sends no `Access-Control-Allow-*` headers.
+- **Backup download.**
+  - 200, `application/vnd.sqlite3`, `attachment; filename="tax-tracker-<ISO stamp>.db"`, `no-store`, and the
+    `SQLite format 3\0` magic.
+  - With the repo's `better-sqlite3`, the file passes `integrity_check`, has all 18 schema tables, 9
+    `__drizzle_migrations` rows, the same import/active transaction counts as the API (3 demo imports), the same
+    disclaimer stamp, and stored reports.
+  - With the app stopped, every table's row count equals the live database's.
+  - No `.backup-*` temp dir is left after a normal, an aborted or 3 parallel downloads.
+- **Pre-migration backups.** A fresh install makes none. The test then:
+  1. stops the app;
+  2. drops `imports.demo` and deletes the last `__drizzle_migrations` row (simulates a DB from before `0008`);
+  3. seeds 6 old `…-pre-0000_old.db` files plus `keep-me.db` and `notes.txt`;
+  4. boots the app.
+
+  Exactly one new `tax-tracker-<stamp>-pre-0008_phase4_demo.db` appears. The 2 oldest seeded backups are deleted (5
+  are kept); unrelated files and dot-dirs are untouched. The new backup has no `demo` column, 8 migration rows and the
+  same import count. The app answers afterwards, and a second boot makes no new backup.
+
+Harness change: `tests/api/stack.ts` `restartStack(env, dataDir?)` can reuse a data dir, and there is a new `stopApp()`.
+
+### Bugs
+
+None found in the API.
+
+### Observations (no bug filed)
+
+- **`GET /api/backup` has no `Content-Length`.** `apps/web/src/server/http.ts` sets it, but Next.js drops it and sends
+  the body chunked (checked with `curl -D -`). Browsers cannot show download progress or size. The spec does not require
+  the header, so the test only checks it when it is present.
+- **2026-27 is labelled as sample data.** With only sample data loaded, the 2026-27 report has 0 Schedule VDA rows but
+  `includesDemoData: true`, because the sample's leftover ETH lots carry into it. This is defensible, but it is what
+  makes P4-E2E-1 confusing.
+- **Unknown query keys are rejected.** `GET /api/demo?x=1` → 400 "Unrecognized key". This is consistent with the
+  strict empty-request schemas elsewhere.
+- **The migration simulation leaves orphaned demo rows.** It drops the `demo` column, so the old sample imports come
+  back as non-demo. A later `POST /api/demo` then hits their `demo:` source references and returns 500 "The operation
+  could not be completed." Only a hand-edited database can reach this, but the 500 would be clearer as a 409.

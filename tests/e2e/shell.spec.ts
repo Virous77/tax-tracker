@@ -35,7 +35,7 @@ test("every nav link loads its screen with the disclaimer footer", async ({
 		await expect(
 			nav.getByRole("link", { name: item.label, exact: true }),
 		).toHaveAttribute("aria-current", "page");
-		await expect(page.getByRole("contentinfo")).toHaveText(DISCLAIMER_TEXT);
+		await expect(page.getByRole("contentinfo")).toContainText(DISCLAIMER_TEXT);
 		await settled(page);
 	}
 });

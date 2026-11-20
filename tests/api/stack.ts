@@ -2,12 +2,14 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { ROOT } from "./lib";
 
-const PROJECT = process.env.COMPOSE_PROJECT ?? "taxapi";
+export const PROJECT = process.env.COMPOSE_PROJECT ?? "taxapi";
 const PORT = process.env.APP_PORT ?? "3101";
 
-/** Recreates this suite's own compose project with a fresh data dir outside the Desktop folder. */
-export async function restartStack(env: Record<string, string>) {
-	const dataDir = mkdtempSync("/private/tmp/taxapi-");
+/** Recreates this suite's own compose project, by default with a fresh data dir outside the Desktop folder. */
+export async function restartStack(
+	env: Record<string, string>,
+	dataDir = mkdtempSync("/private/tmp/taxapi-"),
+) {
 	execFileSync(
 		"docker",
 		[
@@ -41,4 +43,12 @@ export async function restartStack(env: Record<string, string>) {
 		await new Promise((r) => setTimeout(r, 500));
 	}
 	throw new Error("app did not become healthy");
+}
+
+/** Stops the app container so its database file can be read or changed from the host. */
+export function stopApp() {
+	execFileSync("docker", ["compose", "-p", PROJECT, "stop", "app"], {
+		cwd: ROOT,
+		stdio: "pipe",
+	});
 }

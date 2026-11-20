@@ -1,7 +1,8 @@
 import type { Page } from "@playwright/test";
 
-export async function textContrastFailures(page: Page) {
-	return await page.evaluate(() => {
+/** WCAG AA text contrast failures, optionally only inside elements matching `within`. */
+export async function textContrastFailures(page: Page, within?: string) {
+	return await page.evaluate((within) => {
 		const canvas = document.createElement("canvas").getContext("2d");
 		if (!canvas) return [];
 		const rgba = (c: string) => {
@@ -35,6 +36,7 @@ export async function textContrastFailures(page: Page) {
 				.join("")
 				.trim();
 			if (!text || el.offsetParent === null) continue;
+			if (within && !el.closest(within)) continue;
 			const fg = rgba(getComputedStyle(el).color);
 			const bg = rgba(bgOf(el));
 			const a = (fg[3] ?? 255) / 255;
@@ -51,5 +53,5 @@ export async function textContrastFailures(page: Page) {
 				out.push(`${ratio.toFixed(2)}:1 "${text.slice(0, 40)}"`);
 		}
 		return out;
-	});
+	}, within);
 }

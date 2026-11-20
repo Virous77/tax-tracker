@@ -57,7 +57,7 @@ test("transactions empty state", async ({ page }) => {
 	).toBeVisible();
 	await expect(
 		page.getByText(
-			"No transactions yet — import an export file or add a manual transaction.",
+			"No transactions yet — import an export file, connect an exchange, or add a manual transaction.",
 		),
 	).toBeVisible();
 	await expect(
@@ -94,19 +94,23 @@ test("review empty state asks for a compute instead of claiming clean", async ({
 	await snap(page, "empty-review");
 });
 
-test("report empty state offers to compute", async ({ page }) => {
+// Phase 4: on an empty ledger the report offers an import or sample data instead of a compute.
+test("report empty state offers an import or sample data", async ({ page }) => {
 	await page.goto("/report");
+	const empty = page.getByRole("heading", {
+		name: "No transactions yet — import an export file",
+	});
+	await expect(empty).toBeVisible();
+	await expect(page.getByRole("link", { name: "Import file" })).toHaveAttribute(
+		"href",
+		"/import",
+	);
 	await expect(
-		page.getByRole("heading", { name: "No report computed for 2026-27" }),
-	).toBeVisible();
-	await expect(
-		page.getByRole("button", { name: "Compute 2026-27 report" }),
+		page.getByRole("button", { name: "Try with sample data" }),
 	).toBeVisible();
 	await page.getByLabel("Tax year").selectOption("2025-26");
 	await expect(page).toHaveURL(/taxYear=2025-26/);
-	await expect(
-		page.getByRole("heading", { name: "No report computed for 2025-26" }),
-	).toBeVisible();
+	await expect(empty).toBeVisible();
 	await expect(page.getByText(/cleared because/)).toHaveCount(0);
 	for (const year of ["2025-26", "2026-27"]) {
 		const res = await page.request.get(`/api/reports/${year}`);

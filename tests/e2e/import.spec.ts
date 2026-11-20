@@ -225,6 +225,13 @@ test("the drop zone shows a visible focus ring when tabbed to", async ({
 	).toBeVisible();
 	await page.getByRole("link", { name: "Import history" }).focus();
 	await page.keyboard.press("Tab");
+	// Phase 4: on an empty ledger the "Try with sample data" prompt sits between them.
+	const sample = page.getByRole("button", { name: "Try with sample data" });
+	if (
+		(await sample.count()) > 0 &&
+		(await sample.evaluate((el) => el === document.activeElement))
+	)
+		await page.keyboard.press("Tab");
 	await expect(fileInput(page)).toBeFocused();
 	const zone = page.locator("label", { has: fileInput(page) });
 	const ring = await zone.evaluate((el) => {

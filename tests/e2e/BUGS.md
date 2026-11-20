@@ -748,3 +748,197 @@ the scenario each test checks. They need new fixtures or a new premise, not new 
   distinct UI beyond the error banner already covered.
 - Vault idle auto-lock (30 min) and `SECRETS_PASSPHRASE` auto-unlock: need a long wait or a different container env.
 - Real Binance/CoinDCX PDFs and exports: only synthetic fixtures, as required.
+
+---
+
+# Phase 4 — browser E2E, 2026-11-20
+
+Image `tax-tracker-app:local` built from `main` at `374d1cc` (`ec0a657` UI, `31a1caa` server; not rebuilt).
+`TAX_TRACKER_IMAGE=tax-tracker-app:local` was set for every compose call.
+
+- **Phase 1 + Phase 4:** `pnpm test:e2e`.
+  - Stacks `taxe2e`, `taxe2epw` and `taxe2efresh` on 3102–3104 (disclaimer accepted in global-setup).
+  - New first-run stacks `taxe2e4` (3105, `SOURCE_URL=https://example.org/tax-tracker`) and `taxe2e4pw` (3106,
+    password). These are never accepted.
+- **Phase 2:** `taxe2e2` on 3112, mock-sync on 11602,
+  `PHASE2_ONLY=1 pnpm exec playwright test -c tests/e2e/phase2.config.ts --project=phase2`.
+
+## Results
+
+**Phase 1 + Phase 4 (`pnpm test:e2e`): 148 tests, 146 pass, 2 fail (2.0 min).**
+
+- The run before the P4-E2E-1 test was added gave 147/147.
+- The 2 failures are the P4-E2E-1 bug test and one flaky run of P4-E2E-3.
+
+| Spec                      | Pass | Fail |
+| ------------------------- | ---- | ---- |
+| `empty-states.spec.ts`    | 7    | 0    |
+| `import.spec.ts`          | 10   | 0    |
+| `imports-list.spec.ts`    | 3    | 0    |
+| `recipe-wizard.spec.ts`   | 7    | 0    |
+| `report.spec.ts`          | 6    | 0    |
+| `responsive-a11y.spec.ts` | 32   | 0    |
+| `review.spec.ts`          | 11   | 0    |
+| `round3.spec.ts`          | 13   | 0    |
+| `screenshots.spec.ts`     | 4    | 0    |
+| `settings.spec.ts`        | 5    | 0    |
+| `shell.spec.ts`           | 9    | 0    |
+| `transactions.spec.ts`    | 6    | 0    |
+| `password.spec.ts`        | 10   | 1    |
+| `phase4.spec.ts` (new)    | 23   | 1    |
+| **Phase 1 total**         | 123  | 1    |
+| **Phase 4 total**         | 23   | 1    |
+
+**Phase 2: 97 tests, 95 pass, 2 fail (14.9 min).** Both failures are P4-E2E-2.
+
+| Phase 2 spec                     | Pass | Fail |
+| -------------------------------- | ---- | ---- |
+| `phase2-connections.spec.ts`     | 16   | 0    |
+| `phase2-import.spec.ts`          | 7    | 2    |
+| `phase2-regression.spec.ts`      | 19   | 0    |
+| `phase2-report-settings.spec.ts` | 3    | 0    |
+| `phase2-responsive-a11y.spec.ts` | 34   | 0    |
+| `phase2-sync.spec.ts`            | 10   | 0    |
+| `phase2-venue.spec.ts`           | 6    | 0    |
+
+The Phase 2 specs needed no change for the disclaimer. Their `reset()` puts `disclaimerAccepted: true` before any page
+opens.
+
+## New bugs (ranked)
+
+### P4-E2E-2. Medium (regression from ec0a657) — a statement PDF on an empty ledger no longer shows its comparison
+
+- **Steps:**
+  1. Fresh ledger.
+  2. Import a synthetic Binance PDF statement (a balance snapshot, no transactions).
+  3. Open Report for its year.
+- **Expected (Phase 2 behaviour):** the "Statements (1)" section compares the snapshot with the computed ledger. For a
+  mid-year snapshot, Apply explains the 409.
+- **Actual:** the new empty state "No transactions yet — import an export file" replaces the whole missing-report
+  view. `#statements` is not rendered, so the snapshot can't be seen or applied from the Report page.
+- **Cause:** `apps/web/src/components/report/ReportClient.tsx:797` returns the `ledgerEmpty` empty state before
+  `:836`, which renders `renderStatementsSection()` when `snapshots.length > 0`. Show the empty state only when there
+  are also no snapshots, or keep the statements section below it.
+- **Tests (fail, unchanged):**
+  - `phase2-import.spec.ts › encrypted synthetic PDF: focused password prompt, wrong password cleared, snapshot`
+    (`#statements` not found);
+  - `› mid-year PDF comparison works and apply explains the 409` (0 statement rows, expected 3).
+
+### P4-E2E-1. Low — after "Try with sample data", Overview shows an all-zero year labelled "Includes sample data"
+
+- **Steps:** on an empty ledger, click **Try with sample data**. The app opens Report 2025-26 with 2 rows, which is
+  correct. Then click **Overview** in the nav.
+- **Expected:** Overview shows the year that holds the sample rows (2025-26), or points to it, so a stranger sees the
+  finished numbers the README promises.
+- **Actual:** Overview stays on the default 2026-27 and shows "0 Schedule VDA rows" and ₹0 in every card, next to the
+  "Includes sample data" badge (see `screenshots/phase4/overview-375-light.png`). Because 2026-27 has a computed report
+  and no review items, the getting-started checklist marks "Resolve Review items" and "Open the report" done.
+- **Suggested fix:** after loading, set the year that `DemoProvider.prepareReportYear()` chose as the Overview
+  selection (or default tax year) until the sample is removed. Alternatively, show a "Sample data is in 2025-26" link.
+- **Test (fails):** `phase4.spec.ts › bugs › P4-E2E-1: after loading sample data, Overview shows the year that holds
+  the sample rows`. It is kept last because the file runs in serial mode.
+
+### P4-E2E-3. Low (flaky, 1 in 5) — logging out logs 404s for `/login?next=…&_rsc=…`
+
+- **Steps:** `password.spec.ts › logout revokes the old session cookie on the server`, run with `--repeat-each=5`.
+- **Expected:** no console errors.
+- **Actual:** in 1 of the 5 repeats, and once in the full run, the console guard records about 9 × "Failed to load
+  resource: 404 … /login?next=%2F<page>&_rsc=…". After logout, the nav links' RSC prefetches are redirected to
+  `/login`, which answers the RSC request with 404.
+- **Status:** the test passed in this round's two earlier full runs and in all earlier rounds, so this is a timing
+  race. The new footer/demo/disclaimer fetches on every page probably widen it. It could be fixed by `proxy.ts`
+  answering RSC/prefetch requests without a session with a 401 or a plain redirect, or by turning off prefetch while
+  logging out.
+- **Test:** the existing test, unchanged (fails intermittently).
+
+## What `phase4.spec.ts` covers (24 tests, serial, `phase4` project)
+
+- **Disclaimer, on a fresh stack:**
+  - the "Before you start" dialog (accessible name and description) shows on all 8 pages, with "Not tax advice.",
+    "Chartered Accountant" and "Your data stays on this computer";
+  - it is a native modal (`open`); focus stays inside through Tab/Shift+Tab;
+  - Escape, two backdrop clicks and a click on a nav link do nothing, the URL stays, and the API stamp stays `null`;
+  - "I understand" closes it, stamps an ISO time, and it stays gone after reload and on all 8 pages.
+- **Password stack:**
+  - `/login` has no dialog (after `networkidle`) and its footer shows `v0.1.0`;
+  - after unlocking, the dialog appears and the API stamp is still `null`;
+  - at 375/1280 × light/dark the dialog fits the viewport, "I understand" is reachable, every control is named,
+    dialog text passes WCAG AA, and there is no horizontal scroll.
+- **Footer:**
+  - `v0.1.0` (root `package.json`), "AGPL-3.0" and "Not tax advice";
+  - "Source code" links to `SOURCE_URL` with `target=_blank` and `rel="noopener noreferrer"`;
+  - on the main stack (no `SOURCE_URL`) there is no link and no "Source".
+- **Checklist:**
+  - "0 of 5 steps done" on an empty ledger, with the five titles in order, each "— not done" for screen readers;
+  - hrefs `/settings`, `/import`, `/review?taxYear=2026-27` and `/report?taxYear=2026-27` (×2);
+  - steps 2 and 1 navigate;
+  - dismissal persists across reload and navigation;
+  - with sample data, step 2 is done and step 5 not done.
+- **Sample data:**
+  - "Try with sample data" → `/report?taxYear=2025-26` with "Includes sample data" and Schedule VDA rows;
+  - the banner and its "Remove sample data" button show on all 8 pages;
+  - Imports shows 3 visible "Sample" badges;
+  - Cancel and Escape in the confirm dialog keep the data;
+  - confirming removes it: it lands on `/`, the banner is gone on all pages, the API shows no demo and 0 transactions,
+    there are no badges, the Report has no label, and "Try with sample data" is offered again.
+- **New UI at 375/1280 × light/dark** on Overview, Imports, Report 2025-26 and Settings:
+  - the banner, footer and checklist have no unnamed controls;
+  - WCAG AA text contrast passes in the banner, checklist, footer and badges;
+  - no horizontal scroll.
+- **Backup:** Settings → Download backup gives a download named `tax-tracker-<ISO stamp>.db` with no failure and the
+  SQLite magic. The button is enabled again, there is no error, and the `data/backups/` note is shown.
+
+Screenshots: `tests/e2e/screenshots/phase4/` (disclaimer, sample report/imports, and 4 screens × 375/1280 × light/dark).
+
+## Harness changes
+
+- `support/env.ts`: `PHASE4_STACKS` (`taxe2e4` on `MAIN_PORT+3` with `SOURCE_URL`, `taxe2e4pw` on `MAIN_PORT+4`),
+  `PHASE4_URL`, `PHASE4_PASSWORD_URL`, `SOURCE_URL`.
+- `global-setup.ts`:
+  - starts and health-checks the Phase 4 stacks without accepting the disclaimer;
+  - every stack now starts with `down --remove-orphans -v` and a fresh data dir, and `SOURCE_URL` is passed through.
+- `global-teardown.ts` also stops the Phase 4 stacks.
+- `playwright.config.ts`: new `phase4` project (baseURL 3105); `main` ignores `phase4.spec.ts`.
+- `support/phase2-contrast.ts`: `textContrastFailures(page, within?)` can be scoped to a selector. Existing callers
+  are unchanged.
+
+## Assertion changes (intended Phase 4 UI changes only)
+
+- `empty-states.spec.ts › transactions empty state`: the copy is now "…import an export file, connect an exchange, or
+  add a manual transaction."
+- `empty-states.spec.ts › report empty state …`: on an empty ledger the Report now shows "No transactions yet —
+  import an export file" with Import file and Try with sample data, instead of "No report computed for <year>" and a
+  Compute button. The test was renamed to "report empty state offers an import or sample data". The API checks
+  (`report_not_computed`, `never_computed`) are unchanged.
+- `import.spec.ts › the drop zone shows a visible focus ring when tabbed to`: on an empty ledger the new "Try with
+  sample data" prompt sits between "Import history" and the drop zone, so the test presses Tab once more when that
+  button has focus.
+- `shell.spec.ts › every nav link …`: the footer now also has the version and licence, so the check is `toContainText`
+  instead of `toHaveText`.
+
+## Repo checks
+
+- `pnpm recipes:check` → "Checked 1 recipe(s)."
+- **CONTRIBUTING "Adding a CSV recipe", followed step by step** with the ExampleX example (folder deleted afterwards,
+  `recipes:check` back to 1 recipe):
+  1. `pnpm recipes:new examplex-trades-v1 --header "…"` creates the 4 files, with the fingerprint computed and empty
+     column mappings.
+  2. `recipes:check` on the bare scaffold fails with "Sample must contain 1–20 data rows." That is expected; the error
+     comes with a Node stack trace.
+  3. The step 3 `recipe.json` and step 4 `sample.csv` copied from the doc import with no row errors, and `recipes:check`
+     passes once `expected.json` matches.
+  4. The checks reject an e-mail in the sample ("Sample must not contain email addresses.") and an undocumented `0x`
+     address ("Document synthetic wallet addresses in the sample README.").
+  5. `pnpm recipes:new test-recipe --header "Date,Pair,Qty"` works, and an invalid id prints the usage line.
+- **Mismatches found:**
+  - **D1 (doc, low).** Step 7 says "The same checks run in `pnpm test`". After adding a recipe,
+    `pnpm --filter @tax/recipes test` fails `library.test.ts › builds the full validated library` until the package is
+    rebuilt: `libraryRecipes` comes from the generated `src/library.generated.json`, written only by `build`. The step
+    should say to run `pnpm --filter @tax/recipes build` (or `pnpm -r build`) before `pnpm test`.
+  - **D2 (doc, low).** Step 5 says to work `expected.json` out by hand, but the doc's own sample row 3
+    (`ETHUSDT,BUY,…,Avg Price 3000`) becomes `type: "swap"` with `priceQuote: {asset: "USDT", price: "1"}`. The engine
+    prices a swap per outgoing unit (`packages/importers/src/values.ts:253`), so `price` is not 3000. A contributor who
+    follows the doc writes `3000` and gets only "Imported ledger rows differ from expected.json", with no diff. The doc
+    should explain the swap/`priceQuote` convention, and `check.mjs` should print the first differing row.
+  - **D3 (tool, cosmetic).** Running `recipes:new` with an existing id throws a raw `EEXIST` stack trace instead of a
+    one-line message.

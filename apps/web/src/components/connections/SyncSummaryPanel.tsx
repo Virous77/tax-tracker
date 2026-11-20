@@ -38,6 +38,14 @@ export function collectSyncNotes(
 	return notes;
 }
 
+export function hasBalanceDifference(
+	summary: SyncSummary | null | undefined,
+	balances: ConnectionBalances | null | undefined,
+): boolean {
+	const rows = balances ? balances.rows : summary?.balanceCheck;
+	return Boolean(rows?.some((r) => !isZeroDecimal(r.difference)));
+}
+
 export function classifyIncompleteSync(
 	summary: SyncSummary | null | undefined,
 	balances: ConnectionBalances | null | undefined,
@@ -94,6 +102,7 @@ export function SyncSummaryPanel({
 		connectionLastSyncStatus,
 	);
 	const notes = collectSyncNotes(summary);
+	const mismatch = hasBalanceDifference(summary, balances);
 
 	return (
 		<div className="space-y-4 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-4 text-xs">
@@ -193,13 +202,13 @@ export function SyncSummaryPanel({
 					{notes.length > 0 ? (
 						<div className="space-y-1.5">
 							<h4 className="font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
-								Notes ({notes.length})
+								{mismatch ? "Notices" : "Notes"} ({notes.length})
 							</h4>
 							<ul className="space-y-1">
 								{notes.map((note) => (
 									<li
 										key={note}
-										className="flex items-start gap-2 rounded border border-[var(--border-strong)] bg-[var(--bg-surface)] px-3 py-2 text-[var(--text-primary)]"
+										className={`flex items-start gap-2 rounded border bg-[var(--bg-surface)] px-3 py-2 text-[var(--text-primary)] ${mismatch ? "border-[var(--warning)]" : "border-[var(--border-strong)]"}`}
 									>
 										<Info
 											className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--warning)]"

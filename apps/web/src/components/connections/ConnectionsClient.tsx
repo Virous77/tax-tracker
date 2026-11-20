@@ -27,6 +27,7 @@ import { SymbolTagInput } from "@/components/connections/SymbolTagInput";
 import {
 	classifyIncompleteSync,
 	collectSyncNotes,
+	hasBalanceDifference,
 	type IncompleteSyncKind,
 	SyncSummaryPanel,
 } from "@/components/connections/SyncSummaryPanel";
@@ -79,12 +80,17 @@ function syncStatusBadge(
 	status: string | null,
 	running: boolean,
 	incompleteKind: IncompleteSyncKind | null,
+	balanceMismatch: boolean,
 ) {
 	if (running || status === "running") {
 		return <Badge tone="accent">Syncing</Badge>;
 	}
 	if (status === "completed") {
-		return <Badge tone="positive">Synced</Badge>;
+		return balanceMismatch ? (
+			<Badge tone="loss">Balance mismatch</Badge>
+		) : (
+			<Badge tone="positive">Synced</Badge>
+		);
 	}
 	if (status === "incomplete") {
 		if (incompleteKind === "synced_with_notes") {
@@ -711,6 +717,7 @@ export function ConnectionsClient() {
 															conn.lastSyncStatus,
 															isRunning,
 															incompleteKind,
+															hasBalanceDifference(summary, balances),
 														)}
 													</div>
 

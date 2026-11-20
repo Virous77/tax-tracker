@@ -312,7 +312,10 @@ test("an unknown statement operation is an unclassified transfer, not an empty F
 const statusBadge = (article: Locator) =>
 	article
 		.locator("span")
-		.filter({ hasText: /^(Synced|Synced with notes|Incomplete|Failed)$/ });
+		.filter({
+			hasText:
+				/^(Synced|Synced with notes|Balance mismatch|Incomplete|Failed)$/,
+		});
 
 async function tone(locator: Locator) {
 	return locator.evaluate((el) => {

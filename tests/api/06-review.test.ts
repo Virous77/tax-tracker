@@ -64,7 +64,10 @@ describe("GET /api/review", () => {
 					g.code,
 				).toContain(g.code);
 		}
-		expect(new Set(r.groups.map((g) => g.code)).size).toBe(r.groups.length);
+		// Phase 4: a code can have one action group and one info group.
+		expect(new Set(r.groups.map((g) => `${g.code}:${g.severity}`)).size).toBe(
+			r.groups.length,
+		);
 	});
 
 	it("missing_history: the ETH sell with no buy (2026-27)", async () => {
@@ -165,7 +168,10 @@ describe("GET /api/review", () => {
 describe("report review status and balance items", () => {
 	it("tracks invalidation through ledger, settings and actual balance changes", async () => {
 		await wipe();
-		expect((await review("?taxYear=2026-27")).reportStatus).toBe("missing");
+		// Phase 4 (2d31f5f): an input change keeps the last report as "stale" instead of deleting it.
+		expect(["missing", "stale"]).toContain(
+			(await review("?taxYear=2026-27")).reportStatus,
+		);
 		await compute("2026-27");
 		expect((await review("?taxYear=2026-27")).reportStatus).toBe("current");
 		const tx = await addManual({
@@ -175,14 +181,14 @@ describe("report review status and balance items", () => {
 			amountIn: "1",
 			inrValue: "100",
 		});
-		expect((await review("?taxYear=2026-27")).reportStatus).toBe("missing");
+		expect((await review("?taxYear=2026-27")).reportStatus).toBe("stale");
 		await compute("2026-27");
 		ok(
 			await call("PUT", "/api/settings", { json: { feeTreatment: "include" } }),
 			200,
 			api.SettingsResponseSchema,
 		);
-		expect((await review("?taxYear=2026-27")).reportStatus).toBe("missing");
+		expect((await review("?taxYear=2026-27")).reportStatus).toBe("stale");
 		await compute("2026-27");
 		ok(
 			await call("PUT", "/api/balances/actual?taxYear=2026-27", {
@@ -194,7 +200,7 @@ describe("report review status and balance items", () => {
 			200,
 			api.PutActualBalancesResponseSchema,
 		);
-		expect((await review("?taxYear=2026-27")).reportStatus).toBe("missing");
+		expect((await review("?taxYear=2026-27")).reportStatus).toBe("stale");
 		await compute("2026-27");
 		const r = await review("?taxYear=2026-27");
 		expect(r.reportStatus).toBe("current");

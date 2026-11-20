@@ -3,6 +3,13 @@ import { GENERATED } from "./support/env";
 import { expect, settled, snap, test } from "./support/fixtures";
 import { statement } from "./support/statements";
 
+// Phase 4 (2d31f5f): an input change keeps the last report as stale, so after reset() and an
+// import the Review banner is the stale one with Recompute, not "Report not computed".
+const staleBanner = (page: import("@playwright/test").Page) =>
+	page
+		.getByRole("status")
+		.filter({ hasText: "Your data changed since this report was computed." });
+
 const group = (page: import("@playwright/test").Page, title: string) =>
 	page.locator("section").filter({
 		has: page.getByRole("heading", { level: 2, name: title, exact: true }),
@@ -49,18 +56,13 @@ test("reportStatus banner prompts a compute, then the balance mismatch appears a
 	]);
 	await page.goto("/review?taxYear=2026-27");
 	await expect(page.locator(".animate-pulse")).toHaveCount(0);
-	await expect(
-		page.getByText(/Report not computed for 2026-27/).first(),
-	).toBeVisible();
+	await expect(staleBanner(page)).toBeVisible();
 	await expect(
 		page.getByRole("heading", { name: "Computed vs actual balance mismatch" }),
 	).toHaveCount(0);
 	await snap(page, "review-report-not-computed");
 
-	await page
-		.getByRole("button", { name: "Compute 2026-27 report" })
-		.first()
-		.click();
+	await staleBanner(page).getByRole("button", { name: "Recompute" }).click();
 	const mismatch = page.locator("section").filter({
 		has: page.getByRole("heading", {
 			level: 2,
@@ -68,9 +70,7 @@ test("reportStatus banner prompts a compute, then the balance mismatch appears a
 		}),
 	});
 	await expect(mismatch).toBeVisible();
-	await expect(page.getByText(/Report not computed for 2026-27/)).toHaveCount(
-		0,
-	);
+	await expect(staleBanner(page)).toHaveCount(0);
 	const row = mismatch.locator("tbody tr").filter({ hasText: "BTC" });
 	await expect(row).toContainText("Year-end balance");
 	await expect(row).toContainText("Tax year 2026-27");
@@ -90,13 +90,14 @@ test("reportStatus banner prompts a compute, then the balance mismatch appears a
 		inrValue: "1000",
 	});
 	await page.reload();
-	await expect(
-		page.getByText(/Report not computed for 2026-27/).first(),
-	).toBeVisible();
+	await expect(staleBanner(page)).toBeVisible();
 });
 
 test.describe("after computing", () => {
+	// Phase 4: the All-years view uses every year's report, and a stale 2025-26 one from reset()
+	// would hide that year's items, so both years are computed.
 	test.beforeEach(async ({ api }) => {
+		await api.compute("2025-26");
 		await api.compute("2026-27");
 	});
 
@@ -153,13 +154,19 @@ test.describe("after computing", () => {
 		const slice = rows.filter({ hasText: "Unresolved slice" });
 		await expect(slice).toContainText("Unresolved 0.01 ETH: missing_history.");
 		await expect(slice).toContainText("Reason: Missing acquisition history");
-		for (const row of [negative, slice])
-			await expect(
-				row.getByRole("link", { name: "Add missing buy" }),
-			).toHaveAttribute(
-				"href",
-				"/transactions?add=buy&asset=ETH&taxYear=2026-27",
-			);
+		await expect(
+			negative.getByRole("link", { name: "Add missing buy" }),
+		).toHaveAttribute(
+			"href",
+			"/transactions?add=buy&asset=ETH&taxYear=2026-27",
+		);
+		// Phase 4: the slice's link dates the new buy just before the sale.
+		await expect(
+			slice.getByRole("link", { name: "Add missing buy" }),
+		).toHaveAttribute(
+			"href",
+			"/transactions?add=buy&asset=ETH&taxYear=2026-27&before=2026-05-15T10%3A00%3A00.000Z",
+		);
 		// The swap itself is not repeated as a ledger item in this group.
 		await expect(rows.filter({ hasText: "Inspect" })).toHaveCount(0);
 		await snap(page, "review-negative-holding");
@@ -263,49 +270,48 @@ test.describe("after computing", () => {
 	});
 });
 
-test("All years: after Compute the banner no longer says that year is not computed", async ({
+test("All years: after Recompute the stale banner goes away", async ({
 	page,
 }) => {
-	// Review without ?taxYear needs every rule year computed; the button must compute
-	// every year in computeTaxYears, not the default year again and again (BUGS N1).
+	// Review without ?taxYear needs every rule year current; Recompute must compute every year
+	// in computeTaxYears, not the default year again and again (BUGS N1).
 	await page.goto("/review");
 	await expect(page.locator(".animate-pulse")).toHaveCount(0);
-	await expect(
-		page.getByText(/Reports not computed for 2025-26, 2026-27/),
-	).toBeVisible();
-	await page
-		.getByRole("button", { name: "Compute 2025-26 & 2026-27 reports" })
-		.click();
+	await expect(staleBanner(page)).toBeVisible();
+	await staleBanner(page).getByRole("button", { name: "Recompute" }).click();
 	await expect(
 		page.getByRole("heading", { name: "Missing acquisition history" }),
 	).toBeVisible();
 	await expect(
-		page.getByText(/Reports? not computed for/),
+		staleBanner(page),
 		"both years were just computed; the banner must go away",
 	).toHaveCount(0);
 	await page.reload();
 	await expect(
 		page.getByRole("heading", { name: "Missing acquisition history" }),
 	).toBeVisible();
-	await expect(page.getByText(/Reports? not computed for/)).toHaveCount(0);
+	await expect(staleBanner(page)).toHaveCount(0);
 });
 
-test("All years with one year computed names only the missing year", async ({
+// The "Not computed: <year>" wording needs a year that was never computed, which only a fresh
+// database has; here the other year is stale, and Recompute computes just that one.
+test("All years with one year current recomputes only the stale year", async ({
 	page,
 	api,
 }) => {
 	await api.compute("2026-27");
 	await page.goto("/review");
 	await expect(page.locator(".animate-pulse")).toHaveCount(0);
-	const banner = page.getByRole("status").filter({ hasText: "not computed" });
-	await expect(banner).toContainText(
-		"Report not computed for 2025-26 — some checks",
-	);
-	await expect(banner).toContainText(
-		"Computed: 2026-27 · Not computed: 2025-26",
-	);
-	await banner.getByRole("button", { name: "Compute 2025-26 report" }).click();
+	const banner = staleBanner(page);
+	await expect(banner).toBeVisible();
+	const computed: string[] = [];
+	page.on("request", (req) => {
+		const m = /\/api\/reports\/([\d-]+)\/compute$/.exec(req.url());
+		if (m && req.method() === "POST") computed.push(m[1] as string);
+	});
+	await banner.getByRole("button", { name: "Recompute" }).click();
 	await expect(banner).toHaveCount(0);
+	expect(computed).toEqual(["2025-26"]);
 	await expect(
 		page.getByRole("button", { name: /Compute .* report/ }),
 	).toHaveCount(0);

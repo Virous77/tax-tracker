@@ -56,9 +56,10 @@ describe("what clears a stored report", () => {
 			200,
 			api.PutSettingsResponseSchema,
 		);
+		// Phase 4 (2d31f5f): the last reports are kept as "stale"; GET still answers 404 with the cause.
 		expect(await statuses()).toEqual({
-			"2025-26": "missing",
-			"2026-27": "missing",
+			"2025-26": "stale",
+			"2026-27": "stale",
 		});
 		expect(await missingCause("2025-26")).toBe("settings_changed");
 		expect(await missingCause("2026-27")).toBe("settings_changed");
@@ -139,7 +140,7 @@ describe("what clears a stored report", () => {
 		expect(await missingCause("2026-27")).toBe("balances_changed");
 		expect(await statuses()).toEqual({
 			"2025-26": "current",
-			"2026-27": "missing",
+			"2026-27": "stale",
 		});
 	});
 });

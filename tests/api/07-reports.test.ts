@@ -264,8 +264,9 @@ describe("golden cases through the API", () => {
 			totalTax: "0.00",
 			netPayable: "0.00",
 		});
-		expect(r.scheduleVdaRows).toHaveLength(1);
-		expect(r.scheduleVdaRows[0]).toMatchObject({ costOfAcquisition: null });
+		// Phase 4: the unresolved sale is no longer a Schedule VDA row; the report is incomplete.
+		expect(r.scheduleVdaRows).toEqual([]);
+		expect(r.incomplete).toBe(true);
 		expect(r.unresolved).toEqual([
 			{ txId: tx.id, asset: "ETH", quantity: "1", reason: "missing_history" },
 		]);

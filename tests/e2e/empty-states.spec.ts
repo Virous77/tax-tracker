@@ -130,7 +130,8 @@ test("settings shows defaults on a fresh install", async ({ page }) => {
 	await settled(page);
 	await expect(page.getByLabel("Fee & GST treatment")).toHaveValue("exclude");
 	await expect(page.getByLabel("Surcharge rate")).toHaveValue("0");
-	await expect(page.getByLabel("Default tax year")).toHaveValue("2026-27");
+	// Phase 4 (2d31f5f): a fresh install defaults to the latest completed year in IST.
+	await expect(page.getByLabel("Default tax year")).toHaveValue("2025-26");
 	await expect(page.getByLabel("OpenAI-compatible base URL")).toHaveValue(
 		"http://ollama:11434/v1",
 	);

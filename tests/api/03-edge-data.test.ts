@@ -170,10 +170,9 @@ describe("tests/data edge-case pack (tests/data/README.md)", () => {
 		);
 		expect(s).toMatchObject({ rowsRead: 1, rowsInserted: 1, rowsError: 0 });
 		const r = await compute("2026-27");
-		const ethRows = r.scheduleVdaRows.filter((x) => x.asset === "ETH");
-		expect(ethRows.length).toBeGreaterThan(0);
-		for (const row of ethRows)
-			expect(row.costOfAcquisition, "never zero cost").toBeNull();
+		// Phase 4: an unresolved sale is kept out of Schedule VDA and marks the report incomplete.
+		expect(r.scheduleVdaRows.filter((x) => x.asset === "ETH")).toEqual([]);
+		expect(r.incomplete).toBe(true);
 		expect(r.unresolved.map((u) => [u.asset, u.reason])).toContainEqual([
 			"ETH",
 			"missing_history",

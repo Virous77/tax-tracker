@@ -942,3 +942,140 @@ Screenshots: `tests/e2e/screenshots/phase4/` (disclaimer, sample report/imports,
     should explain the swap/`priceQuote` convention, and `check.mjs` should print the first differing row.
   - **D3 (tool, cosmetic).** Running `recipes:new` with an existing id throws a raw `EEXIST` stack trace instead of a
     one-line message.
+
+---
+
+# Phase 4 final — browser E2E, 2026-11-20
+
+Image `tax-tracker-app:local` built from `main` at `93670fd` (not rebuilt). `TAX_TRACKER_IMAGE=tax-tracker-app:local`
+was set for every compose call. The stacks are the same as in the Phase 4 round above:
+
+- Phase 1 + Phase 4 ran with `pnpm test:e2e`: `taxe2e*` on 3102–3106.
+- Phase 2 ran on `taxe2e2` (3112), with mock-sync on 11602 and
+  `PHASE2_ONLY=1 pnpm exec playwright test -c tests/e2e/phase2.config.ts --project=phase2`.
+
+## Results
+
+**Phase 1 + Phase 4: 173 tests, 171 pass, 2 fail (2.5 min).** Both failures are new bug tests in `phase4-bugs.spec.ts`.
+
+| Spec                        | Pass | Fail |
+| --------------------------- | ---- | ---- |
+| `empty-states.spec.ts`      | 7    | 0    |
+| `import.spec.ts`            | 10   | 0    |
+| `imports-list.spec.ts`      | 3    | 0    |
+| `recipe-wizard.spec.ts`     | 7    | 0    |
+| `report.spec.ts`            | 6    | 0    |
+| `responsive-a11y.spec.ts`   | 32   | 0    |
+| `review.spec.ts`            | 11   | 0    |
+| `round3.spec.ts`            | 13   | 0    |
+| `screenshots.spec.ts`       | 4    | 0    |
+| `settings.spec.ts`          | 5    | 0    |
+| `shell.spec.ts`             | 9    | 0    |
+| `transactions.spec.ts`      | 6    | 0    |
+| `password.spec.ts`          | 11   | 0    |
+| `phase4.spec.ts` (24 → 47)  | 47   | 0    |
+| `phase4-bugs.spec.ts` (new) | 0    | 2    |
+
+**Phase 2: 97 tests, 97 pass.**
+
+- The full run (15.1 min) gave 95/97. The 2 failures were assertion and harness changes, listed below.
+- After those changes, `phase2-regression` and `phase2-report-settings` ran again: 22/22.
+- Per spec: connections 16, import 9, regression 19, report-settings 3, responsive-a11y 34, sync 10, venue 6.
+
+## Fixed and verified
+
+- **N1 / checklist.** "Mark checked" per row and "Mark all as checked" (with a confirm dialog; Cancel keeps the group)
+  persist after a recompute and a reload. Step 3 of the checklist completes, and the notice says "Your tax figures are
+  unchanged." (`phase4 › review checking and stale reports`, `fixed bugs › N1 (fixed)`).
+- **Stale banner.**
+  - Review and Report show "Your data changed since this report was computed." with the last figures, and Recompute
+    clears it.
+  - While the report is stale, checklist step 3 is not done.
+  - A default-year save does not make the report stale.
+- **Wizard on `examples/generic-unknown-exchange.SYNTHETIC.csv`.**
+  - Defaults: `Trade` as the Buy/Sell side column (not the type column), `side_column`, the name "generic unknown
+    exchange.SYNTHETIC", and the known quote `INR`.
+  - Cancel → Keep for later leaves a row on Imports reading "Waiting for a column mapping — Map columns / Delete", and
+    Map columns reopens the wizard. Cancel → Delete import removes it, and so does the row's own Delete.
+  - The README mapping imports 3 rows.
+- **One tax year.** A year picked on Overview carries over to Report, and back.
+- **Source labels.** Transactions show "Generic CSV · <recipe name>", with no `csv:<hash>` and no "Generic CSV (".
+  Imports does not show the recipe name (P4-E2E-4).
+- **Inspect titles.** A Binance swap is titled "Swap · USDT → BTC", the form being "Swap · <given> → <received>"; a
+  manual sale is "Sell · BTC".
+- **Earlier Phase 4 items, all passing:**
+  - the Notes section is collapsed and counted apart;
+  - Overview, Review and the checklist agree;
+  - the demo year on Overview (**P4-E2E-1 fixed**);
+  - the incomplete report on Report and Overview, and "Add missing buy" dated before the sale;
+  - the restore steps match `docs/install.md`;
+  - the TZ column shows the zone used;
+  - no 404s on Overview or Report.
+- **P4-E2E-2 fixed.** `phase2-import` passes 9/9.
+- **P4-E2E-3 not reproduced.** `password.spec.ts` passes 11/11. The API side, proxy prefetch → 204 and RSC → 401, is
+  covered in `tests/api/25`.
+
+## New bugs (ranked)
+
+### P4-E2E-5. Medium — Overview shows a stale report's figures with no warning
+
+- **Steps:**
+  1. Compute 2026-27 for the worked example.
+  2. Add any transaction.
+  3. Open Overview for 2026-27.
+- **Expected:** the same "Your data changed since this report was computed." banner with Recompute as on Report and
+  Review, or no figures at all.
+- **Actual:** Overview shows the old figures (net payable ₹13,100.00) as if they were current, with no notice. The
+  Review count also includes the old report's items. The same happens after a reset: the screenshot in this round showed
+  ₹13,100 next to an almost empty ledger.
+- **Cause:** `api.getReportState()` returns a `stale: true` report as `ready`, and `OverviewClient.tsx` never reads
+  `report.stale`. It should render `StaleReportBanner` the way `ReportClient.tsx` does.
+- **Test (fails):** `phase4-bugs.spec.ts › P4-E2E-5: Overview says when its figures come from a stale report`.
+
+### P4-E2E-4. Low — Imports never shows the recipe name for a generic CSV
+
+- **Steps:** import `examples/generic-unknown-exchange.SYNTHETIC.csv` through the wizard and save the recipe as
+  "E2E Example Exchange".
+- **Expected:** the Imports row (and the "Import complete" card) says "Generic CSV · E2E Example Exchange", as
+  Transactions does.
+- **Actual:** both say "Generic CSV".
+- **Cause:** the import's `source` is `generic`, while its ledger rows carry `csv:<fingerprint>`.
+  `ImportsClient.tsx` looks the recipe name up by fingerprint from `imp.source`, so it never matches. Use the
+  recipe/fingerprint on the import, or the server `sourceLabel`.
+- **Test (fails):** `phase4-bugs.spec.ts › P4-E2E-4: Imports names the recipe of a generic CSV import, as Transactions
+  does`.
+
+## Harness changes
+
+- **`support/fixtures.ts` `AppApi.reset()`** now also computes 2025-26 and 2026-27 on the empty ledger.
+  - Since `2d31f5f`, a wipe leaves the last report as `stale`, and a stale report keeps supplying Review items. Without
+    this, every spec saw leftover items from deleted rows.
+  - Specs therefore start with current, empty reports, and an import makes them stale, not "missing".
+- **New `phase4-bugs.spec.ts`** runs on the `main` project and is not serial. Open bug tests no longer skip the rest of
+  the serial `phase4.spec.ts`, whose last describe is now "fixed bugs".
+
+## Assertion changes (intended Phase 4 changes only)
+
+- **Stale instead of missing.** "Report cleared for …" and "Report not computed for …" are now the stale banner with
+  Recompute:
+  - `round3 › a cleared report explains why` now checks the cause in the API's 404 details;
+  - `settings.spec` `recompute()`;
+  - `review.spec` banner tests;
+  - "All years …" now recomputes only the stale year.
+- **Fresh default year** is 2025-26 (`empty-states`, `phase4 › getting started`).
+- **TZ cell** reads "IST" + "your answer" (`imports-list`); `phase4`'s TZ check is scoped to the zone cell.
+- **`review.spec` "Add missing buy"** on an unresolved slice carries `&before=<sale time>`. "After computing" computes
+  both years.
+- **`round3` single sale without a buy** shows "Schedule VDA (0 rows)" plus "Unresolved Disposal Slices (1)". Overview's
+  header button is "Compute report".
+- **`phase2-regression`:** a repeated report warning is one Review row per linked transaction (needed for per-row
+  checking), not one "(×2)" row.
+- **`phase2-report-settings`:** the header button may read "Recompute report".
+
+## Observations
+
+- **A check can come back after an unrelated change.** Adding the missing USDT buy gives a checked Binance swap an INR
+  value, so its `tds_not_deducted` item is "changed" and shows again. This is consistent with "changed items reappear",
+  but users may read it as a lost check.
+- **The ×N chip is never shown.** With one row per linked transaction, the "(×N)" chip from P2-E2E-7 no longer appears
+  in Review.

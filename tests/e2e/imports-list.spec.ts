@@ -20,7 +20,8 @@ test("lists every import with its counts", async ({ page }) => {
 	await expect(coindcx.getByRole("cell")).toHaveText([
 		"coindcx-report.xlsxCoinDCX Trade Report",
 		"CoinDCX",
-		"IST",
+		// Phase 4: the zone cell also says where the zone came from.
+		"ISTyour answer",
 		"imported",
 		"10",
 		"8",

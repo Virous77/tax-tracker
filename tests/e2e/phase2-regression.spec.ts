@@ -204,7 +204,7 @@ test("repeated flags of one code merge into one chip without a count and list th
 	await expect(reviewItems.nth(1)).toContainText("second note about this row");
 });
 
-test("Review groups repeated report warnings into one row with a ×N count", async ({
+test("Review lists a repeated report warning once per linked row", async ({
 	page,
 	api,
 }) => {
@@ -231,8 +231,9 @@ test("Review groups repeated report warnings into one row with a ×N count", asy
 	const warning = group
 		.locator("tbody tr")
 		.filter({ hasText: "Report warning" });
-	await expect(warning).toHaveCount(1);
-	await expect(warning).toContainText("(×2)");
+	// Phase 4 (2d31f5f): each linked row is its own report item so it can be checked on its own.
+	await expect(warning).toHaveCount(2);
+	await expect(warning.filter({ hasText: "(×2)" })).toHaveCount(0);
 	await shot(page, "review-grouped-report-warning");
 });
 

@@ -114,8 +114,10 @@ test("report prices disabled with settings link, fetch job updates counts, trail
 	await expect(page.getByText(/^Cached:/).first()).toHaveText(
 		`Cached: ${after.cached}`,
 	);
+	// Phase 4: reset() leaves a computed (now stale) report, so the header button may say Recompute.
 	await page
-		.getByRole("button", { name: "Compute report", exact: true })
+		.getByRole("button", { name: /^(Compute|Recompute) report$/ })
+		.first()
 		.click();
 	await expect(
 		page.getByRole("button", { name: "Recompute report" }),

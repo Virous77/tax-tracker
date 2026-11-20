@@ -66,7 +66,15 @@ describe("settings", () => {
 			api.PutSettingsResponseSchema,
 		);
 		expect(after.surchargeRate).toBe("0.15");
-		expect({ ...after, surchargeRate: before.surchargeRate }).toEqual(before);
+		// Phase 4: every settings save moves settingsSavedAt forward.
+		expect({
+			...after,
+			surchargeRate: before.surchargeRate,
+			settingsSavedAt: before.settingsSavedAt,
+		}).toEqual(before);
+		expect(Date.parse(after.settingsSavedAt ?? "")).toBeGreaterThanOrEqual(
+			Date.parse(before.settingsSavedAt ?? "0"),
+		);
 		const read = ok(
 			await call("GET", "/api/settings"),
 			200,

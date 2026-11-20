@@ -82,6 +82,9 @@ export class AppApi {
 		await this.json("PUT", "/api/settings", DEFAULT_SETTINGS);
 		for (const year of ["2025-26", "2026-27"])
 			await this.json("PUT", `/api/balances/actual?taxYear=${year}`, []);
+		// Phase 4 keeps the last report as "stale" instead of deleting it, and a stale report keeps
+		// supplying Review items. Computing on the empty ledger gives every spec a clean start.
+		for (const year of ["2025-26", "2026-27"]) await this.compute(year);
 	}
 
 	addManual(tx: ManualTx) {

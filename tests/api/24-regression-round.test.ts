@@ -509,9 +509,15 @@ describe("merged flag reasons are joined by a newline (server 7426d76)", () => {
 		(await allTx()).find((t) => t.id === id)?.reviewFlags ?? [];
 
 	it("one flag per code; duplicate reasons dropped; reasons kept as separate lines", async () => {
+		// Phase 4 (2d31f5f): flags also carry severity and txId.
 		expect(await flags()).toEqual([
-			{ code: "parse_warning", message: merged },
-			{ code: "tds_not_deducted", message: "no TDS on this row" },
+			{ code: "parse_warning", message: merged, severity: "action", txId: id },
+			{
+				code: "tds_not_deducted",
+				message: "no TDS on this row",
+				severity: "action",
+				txId: id,
+			},
 		]);
 	});
 	it("a single reason keeps its own wording (no added full stop)", async () => {

@@ -661,3 +661,118 @@ None found in the API.
 - **The migration simulation leaves orphaned demo rows.** It drops the `demo` column, so the old sample imports come
   back as non-demo. A later `POST /api/demo` then hits their `demo:` source references and returns 500 "The operation
   could not be completed." Only a hand-edited database can reach this, but the 500 would be clearer as a 409.
+
+---
+
+# Phase 4 final — API regression, 2026-11-20
+
+Image `tax-tracker-app:local` built from `main` at `93670fd` (it contains `6dc0e2a` contract, `ff1474d` UI, `2d31f5f`
+server and `93670fd`; not rebuilt). `TAX_TRACKER_IMAGE=tax-tracker-app:local` was set for every compose call. Stack
+`taxapi3` on 3111 (`tests/api/phase2.env`), mock-sync on 11601, mock LLM on 11511, fresh data dir, `pnpm -r build` first.
+The suite ran in parts (`01–13`, `14–17`, `18–24`, `25`), and the changed files were run again after their fixes.
+
+**Result: 953 tests, 951 pass, 2 fail.** Both failures are the new bug P4-API-1.
+
+| Part / file                                  | Tests   | Pass    | Fail  |
+| -------------------------------------------- | ------- | ------- | ----- |
+| `01-health-settings`                         | 34      | 34      | 0     |
+| `02-imports`                                 | 36      | 36      | 0     |
+| `03-edge-data`                               | 14      | 14      | 0     |
+| `04-recipes`                                 | 24      | 24      | 0     |
+| `05-transactions`                            | 54      | 53      | 1     |
+| `06-review`                                  | 11      | 11      | 0     |
+| `07-reports`                                 | 29      | 29      | 0     |
+| `08-exports`                                 | 19      | 19      | 0     |
+| `09-auth` (+1: `POST /api/review/resolve`)   | 61      | 61      | 0     |
+| `10-security`                                | 32      | 32      | 0     |
+| `11-research`                                | 8       | 8       | 0     |
+| `12-server-round2`                           | 13      | 13      | 0     |
+| `13-round3`                                  | 11      | 11      | 0     |
+| `14–17` (vault, providers, Binance, CoinDCX) | 179     | 179     | 0     |
+| `18-sync-evm`                                | 45      | 45      | 0     |
+| `18b-gate`                                   | 32      | 32      | 0     |
+| `19-prices`                                  | 22      | 22      | 0     |
+| `20-import-kinds`                            | 54      | 54      | 0     |
+| `21-pdf-snapshots`                           | 27      | 27      | 0     |
+| `22-dedupe-supersede`                        | 16      | 16      | 0     |
+| `23-phase2-security`                         | 37      | 37      | 0     |
+| `24-regression-round`                        | 40      | 40      | 0     |
+| `25-phase4` (70 → 155)                       | 155     | 154     | 1     |
+| **Total**                                    | **953** | **951** | **2** |
+
+The gate (`18b`) is still zero everywhere. There were no flakes.
+
+## Fixed and verified (with the test that shows it)
+
+- **N1, durable review checks.** `25 › final: review resolutions`:
+  - `POST /api/review/resolve` per transaction (`txIds`) and per group (no `txIds`), including report items with no
+    transaction; the group totals drop at once;
+  - checks survive an unchanged recompute and an app restart;
+  - a new item in a checked group reappears and the checked ones stay checked;
+  - a changed row (new `inrValue`) brings its flag back;
+  - an item that disappears on a recompute needs a fresh check when it returns;
+  - checking changes neither the tax figures nor freshness: totals, rows, TDS and warnings are equal, GET still 200,
+    `reportStatus: current`;
+  - `PATCH resolveFlags` on its own records the same durable check (the old "P4-API-1" draft test now passes and was
+    renamed);
+  - validation: 400 for an unknown code, a bad year, an unknown key, a note over 500 characters, or non-array `txIds`;
+    401 without a session; 403 cross-origin even with a session.
+- **Stale reports.** `25 › final: stale reports and ?allowMissing`:
+  - a ledger, engine-setting or actual-balance change keeps the last snapshot. `?allowMissing=true` returns it with
+    `stale: true`, and it is otherwise deep-equal to the report before the change. Plain GET and every export still
+    answer 404 `report_not_computed` with the right `cause`;
+  - the first `invalidatedAt` is kept, Review says `stale`, `computeTaxYears` lists the year, and staleness survives a
+    restart;
+  - saving `defaultTaxYear`, `ai`, `prices` or an unchanged engine setting does not make the report stale;
+  - a never-computed year still gives `{status: "missing", cause: "never_computed", invalidatedAt: null}`.
+- **Default tax year** on a fresh database is `2025-26`, the latest completed year in IST.
+- **Severity and totals** (`25 › final: review severity and totals`):
+  - file-interpretation notes and the CA notice are `info`; `totals` equals the sum of the group counts;
+  - only info items remain once every action item is fixed or checked (CoinDCX and Binance).
+- **`settingsSavedAt`, demo `taxYears`, `includesDemoData` only for the year holding the sample, incomplete reports
+  (unresolved sales kept out of `scheduleVdaRows`, "Incomplete" in exports), ITR column titles, TDS venue labels,
+  `examples/` imports with 0 errors (the generic file via the README recipe), and the proxy (prefetch → 204; RSC → 401;
+  a document → redirect to `/login?next=`):** the draft tests from the interrupted round are kept and all pass.
+- **`sourceLabel`.** Review and transaction rows say `Binance` / `CoinDCX`, and TDS `bySource` carries `sourceLabel`. A
+  generic CSV with a saved recipe is `Generic CSV · <recipe name>` in the transactions, the TDS rows and the TDS CSV, with
+  no `csv:<hash>`. It falls back to `Generic CSV` once the recipe is deleted.
+- **Pending-recipe wording.** "`<file>` is still waiting for a column mapping — open Imports → Map columns, or delete it."
+  appears in Review and the report warnings, with no `pending_recipe` or "excluded rows".
+
+## New bugs
+
+### P4-API-1. Medium — editing a row and checking its flag in one save does not stick
+
+- **Steps:**
+  1. Take a row with an action flag, for example `parse_warning`.
+  2. Send `PATCH /api/transactions/:id {inrValue: "16000", resolveFlags: ["parse_warning"]}`. The Inspect drawer sends
+     exactly this when the user edits the INR value and ticks the flag in one Save.
+- **Expected:** the flag is checked. It is gone from the PATCH response and from Review.
+- **Actual:** the response still has the flag, and Review still lists the row.
+- **Cause:** `apps/web/src/server/transactions.ts` `patchTransaction` saves the check before the update. The check's
+  fingerprint includes `transactionTaxInputs(tx)`, so the edit itself makes the item "changed" and it comes straight back.
+  Save the check against the patched row instead, or record it after `db.transactions.update`.
+- **Tests (fail):**
+  - `05-transactions › PATCH › edits type, inrValue, note and resolves flags` (unchanged Phase 1 assertion);
+  - `25-phase4 › final: review resolutions › P4-API-1: PATCH that edits the value and resolves a flag in one request
+    keeps it resolved`.
+
+## Assertion changes (intended Phase 4 changes only)
+
+- `01` `settingsSavedAt` moves on every save. `03`/`07`: an unresolved sale is no longer a Schedule VDA row
+  (`incomplete: true`). `06`/`13`: a report after an input change is `stale` instead of `missing`; `12` accepts
+  `missing` or `stale` for a year an earlier file may have computed. `12`: plain import wording
+  ("broken.csv has 1 excluded rows…"). `24`: flags carry `severity` and `txId`.
+- `25`, earlier tests:
+  - the `realRows()` comparison leaves out `reviewFlags`, because a stale report keeps merging its warnings into rows;
+  - the pre-migration simulation now targets `0009` (drops `review_resolutions`) instead of `0008`, so after boot the
+    demo flag survives and the app has 3 demo imports;
+  - `allowMissing` "missing" uses a fresh stack, since a wipe now leaves a stale report.
+
+## Observations (no bug filed)
+
+- **Stale reports keep items for deleted rows.** After deleting every import, Review keeps listing the old report's
+  items, each with "View 1 transaction" to a row that no longer exists, until the next compute. The stale banner
+  explains it, but the links lead nowhere.
+- **A year without rules is accepted.** `GET /api/review?taxYear=2019-20` lists the year in `computeTaxYears`, and
+  `POST /api/review/resolve` answers `{resolved: 0}`. Compute answers 404 for that year. This is consistent but odd.

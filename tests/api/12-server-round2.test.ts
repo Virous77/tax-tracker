@@ -38,10 +38,12 @@ describe("per-year report status", () => {
 	it("All years identifies exactly which report still needs computing", async () => {
 		expect((await review()).computeTaxYears).toEqual(["2025-26", year]);
 		await compute(year);
+		// Phase 4 (2d31f5f): 2025-26 is "missing" on a fresh DB, "stale" if an earlier file computed it.
+		const notCurrent = expect.stringMatching(/^(missing|stale)$/);
 		expect(await review()).toMatchObject({
-			reportStatus: "missing",
+			reportStatus: notCurrent,
 			reportStatuses: [
-				{ taxYear: "2025-26", status: "missing" },
+				{ taxYear: "2025-26", status: notCurrent },
 				{ taxYear: year, status: "current" },
 			],
 			computeTaxYears: ["2025-26"],
@@ -240,7 +242,8 @@ describe("report-derived review problems", () => {
 		const report = await compute(year);
 		for (const [code, text] of [
 			["ca_verification_pending", "Section numbers"],
-			["import_incomplete", "Import broken.csv"],
+			// Phase 4 (2d31f5f): plain wording that names the file first.
+			["import_incomplete", "broken.csv has 1 excluded rows"],
 		]) {
 			expect(
 				report.warnings.find((w) => w.message.startsWith(text))?.code,

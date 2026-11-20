@@ -20,16 +20,16 @@ async function saveSettings(page: Page) {
 async function recompute(page: Page, year = "2026-27") {
 	await page.goto(`/report?taxYear=${year}`);
 	await settled(page);
-	// Saving settings invalidates stored reports (by design); the empty state names the cause.
-	await expect(
-		page.getByRole("heading", { name: `Report cleared for ${year}` }),
-	).toBeVisible();
-	await expect(
-		page.getByText(
-			/Your report was cleared because tax engine settings changed on \d{2} \w{3} \d{4}, \d{2}:\d{2} IST/,
-		),
-	).toBeVisible();
-	await page.getByRole("button", { name: `Compute ${year} report` }).click();
+	// Phase 4: a tax-setting change keeps the last report under a stale banner; the API names the cause.
+	const res = await page.request.get(`/api/reports/${year}`);
+	expect(res.status()).toBe(404);
+	expect((await res.json()).error.details.cause).toBe("settings_changed");
+	const stale = page
+		.getByRole("status")
+		.filter({ hasText: "Your data changed since this report was computed." });
+	await expect(stale).toBeVisible();
+	await stale.getByRole("button", { name: "Recompute" }).click();
+	await expect(stale).toHaveCount(0);
 	await expect(
 		page.getByRole("button", { name: "Recompute report" }),
 	).toBeEnabled();

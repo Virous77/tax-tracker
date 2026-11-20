@@ -11,7 +11,10 @@ import { statement } from "./support/statements";
 const STATEMENT_NAME = "statement-grouped-legs.csv";
 const SKIP_REASON =
 	"Statement leg is preserved in the grouped transaction raw rows.";
-const CLEARED_AT = String.raw`on \d{2} \w{3} \d{4}, \d{2}:\d{2} IST`;
+const staleBanner = (page: Page) =>
+	page
+		.getByRole("status")
+		.filter({ hasText: "Your data changed since this report was computed." });
 
 function stat(scope: Page | Locator, label: string) {
 	return scope
@@ -162,26 +165,26 @@ test.describe("a cleared report explains why", () => {
 		).toBeEnabled();
 	}
 
+	// Phase 4 (2d31f5f): the last report is kept as stale; the cause is in the API's 404 details,
+	// and Report shows a stale banner with Recompute instead of the "Report cleared" empty state.
 	async function expectCleared(page: Page, cause: string) {
-		const re = new RegExp(
-			`^Your report was cleared because ${cause} ${CLEARED_AT} — compute again`,
-		);
+		const res = await page.request.get("/api/reports/2026-27");
+		expect(res.status()).toBe(404);
+		const details = (await res.json()).error.details;
+		expect(details.cause).toBe(cause);
+		expect(Date.parse(details.invalidatedAt)).not.toBeNaN();
 		await page.goto("/report?taxYear=2026-27");
 		await settled(page);
-		await expect(
-			page.getByRole("heading", { name: "Report cleared for 2026-27" }),
-		).toBeVisible();
-		await expect(page.getByText(re)).toBeVisible();
-		await page.goto("/?taxYear=2026-27");
-		await settled(page);
-		await expect(
-			page.getByRole("heading", { name: "Report cleared for 2026-27" }),
-		).toBeVisible();
-		await expect(page.getByText(re)).toBeVisible();
-		await page.getByRole("button", { name: "Compute 2026-27 report" }).click();
+		const stale = staleBanner(page);
+		await expect(stale).toBeVisible();
 		await expect(
 			page.getByRole("heading", { name: "Report cleared for 2026-27" }),
 		).toHaveCount(0);
+		await stale.getByRole("button", { name: "Recompute" }).click();
+		await expect(stale).toHaveCount(0);
+		await page.goto("/?taxYear=2026-27");
+		await settled(page);
+		await expect(page.getByText(/Report cleared for/)).toHaveCount(0);
 	}
 
 	test("ledger change", async ({ page, api }) => {
@@ -194,14 +197,14 @@ test.describe("a cleared report explains why", () => {
 			amountIn: "1",
 			inrValue: "1000",
 		});
-		await expectCleared(page, "transactions changed");
+		await expectCleared(page, "ledger_changed");
 		await snap(page, "overview-after-recompute");
 	});
 
 	test("settings change", async ({ page, api }) => {
 		await computeAndCheck(page, api);
 		await api.putSettings({ surchargeRate: "0.10" });
-		await expectCleared(page, "tax engine settings changed");
+		await expectCleared(page, "settings_changed");
 	});
 
 	test("actual balances change", async ({ page, api }) => {
@@ -209,7 +212,7 @@ test.describe("a cleared report explains why", () => {
 		await api.json("PUT", "/api/balances/actual?taxYear=2026-27", [
 			{ asset: "ETH", amount: "0" },
 		]);
-		await expectCleared(page, "actual balances changed");
+		await expectCleared(page, "balances_changed");
 	});
 
 	test("first cause is kept until recompute; API details match", async ({
@@ -233,9 +236,7 @@ test.describe("a cleared report explains why", () => {
 		expect(body.error.details.cause).toBe("settings_changed");
 		expect(Date.parse(body.error.details.invalidatedAt)).not.toBeNaN();
 		await page.goto("/report?taxYear=2026-27");
-		await expect(
-			page.getByText(/cleared because tax engine settings changed/),
-		).toBeVisible();
+		await expect(staleBanner(page)).toBeVisible();
 	});
 });
 
@@ -298,7 +299,9 @@ test.describe("singular and plural wording", () => {
 			inrValue: "250000",
 		});
 		await page.goto("/?taxYear=2026-27");
-		await page.getByRole("button", { name: "Compute 2026-27 report" }).click();
+		await settled(page);
+		// Phase 4: Overview shows the stale report, so its header button is the way to compute.
+		await page.getByRole("button", { name: "Compute report" }).click();
 		await expect(
 			page
 				.locator("span")
@@ -310,7 +313,11 @@ test.describe("singular and plural wording", () => {
 			page.getByText(/1 unresolved disposal slice excluded/),
 		).toBeVisible();
 		await page.goto("/report?taxYear=2026-27");
-		await expect(page.getByText("Schedule VDA (1 row)")).toBeVisible();
+		// Phase 4: a sale with no buy history is kept out of Schedule VDA and the report is incomplete.
+		await expect(page.getByText("Schedule VDA (0 rows)")).toBeVisible();
+		await expect(
+			page.getByText("Unresolved Disposal Slices (1) — Excluded from Totals"),
+		).toBeVisible();
 		await expect(page.getByText(/\b1 (rows|transactions|items)\b/)).toHaveCount(
 			0,
 		);

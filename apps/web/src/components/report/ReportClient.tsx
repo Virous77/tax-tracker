@@ -223,8 +223,8 @@ export function ReportClient() {
 				]);
 			if (!mountedRef.current) return;
 			setLedgerEmpty(txPage?.total === 0);
-			setReportStale(review?.reportStatus === "stale");
 			const rep = repState.status === "ready" ? repState.report : null;
+			setReportStale(rep?.stale === true || review?.reportStatus === "stale");
 			setReport(rep);
 			setReportMissing(repState.status === "missing" ? repState.missing : null);
 			setPricesStatus(pStatus);

@@ -1144,7 +1144,10 @@ it.each([
 			})
 		).text();
 		expect(csv).toContain(
-			`"Generic CSV","","${tdsInr ?? "0"}.00","8100.00","${remainingDueInr}"`,
+			`"Generic CSV","","${tdsInr ?? "0"}.00","8100.00","81.00",`,
+		);
+		expect(csv).toMatch(
+			new RegExp(`"Generic CSV",.*,"${remainingDueInr}"\\r?\\n`),
 		);
 	},
 );

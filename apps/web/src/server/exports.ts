@@ -93,7 +93,8 @@ export async function exportReport(
 						({ source, sourceLabel, remainingDueInr, ...row }) => ({
 							source: sourceLabel ?? source,
 							...row,
-							possiblyDueInr: remainingDueInr ?? row.possiblyDueInr,
+							// Gross figure as in the API, then what is left after recorded TDS credit.
+							remainingDueInr: remainingDueInr ?? row.possiblyDueInr,
 						}),
 					),
 				),

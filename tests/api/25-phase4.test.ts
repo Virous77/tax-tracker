@@ -2281,36 +2281,38 @@ describe("rc: TDS remainingDueInr and the TDS export", () => {
 		expect(manualFlagged ?? []).toEqual([]);
 	});
 
-	it("the CSV TDS export's possiblyDueInr column is the remaining amount", async () => {
+	it("the CSV TDS export carries the gross possiblyDueInr and the remainingDueInr after credit", async () => {
 		const res = await call("GET", exportUrl("csv", "tds"));
 		expect(res.status).toBe(200);
 		const rows = parseCsv(res.text);
 		const header = rows.find((row) => row.includes("possiblyDueInr")) ?? [];
-		expect(header).not.toContain("remainingDueInr");
-		const col = header.indexOf("possiblyDueInr");
+		const gross = header.indexOf("possiblyDueInr");
+		const remaining = header.indexOf("remainingDueInr");
 		const src = header.indexOf("source");
+		expect(remaining).toBeGreaterThan(-1);
 		for (const row of report.tds.bySource) {
 			const line = rows.find((r) => r[src] === row.sourceLabel);
-			expect(line?.[col], row.source).toBe(row.remainingDueInr);
+			expect(line?.[gross], row.source).toBe(row.possiblyDueInr);
+			expect(line?.[remaining], row.source).toBe(row.remainingDueInr);
 		}
 	});
 
-	it("the XLSX TDS export holds the remaining amount, not the gross one", async () => {
+	it("the XLSX TDS export holds both the gross and the remaining amount", async () => {
 		const cells = (await exportText("xlsx", "tds")).split("\n");
 		expect(cells).toContain("possiblyDueInr");
-		expect(cells).not.toContain("remainingDueInr");
+		expect(cells).toContain("remainingDueInr");
 		expect(cells).toContain("1500.00");
-		expect(cells).not.toContain("2000.00");
+		expect(cells).toContain("2000.00");
 	});
 
 	it("the full export's TDS section agrees", async () => {
 		const res = await call("GET", exportUrl("csv", "full"));
 		expect(res.status).toBe(200);
 		const rows = parseCsv(res.text);
-		const header = rows.find((row) => row.includes("possiblyDueInr")) ?? [];
-		const col = header.indexOf("possiblyDueInr");
+		const header = rows.find((row) => row.includes("remainingDueInr")) ?? [];
 		const manualRow = rows.find((r) => r[0] === "Manual");
-		expect(manualRow?.[col]).toBe("1500.00");
+		expect(manualRow?.[header.indexOf("possiblyDueInr")]).toBe("2000.00");
+		expect(manualRow?.[header.indexOf("remainingDueInr")]).toBe("1500.00");
 	});
 });
 

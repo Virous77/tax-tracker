@@ -14,19 +14,24 @@ import { priceLookupFromCache } from "@tax/prices";
 import { createFxLookup, parseSbiCsv } from "@tax/rates";
 import { listTaxYears, loadRules } from "@tax/rules";
 import { runJob } from "./context";
+import { demoStatus } from "./demo";
 import { ApiError } from "./errors";
+import { presentReport, warningSeverity } from "./report-presentation";
 import { getSettings } from "./settings";
 export function groupWarnings(warnings: ReportWarning[]): ReportWarning[] {
 	const groups = new Map<string, ReportWarning>();
 	for (const warning of warnings) {
+		const severity = warningSeverity(warning);
 		const key = JSON.stringify([
 			warning.code,
+			severity,
 			warning.message,
 			warning.asset,
 			warning.source,
 		]);
 		const group = groups.get(key) ?? {
 			code: warning.code,
+			severity,
 			...(warning.asset ? { asset: warning.asset } : {}),
 			...(warning.source ? { source: warning.source } : {}),
 			message: warning.message,
@@ -141,7 +146,7 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 				"balance_pool_conflict",
 				"Update actual balances to match the selected lot pool.",
 			);
-		const bound = taxYearBounds(taxYear).endExclusiveUtc;
+		const { startUtc, endExclusiveUtc: bound } = taxYearBounds(taxYear);
 		const transactions = db.transactions
 			.active()
 			.filter((tx) => tx.timestamp < bound);
@@ -160,7 +165,10 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 				),
 			}),
 			includesDemoData: transactions.some(
-				(tx) => tx.importId && demoImports.has(tx.importId),
+				(tx) =>
+					tx.timestamp >= startUtc &&
+					tx.importId &&
+					demoImports.has(tx.importId),
 			),
 		});
 		const throughYear = new Set(
@@ -176,18 +184,30 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 				.map(({ txId }) => ({ txId, reason: "superseded" })),
 		);
 		report.warnings = groupWarnings([...report.warnings, ...warnings]);
-		return db.reports.save(report);
+		return presentReport(
+			db.reports.save(report),
+			report.includesDemoData ?? false,
+		);
 	});
 }
-export function getReport(db: TaxDatabase, taxYear: string) {
+export function getReportState(db: TaxDatabase, taxYear: string) {
 	checkYear(taxYear);
 	const report = db.reports.latest(taxYear);
-	if (!report)
+	return report
+		? presentReport(report, demoStatus(db).taxYears.includes(taxYear))
+		: { status: "missing" as const, ...db.reports.missingDetails(taxYear) };
+}
+
+export function getReport(db: TaxDatabase, taxYear: string) {
+	const result = getReportState(db, taxYear);
+	if ("status" in result) {
+		const { invalidatedAt, cause } = result;
 		throw new ApiError(
 			404,
 			"report_not_computed",
 			"Compute a report for this year first.",
-			db.reports.missingDetails(taxYear),
+			{ invalidatedAt, cause },
 		);
-	return { ...report, includesDemoData: report.includesDemoData ?? false };
+	}
+	return result;
 }

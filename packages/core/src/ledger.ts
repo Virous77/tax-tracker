@@ -48,10 +48,13 @@ export const ReviewCodeSchema = z.enum([
 	"suspected_spam",
 	"possible_duplicate",
 ]);
+export const ReviewSeveritySchema = z.enum(["action", "info"]);
+export type ReviewSeverity = z.infer<typeof ReviewSeveritySchema>;
 export const ReviewFlagSchema = z.object({
 	code: ReviewCodeSchema,
 	message: z.string(),
 	txId: z.string().optional(),
+	severity: ReviewSeveritySchema.optional(),
 });
 export type ReviewCode = z.infer<typeof ReviewCodeSchema>;
 export type ReviewFlag = z.infer<typeof ReviewFlagSchema>;
@@ -62,6 +65,8 @@ export function mergeReviewFlags(flags: ReviewFlag[]): ReviewFlag[] {
 	>();
 	for (const flag of flags) {
 		const group = byCode.get(flag.code) ?? { flag, reasons: new Map() };
+		if (group.flag.severity === "info" && flag.severity !== "info")
+			group.flag = flag;
 		for (const line of flag.message.split(/\r?\n/)) {
 			const reason = line.trim();
 			if (!reason) continue;

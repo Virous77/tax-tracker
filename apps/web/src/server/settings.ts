@@ -26,6 +26,7 @@ export function getSettings(db: TaxDatabase) {
 		...EngineSettingsSchema.parse(db.settings.get("engine") ?? {}),
 		prices: db.settings.get("prices") ?? {},
 		disclaimerAcceptedAt: db.settings.get("disclaimerAcceptedAt"),
+		settingsSavedAt: db.settings.get("settingsSavedAt"),
 		defaultTaxYear: db.settings.get("defaultTaxYear") ?? "2026-27",
 		ai: {
 			baseUrl: ai.baseUrl,
@@ -80,13 +81,17 @@ export function putSettings(db: TaxDatabase, patch: SettingsUpdate) {
 	const nextAi = { ...aiConfiguration(db), ...ai };
 	if (ai) checkAiEndpoint(nextAi);
 	db.atomic(() => {
-		if (Object.keys(engine).length)
+		const hasEnginePatch = Object.keys(engine).length > 0;
+		const savedAt = new Date().toISOString();
+		if (hasEnginePatch)
 			db.settings.set(
 				"engine",
 				EngineSettingsSchema.parse({ ...current, ...engine }),
 			);
 		if (disclaimerAccepted && !db.settings.get("disclaimerAcceptedAt"))
-			db.settings.set("disclaimerAcceptedAt", new Date().toISOString());
+			db.settings.set("disclaimerAcceptedAt", savedAt);
+		if (!disclaimerAccepted || hasEnginePatch || defaultTaxYear || ai || prices)
+			db.settings.set("settingsSavedAt", savedAt);
 		if (defaultTaxYear !== undefined)
 			db.settings.set("defaultTaxYear", defaultTaxYear);
 		if (ai) db.settings.set("ai", nextAi);

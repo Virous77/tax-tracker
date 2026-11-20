@@ -190,6 +190,8 @@ export async function handle(
 					"Content-Type": "application/vnd.sqlite3",
 					"Content-Disposition": `attachment; filename="${fileName}"`,
 					"Content-Length": String(size),
+					// Next's Node response bridge strips Content-Length from route handler responses.
+					"X-Backup-Size": String(size),
 					"Cache-Control": "no-store",
 				},
 			});

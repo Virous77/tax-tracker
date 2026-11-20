@@ -1,5 +1,6 @@
 import { D, type ReviewCode, type VdaReport } from "@tax/core";
 import type { ReportReviewItem } from "@tax/core/api";
+import { warningSeverity } from "./report-presentation";
 
 export function reportReviewItems(
 	reports: VdaReport[],
@@ -14,6 +15,7 @@ export function reportReviewItems(
 					code: "balance_mismatch",
 					item: {
 						kind: "balance",
+						severity: "action",
 						taxYear: report.taxYear,
 						message: `${context}: computed ${balance.computed}, actual ${balance.actual}`,
 						balance,
@@ -24,6 +26,7 @@ export function reportReviewItems(
 					code: "missing_history",
 					item: {
 						kind: "balance",
+						severity: "action",
 						taxYear: report.taxYear,
 						message: `Negative ${balance.asset} holding${balance.source ? ` at ${balance.source}` : ""}: ${balance.computed}`,
 						balance,
@@ -35,6 +38,7 @@ export function reportReviewItems(
 				code: unresolved.reason,
 				item: {
 					kind: "unresolved",
+					severity: "action",
 					taxYear: report.taxYear,
 					message: `Unresolved ${unresolved.quantity} ${unresolved.asset}: ${unresolved.reason}.`,
 					unresolved,
@@ -62,14 +66,15 @@ export function reportReviewItems(
 				)
 			)
 				continue;
+			const severity = warningSeverity(warning);
 			items.push({
 				code: warning.code,
 				item: {
 					kind: "warning",
 					taxYear: report.taxYear,
 					message: warning.message,
-					warning,
-					severity: "action",
+					warning: { ...warning, severity },
+					severity,
 				},
 			});
 		}

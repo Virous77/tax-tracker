@@ -325,6 +325,7 @@ it("persists column-header timezone provenance in the import list and detail", a
 		warnings: expect.arrayContaining([
 			{
 				code: "parse_warning",
+				severity: "info",
 				message: "Used UTC from the column header instead of the selected IST.",
 			},
 		]),
@@ -492,6 +493,7 @@ describe("PDF errors and snapshots", () => {
 		}
 		expect(reencodedDuplicate.warnings).toContainEqual({
 			code: "parse_warning",
+			severity: "info",
 			message: expect.stringMatching(/UTC.*instead of.*IST/),
 		});
 		expect((await database()).balanceSnapshots.list()).toHaveLength(1);

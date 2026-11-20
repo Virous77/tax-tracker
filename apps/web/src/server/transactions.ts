@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { LedgerTxSchema, mergeReviewFlags, taxYearOf } from "@tax/core";
+import {
+	LedgerTxSchema,
+	mergeReviewFlags,
+	type ReviewCode,
+	type ReviewSeverity,
+	taxYearOf,
+} from "@tax/core";
 import {
 	CreateTransactionRequestSchema,
 	PatchTransactionRequestSchema,
@@ -10,6 +16,7 @@ import type { TaxDatabase } from "@tax/db";
 import { listTaxYears } from "@tax/rules";
 import { listConnections } from "./connections";
 import { ApiError, required } from "./errors";
+import { warningSeverity } from "./report-presentation";
 import { reportReviewItems } from "./report-review";
 
 function reviewedLedger(
@@ -177,47 +184,41 @@ export function review(db: TaxDatabase, taxYear?: string) {
 			.filter(({ item }) => item.kind === "balance")
 			.map(({ code, item }) => JSON.stringify([code, item.message])),
 	);
-	const groups = new Map<
-		string,
-		{
-			code: string;
-			count: number;
-			items: ReturnType<typeof db.transactions.all>;
-			reportItems: ReportReviewItem[];
-		}
-	>();
-	for (const tx of ledger) {
-		for (const code of new Set(
-			tx.reviewFlags
-				.filter(
-					(flag) =>
-						!balanceWarnings.has(JSON.stringify([flag.code, flag.message])),
-				)
-				.map((flag) => flag.code),
-		)) {
-			if (represented.has(JSON.stringify([code, tx.id]))) continue;
-			const group = groups.get(code) ?? {
-				code,
-				count: 0,
-				items: [],
-				reportItems: [],
-			};
-			group.items.push(tx);
-			group.count++;
-			groups.set(code, group);
-		}
-	}
-	for (const { code, item } of reportItems) {
-		const group = groups.get(code) ?? {
+	type Group = {
+		code: ReviewCode;
+		severity: ReviewSeverity;
+		count: number;
+		items: ReturnType<typeof db.transactions.all>;
+		reportItems: ReportReviewItem[];
+	};
+	const groups = new Map<string, Group>();
+	const getGroup = (code: ReviewCode, severity: ReviewSeverity) => {
+		const key = JSON.stringify([code, severity]);
+		const group = groups.get(key) ?? {
 			code,
+			severity,
 			count: 0,
 			items: [],
 			reportItems: [],
 		};
-		group.reportItems.push(item);
+		groups.set(key, group);
 		group.count++;
-		groups.set(code, group);
+		return group;
+	};
+	for (const tx of ledger) {
+		for (const flag of tx.reviewFlags) {
+			if (
+				balanceWarnings.has(JSON.stringify([flag.code, flag.message])) ||
+				represented.has(JSON.stringify([flag.code, tx.id]))
+			)
+				continue;
+			getGroup(flag.code, warningSeverity(flag)).items.push(tx);
+		}
 	}
+	for (const { code, item } of reportItems)
+		getGroup(code, item.severity).reportItems.push(item);
+	const totals = { action: 0, info: 0 };
+	for (const group of groups.values()) totals[group.severity] += group.count;
 	const reportStatuses = years.map((year) => ({
 		taxYear: year,
 		status: reports.some((report) => report.taxYear === year)
@@ -233,6 +234,10 @@ export function review(db: TaxDatabase, taxYear?: string) {
 		computeTaxYears: reportStatuses
 			.filter((entry) => entry.status === "missing")
 			.map((entry) => entry.taxYear),
-		groups: [...groups.values()].sort((a, b) => a.code.localeCompare(b.code)),
+		groups: [...groups.values()].sort(
+			(a, b) =>
+				a.code.localeCompare(b.code) || a.severity.localeCompare(b.severity),
+		),
+		totals,
 	};
 }

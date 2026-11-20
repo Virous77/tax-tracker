@@ -67,6 +67,9 @@ export const reportKind: ReportKind = {
 		if (D(executed).isZero())
 			return {
 				skip: `Order ${status} has zero executed quantity; no trade occurred.`,
+				...(["canceled", "cancelled"].includes(status)
+					? { kind: "cancelled_order" as const }
+					: {}),
 			};
 		const pair = get("Pair").toUpperCase();
 		if (!/^[A-Z0-9]+-[A-Z0-9]+_[A-Z0-9]+$/.test(pair))

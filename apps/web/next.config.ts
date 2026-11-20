@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 
 const config: NextConfig = {
 	output: "standalone",
+	skipProxyUrlNormalize: true,
 	poweredByHeader: false,
 	outputFileTracingRoot: resolve(process.cwd(), "../.."),
 	serverExternalPackages: [

@@ -20,7 +20,9 @@ export interface ReportContext {
 	parseTimestamp: (value: string, format: string, date1904?: boolean) => string;
 	reference: (raw: unknown, id?: string) => string;
 }
-export type ReportRowResult = LedgerTx | { skip: string };
+export type ReportRowResult =
+	| LedgerTx
+	| { skip: string; kind?: "cancelled_order" };
 export type ReportParser = (
 	raw: Record<string, string>,
 	sheet: TableSheet,
@@ -31,11 +33,7 @@ export interface ReportKind {
 	verified?: boolean;
 	prepare?: (sheet: TableSheet, context: ReportContext) => ReportParser;
 	detect: (sheet: TableSheet) => boolean;
-	parse: (
-		raw: Record<string, string>,
-		sheet: TableSheet,
-		context: ReportContext,
-	) => LedgerTx | { skip: string };
+	parse: ReportParser;
 	allowDuplicateHeaders?: boolean;
 	timezone?: ImportTimezone;
 	warnings?: ReviewFlag[];
@@ -52,6 +50,7 @@ export function headerWarnings(sheet: TableSheet): ReviewFlag[] {
 		? [
 				{
 					code: "parse_warning",
+					severity: "info",
 					message: `Duplicate columns were renamed (${sheet.duplicateHeaders.join(", ")}); both original values are preserved under distinct keys.`,
 				},
 			]
@@ -181,6 +180,7 @@ export function parseReports(
 						rowIndex,
 						sheet: sheet.name,
 						reason: parsed.skip,
+						...(parsed.kind ? { kind: parsed.kind } : {}),
 						raw,
 					});
 				else {

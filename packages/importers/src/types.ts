@@ -52,12 +52,7 @@ export interface ImportResult {
 	warnings: ReviewFlag[];
 	sheets?: { name: string; rowsRead: number; reportKind?: string }[];
 	rowErrors: RowError[];
-	skippedRows?: {
-		rowIndex: number;
-		sheet: string;
-		reason: string;
-		raw?: unknown;
-	}[];
+	skippedRows?: (ImportSummary["skippedRows"][number] & { raw?: unknown })[];
 }
 export interface Importer {
 	id: "binance" | "coindcx" | "generic";

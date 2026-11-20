@@ -20,7 +20,7 @@ import {
 	type ReportMissingDetails,
 } from "@tax/core/api";
 import type { Database as SQLiteDatabase } from "better-sqlite3";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { backupDatabase, openMigratedDatabase } from "./backup.js";
 import { phase2Repositories } from "./phase2.js";
@@ -130,6 +130,22 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 					.orderBy(schema.imports.id)
 					.all()
 					.map(({ id }) => id),
+			activeDemoTimestamps: () =>
+				orm
+					.select({ timestamp: schema.transactions.timestamp })
+					.from(schema.transactions)
+					.innerJoin(
+						schema.imports,
+						eq(schema.imports.id, schema.transactions.importId),
+					)
+					.where(
+						and(
+							eq(schema.imports.demo, true),
+							isNull(schema.transactions.supersededBy),
+						),
+					)
+					.all()
+					.map(({ timestamp }) => timestamp),
 			syncConnections: (id: string): string[] => {
 				const related = sqlite
 					.prepare(

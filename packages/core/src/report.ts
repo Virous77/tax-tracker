@@ -152,8 +152,10 @@ export const VdaReportSchema = z.object({
 	valuations: z.array(ValuationSchema),
 	ledger: z.array(LedgerTxSchema),
 	disclaimer: z.string(),
-	/** Set by the app when any active row comes from sample data. */
+	/** Set by the app when an active row in the report year comes from sample data. */
 	includesDemoData: z.boolean().optional(),
+	/** When true, totals reflect resolved slices and net payable is provisional. */
+	incomplete: z.boolean().optional(),
 });
 export type VdaReport = z.infer<typeof VdaReportSchema>;
 export type VdaTotals = z.infer<typeof VdaTotalsSchema>;

@@ -23,9 +23,13 @@ import {
 	NonNegativeDecimalSchema,
 	ReviewCodeSchema,
 	ReviewFlagSchema,
+	ReviewSeveritySchema,
 	TaxYearSchema,
 	TxTypeSchema,
 } from "../ledger.js";
+
+export { ReviewSeveritySchema } from "../ledger.js";
+
 import { RecipeSchema } from "../recipe.js";
 import {
 	BalanceSchema,
@@ -168,11 +172,21 @@ export const RowErrorSchema = z.object({
 	message: z.string(),
 	raw: z.unknown().optional(),
 });
-export const SkippedRowSchema = z.object({
-	rowIndex: z.number().int().nonnegative(),
-	sheet: z.string(),
-	reason: z.string(),
-});
+export const SkippedRowSchema = z
+	.object({
+		rowIndex: z.number().int().nonnegative(),
+		sheet: z.string(),
+		reason: z.string(),
+		kind: z.literal("cancelled_order").optional(),
+	})
+	.transform((row) =>
+		!row.kind &&
+		/^(?:Spot order|Order) cancell?ed has zero executed quantity;/i.test(
+			row.reason,
+		)
+			? { ...row, kind: "cancelled_order" as const }
+			: row,
+	);
 export const ReportMissingDetailsSchema = z.object({
 	invalidatedAt: z.iso.datetime().nullable(),
 	cause: z.enum([
@@ -388,7 +402,6 @@ export const PatchTransactionRequestSchema = z
 export const PatchTransactionResponseSchema = LedgerTxSchema;
 export const DeleteTransactionRequestSchema = IdParamsSchema;
 export const DeleteTransactionResponseSchema = NoContentResponseSchema;
-export const ReviewSeveritySchema = z.enum(["action", "info"]);
 export const ReviewQuerySchema = z.object({
 	taxYear: TaxYearSchema.optional(),
 });
@@ -407,12 +420,14 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 		taxYear: TaxYearSchema,
 		message: z.string(),
 		balance: BalanceSchema,
+		severity: z.literal("action").default("action"),
 	}),
 	z.object({
 		kind: z.literal("unresolved"),
 		taxYear: TaxYearSchema,
 		message: z.string(),
 		unresolved: UnresolvedSchema,
+		severity: z.literal("action").default("action"),
 	}),
 ]);
 export type ReportReviewItem = z.infer<typeof ReportReviewItemSchema>;
@@ -451,7 +466,14 @@ export const PutActualBalancesResponseSchema = ActualBalancesResponseSchema;
 export const ComputeReportRequestSchema = EmptyRequestSchema;
 export const ComputeReportResponseSchema = VdaReportSchema;
 export const GetReportRequestSchema = TaxYearParamsSchema;
+export const GetReportQuerySchema = z.strictObject({
+	allowMissing: z.literal("true").optional(),
+});
 export const GetReportResponseSchema = VdaReportSchema;
+export const GetReportStateResponseSchema = z.union([
+	GetReportResponseSchema,
+	ReportMissingDetailsSchema.extend({ status: z.literal("missing") }),
+]);
 export const ExportReportQuerySchema = z.object({
 	format: z.enum(["csv", "xlsx"]),
 	kind: z.enum(["schedule-vda", "tds", "income", "full"]),
@@ -634,8 +656,8 @@ export const ApiContract = {
 		method: "GET",
 		path: "/api/reports/:taxYear",
 		params: TaxYearParamsSchema,
-		request: EmptyRequestSchema,
-		response: GetReportResponseSchema,
+		request: GetReportQuerySchema,
+		response: GetReportStateResponseSchema,
 	},
 	exportReport: {
 		method: "GET",

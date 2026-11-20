@@ -31,7 +31,15 @@ if (
 	);
 
 const folder = new URL(`${id}/`, library);
-mkdirSync(folder);
+try {
+	mkdirSync(folder);
+} catch (error) {
+	if (error.code !== "EEXIST") throw error;
+	console.error(
+		`Recipe "${id}" already exists in packages/recipes/library. Choose a different ID.`,
+	);
+	process.exit(1);
+}
 const recipe = {
 	id,
 	name: id,

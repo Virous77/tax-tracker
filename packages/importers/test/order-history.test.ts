@@ -54,6 +54,7 @@ describe("Binance Spot Order History", () => {
 				{
 					rowIndex: 2,
 					sheet: expect.any(String),
+					kind: "cancelled_order",
 					reason: expect.stringContaining("CANCELED has zero executed"),
 					raw: expect.objectContaining({ Status: "CANCELED" }),
 				},
@@ -104,6 +105,7 @@ describe("Binance Spot Order History", () => {
 			).toEqual([
 				{
 					code: "parse_warning",
+					severity: "info",
 					message: expect.stringContaining("Trade History"),
 				},
 			]);
@@ -113,6 +115,7 @@ describe("Binance Spot Order History", () => {
 			});
 			expect(result.warnings).toContainEqual({
 				code: "parse_warning",
+				severity: "info",
 				message: expect.stringContaining("Used +05:00"),
 			});
 			expect(
@@ -324,6 +327,7 @@ describe("report boundaries", () => {
 		const result = applyRecipe(sheets, recipe, { timezone: "+05:00" });
 		expect(result.warnings).toContainEqual({
 			code: "parse_warning",
+			severity: "info",
 			message: expect.stringContaining("Date#3"),
 		});
 		expect(result).toMatchObject({ rowErrors: [], timezoneSource: "user" });

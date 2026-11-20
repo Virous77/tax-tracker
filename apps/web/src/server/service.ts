@@ -15,7 +15,12 @@ import { exportReport } from "./exports";
 import type { Endpoint } from "./http";
 import { confirmImport, createImport, previewRecipe } from "./imports";
 import { executePhase2 } from "./phase2";
-import { computeReport, getReport, putBalances } from "./reports";
+import {
+	computeReport,
+	getReport,
+	getReportState,
+	putBalances,
+} from "./reports";
 import { getSettings, putSettings } from "./settings";
 import {
 	createTransaction,
@@ -173,7 +178,9 @@ export async function execute(
 			value = await computeReport(db, year);
 			break;
 		case "getReport":
-			value = getReport(db, year);
+			value = api.GetReportQuerySchema.parse(input).allowMissing
+				? getReportState(db, year)
+				: getReport(db, year);
 			break;
 		case "exportReport":
 			value = await exportReport(

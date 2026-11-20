@@ -32,6 +32,7 @@ export const reportKind: ReportKind = {
 	warnings: [
 		{
 			code: "parse_warning",
+			severity: "info",
 			message:
 				"Binance Spot Order History has no fees, so fees are not counted. Use the Trade History export if you want fee treatment.",
 		},
@@ -70,6 +71,9 @@ export const reportKind: ReportKind = {
 		if (D(quantity).isZero())
 			return {
 				skip: `Spot order ${status} has zero executed quantity; no trade occurred.`,
+				...(["CANCELED", "CANCELLED"].includes(status)
+					? { kind: "cancelled_order" as const }
+					: {}),
 			};
 		const side = get("Side").toLowerCase();
 		if (side !== "buy" && side !== "sell")

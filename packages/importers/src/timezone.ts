@@ -54,6 +54,7 @@ export function timezoneConflict(
 		? [
 				{
 					code: "parse_warning",
+					severity: "info",
 					message: `Used ${fileZone} from ${from} instead of the selected ${selected}.`,
 				},
 			]

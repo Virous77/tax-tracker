@@ -33,6 +33,30 @@ function table(rows: unknown[]): string[][] {
 		),
 	];
 }
+
+function scheduleRows(rows: VdaReport["scheduleVdaRows"]): string[][] {
+	return [
+		[
+			"Sl. No.",
+			"Date of Acquisition",
+			"Date of Transfer",
+			"Head under which income to be taxed (Business/Capital Gain)",
+			"Cost of Acquisition",
+			"Consideration Received",
+			"Income from transfer of Virtual Digital Assets (enter nil in case of loss)",
+		],
+		...rows.map((row, index) => [
+			String(index + 1),
+			row.dateOfAcquisition ?? "",
+			row.dateOfTransfer,
+			row.headOfIncome === "business" ? "Business" : "Capital Gain",
+			row.costOfAcquisition ?? "",
+			row.considerationReceived ?? "",
+			row.income ?? "",
+		]),
+	];
+}
+
 export async function exportReport(
 	report: VdaReport,
 	query: z.infer<typeof ExportReportQuerySchema>,
@@ -40,6 +64,9 @@ export async function exportReport(
 	const metadata = [
 		[report.disclaimer],
 		...(report.includesDemoData ? [["Includes sample data"]] : []),
+		...(report.incomplete
+			? [["Incomplete report — unresolved disposals excluded"]]
+			: []),
 		["Tax year", report.taxYear, "Act", report.act],
 		...settingsRows(report.generatedFrom.settings),
 		...sectionRows(report.sections),
@@ -51,7 +78,13 @@ export async function exportReport(
 		],
 	];
 	const all = [
-		{ name: "schedule-vda", rows: table(report.scheduleVdaRows) },
+		{
+			name: "schedule-vda",
+			rows:
+				query.kind === "full"
+					? table(report.scheduleVdaRows)
+					: scheduleRows(report.scheduleVdaRows),
+		},
 		{
 			name: "tds",
 			rows: [
@@ -74,7 +107,17 @@ export async function exportReport(
 		query.kind === "full"
 			? [
 					...all,
-					{ name: "totals", rows: table([report.totals]) },
+					{
+						name: "totals",
+						rows: table([
+							{
+								...report.totals,
+								netPayable: report.incomplete
+									? "Incomplete"
+									: report.totals.netPayable,
+							},
+						]),
+					},
 					{ name: "balances", rows: table(report.balances) },
 					{ name: "unresolved", rows: table(report.unresolved) },
 					{ name: "warnings", rows: table(report.warnings) },

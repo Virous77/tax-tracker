@@ -18,8 +18,17 @@ export function proxy(request: NextRequest) {
 			{ error: { code: "unauthorized", message: "Sign in to continue." } },
 			{ status: 401, headers: { "Cache-Control": "no-store" } },
 		);
+	const headers = { "Cache-Control": "no-store" };
+	if (
+		request.headers.has("next-router-prefetch") ||
+		request.headers.has("next-router-segment-prefetch") ||
+		request.headers.get("purpose") === "prefetch"
+	)
+		return new Response(null, { status: 204, headers });
+	if (request.headers.has("rsc") || request.nextUrl.searchParams.has("_rsc"))
+		return new Response(null, { status: 401, headers });
 	const login = new URL("/login", request.url);
 	login.searchParams.set("next", `${path}${request.nextUrl.search}`);
-	return NextResponse.redirect(login);
+	return NextResponse.redirect(login, { headers });
 }
 export const config = { matcher: ["/((?!_next/static|_next/image).*)"] };

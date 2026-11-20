@@ -5,6 +5,37 @@ import { isDeepStrictEqual } from "node:util";
 import { csvRecords, generic, readSheets, recipeSheet } from "@tax/importers";
 import { readLibrary } from "./library.mjs";
 
+function* differences(actual, expected, path) {
+	if (isDeepStrictEqual(actual, expected)) return;
+	if (Array.isArray(actual) && Array.isArray(expected)) {
+		yield* differences(actual.length, expected.length, `${path}.length`);
+		for (
+			let index = 0;
+			index < Math.max(actual.length, expected.length);
+			index++
+		)
+			yield* differences(actual[index], expected[index], `${path}[${index}]`);
+		return;
+	}
+	if (
+		actual &&
+		expected &&
+		typeof actual === "object" &&
+		typeof expected === "object" &&
+		!Array.isArray(actual) &&
+		!Array.isArray(expected)
+	) {
+		for (const field of new Set([
+			...Object.keys(actual),
+			...Object.keys(expected),
+		]))
+			yield* differences(actual[field], expected[field], `${path}.${field}`);
+		return;
+	}
+	const display = (value) => JSON.stringify(value) ?? "<missing>";
+	yield `${path}: expected ${display(expected)}, received ${display(actual)}`;
+}
+
 export function checkRecipe({ folder, recipe }) {
 	const sample = readFileSync(new URL("sample.csv", folder), "utf8");
 	const expected = JSON.parse(
@@ -53,28 +84,30 @@ export function checkRecipe({ folder, recipe }) {
 	);
 	assert.equal(result.rowsRead, rows.length);
 	assert.equal(result.transactions.length, rows.length);
-	assert.ok(
-		isDeepStrictEqual(
-			result.transactions.map(({ id: _id, ...row }) => row),
-			expected,
-		),
-		"Imported ledger rows differ from expected.json.",
-	);
+	const actual = result.transactions.map(({ id: _id, ...row }) => row);
+	const diff = [...differences(actual, expected, "rows")];
+	if (diff.length)
+		throw new Error(
+			`Imported ledger rows differ from expected.json.\n${diff.join("\n")}`,
+		);
 }
 
 if (
 	process.argv[1] &&
 	import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-	const entries = readLibrary();
-	for (const entry of entries) {
-		try {
+	let currentRecipe;
+	try {
+		const entries = readLibrary();
+		for (const entry of entries) {
+			currentRecipe = entry.recipe.id;
 			checkRecipe(entry);
-		} catch (error) {
-			throw new Error(
-				`Recipe check failed for ${entry.recipe.id}: ${error.message}`,
-			);
 		}
+		console.log(`Checked ${entries.length} recipe(s).`);
+	} catch (error) {
+		console.error(
+			`Recipe check failed${currentRecipe ? ` for ${currentRecipe}` : ""}: ${error.message}`,
+		);
+		process.exitCode = 1;
 	}
-	console.log(`Checked ${entries.length} recipe(s).`);
 }

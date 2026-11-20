@@ -26,5 +26,6 @@
 	},
 	"bin": {
 		"tax-tracker": "dist/index.js"
-	}
+	},
+	"license": "AGPL-3.0-only"
 }

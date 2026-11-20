@@ -310,15 +310,15 @@ test("an unknown statement operation is an unclassified transfer, not an empty F
 });
 
 const statusBadge = (article: Locator) =>
-	article
-		.locator("span")
-		.filter({
-			hasText:
-				/^(Synced|Synced with notes|Balance mismatch|Incomplete|Failed)$/,
-		});
+	article.locator("span").filter({
+		hasText: /^(Synced|Synced with notes|Balance mismatch|Incomplete|Failed)$/,
+	});
 
-async function tone(locator: Locator) {
-	return locator.evaluate((el) => {
+async function tone(
+	locator: Locator,
+	property: "color" | "borderTopColor" = "color",
+) {
+	return locator.evaluate((el, prop) => {
 		const resolve = (name: string) => {
 			const probe = document.createElement("span");
 			probe.style.color = `var(${name})`;
@@ -327,11 +327,11 @@ async function tone(locator: Locator) {
 			probe.remove();
 			return color;
 		};
-		const color = getComputedStyle(el).color;
+		const color = getComputedStyle(el)[prop];
 		for (const name of ["loss", "warning", "positive"])
 			if (color === resolve(`--${name}`)) return name;
 		return color;
-	});
+	}, property);
 }
 
 test("bad_signature: the Failed badge and the last sync error stay red", async ({
@@ -375,8 +375,39 @@ test("drift: a real balance difference is not shown as a clean or noted sync", a
 	await shot(page, "sync-drift-status");
 	// A 0.5 USDC mismatch must read as a problem (loss colour), never as a green "Synced".
 	const badge = statusBadge(article);
-	await expect(badge).toHaveCount(1);
+	await expect(badge).toHaveText("Balance mismatch");
 	expect(await tone(badge)).toBe("loss");
+	await expect(article.getByText("Synced", { exact: true })).toHaveCount(0);
+	await expect(
+		article.getByRole("heading", { name: /^Notices \(\d+\)$/ }),
+	).toBeVisible();
+	await expect(
+		article.getByRole("heading", { name: /^Notes( \(\d+\))?$/ }),
+	).toHaveCount(0);
+	const notice = article
+		.getByRole("listitem")
+		.filter({ hasText: /USDC fetched 180\.5, computed 180, difference 0\.5/ });
+	await expect(notice).toHaveCount(1);
+	expect(await tone(notice, "borderTopColor")).toBe("warning");
+
+	for (const theme of ["light", "dark"] as const)
+		for (const width of [375, 1280]) {
+			await setTheme(page, theme);
+			await page.setViewportSize({ width, height: 812 });
+			await page.goto("/connections");
+			await settled(page);
+			const themed = card(page, c.label);
+			await expect(statusBadge(themed)).toHaveText("Balance mismatch");
+			expect(await tone(statusBadge(themed))).toBe("loss");
+			expect(
+				await page.evaluate(() => document.documentElement.scrollWidth),
+			).toBeLessThanOrEqual(width);
+			expect(
+				await textContrastFailures(page),
+				`connections contrast ${width}px ${theme}`,
+			).toEqual([]);
+			await shot(page, `sync-drift-${width}-${theme}`);
+		}
 });
 
 test.describe(SYNCED_GROUP, () => {

@@ -145,6 +145,86 @@ Still noted, not changed: ledger edits invalidate every year (safe but broad); u
 
 ---
 
+# P2-E2E-11 verification — browser E2E, 2026-11-20
+
+Image `tax-tracker-app:local` built from `main` at `e2d009b` (it contains the "Balance mismatch" badge; not rebuilt).
+Same harness as the round below:
+
+- Compose project `taxe2e2` (`docker-compose.yml` + `tests/e2e/phase2.compose.yml`), `APP_PORT=3112`, a fresh
+  `DATA_HOST_DIR` from `mktemp -d /private/tmp/taxe2e2-…`, `APP_PASSWORD`/`APP_SECRET` empty, `up -d --no-build`;
+- `MOCK_SYNC_PORT=11602 node tools/mock-sync/server.mjs`;
+- no other setup: the config's `webServer` starts mock-LLM on 11502 by itself;
+- `PHASE2_ONLY=1 pnpm exec playwright test -c tests/e2e/phase2.config.ts --project=phase2`.
+
+## Results
+
+- **Phase 2: 97 tests, 97 pass, 0 fail, 0 skipped, 0 flaky (14.5 min)**, on a fresh stack, with the extended
+  P2-E2E-11 test. An earlier full run, with the test as committed in `e2d009b`, also gave 97/97 (14.5 min).
+- First Binance sync of the `normal` account: 238 s.
+
+| Phase 2 spec                     | Pass | Fail | Skip |
+| -------------------------------- | ---- | ---- | ---- |
+| `phase2-connections.spec.ts`     | 16   | 0    | 0    |
+| `phase2-import.spec.ts`          | 9    | 0    | 0    |
+| `phase2-regression.spec.ts`      | 19   | 0    | 0    |
+| `phase2-report-settings.spec.ts` | 3    | 0    | 0    |
+| `phase2-responsive-a11y.spec.ts` | 34   | 0    | 0    |
+| `phase2-sync.spec.ts`            | 10   | 0    | 0    |
+| `phase2-venue.spec.ts`           | 6    | 0    | 0    |
+
+## Fixed (verified this round)
+
+| #         | Finding                                                    | Evidence (`phase2-regression.spec.ts` › "drift: a real balance difference is not shown as a clean or noted sync")                                                                                                                                                                                                                                                                                                                                              |
+| --------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P2-E2E-11 | Real balance difference shows green "Synced" and grey note | The badge reads "Balance mismatch" in `--loss`, and the card has no "Synced" or "Synced with notes". The heading reads "Notices (1)" and there is no "Notes" heading. The notice "USDC fetched 180.5, computed 180, difference 0.5" has a `--warning` border. At 375/1280 × light/dark the badge stays red, there is no horizontal scroll and connections text contrast passes WCAG AA. Screenshots `sync-drift-status`, `sync-drift-{375,1280}-{light,dark}`. |
+
+The amber "Synced with notes" (zero differences) and the red "Incomplete" (Counts toward gap) tests still pass, so
+the new badge did not change those states.
+
+## New bugs
+
+None.
+
+## The lead's stalled run (regression + sync + venue), 2026-11-18
+
+Not reproduced, and no app or harness defect was found. What the lead's logs show:
+
+- Run 1 was `… | tail -25` in a background shell with a 10-minute limit. The suite needs more than 10 minutes:
+  the regression group's beforeAll, `phase2-sync`'s full sync and `phase2-venue`'s beforeAll each do a full Binance
+  sync of about 4 minutes. So the shell was killed and `tail` printed nothing. At 10 minutes the run was in or near
+  `phase2-venue`'s beforeAll sync.
+- Run 2 used the same stack and data dir 5 minutes later. Tests 1–10 passed. `bad_signature` then failed with both
+  `apiRequestContext.fetch: Timeout 15000ms` on `POST /api/vault/setup` and the 180 s test timeout, so the app
+  stopped answering for minutes. After that, the group's beforeAll did not finish within the 40-minute limit.
+  By 09:26 `/api/health` answered in 56 ms. The stack, its logs and its data dir were deleted before anyone looked
+  at them, so the cause can't be confirmed.
+- The `127.0.0.1:11602` in the lead's mock log is only the mock's start-up banner. The container env pointed at
+  `host.docker.internal:11602`, which is correct.
+
+What I tried on this stack (all fine):
+
+- `vault/reset` + `vault/setup` while a Binance sync was running: both answered at once. The sync kept its key and
+  finished (`completed`).
+- A Binance sync left running in the paced fiat wait, as a killed run leaves it, then `regression` › "column header"
+  and "bad_signature": 2 passed (1.0 min). `reset()` switched the mock to `bad_signature`, waited out the 60 s pace
+  and deleted the failed job's connection. `vault/setup` then answered normally.
+
+To avoid a repeat:
+
+- Give the full suite at least 20 minutes (15 minutes for the three specs) and write the output to a file, not a pipe.
+- After a killed run, run `down -v` and use a fresh data dir before you re-run.
+- If the app hangs again, save `docker logs` and the data dir before the teardown.
+
+## Assertion changes in this round
+
+- `phase2-regression.spec.ts` › drift: it now asserts the "Balance mismatch" text, no "Synced", the "Notices (n)"
+  heading and no "Notes" heading. The 0.5 USDC notice must have a `--warning` border. The connections page is
+  checked at 375/1280 × light/dark: badge tone, no horizontal scroll, WCAG AA text contrast. `tone()` takes an optional
+  CSS property, so it can also compare border colours.
+- Biome formatting of the `statusBadge` helper from `e2d009b`. Without it, `pnpm lint` failed on that line.
+
+---
+
 # Phase 2 final regression round — browser E2E, 2026-11-18
 
 Image `tax-tracker-app:local` built from `main` at `7426d76` (not rebuilt for this round). It includes `2b7d028`
@@ -211,7 +291,7 @@ Red is still used where it should be:
 
 ## New bugs (ranked)
 
-### P2-E2E-11. Low — a sync with a real balance difference still shows a green "Synced" badge, and the mismatch is now a grey "Note"
+### P2-E2E-11. Low (FIXED 2026-11-20, e2d009b) — a sync with a real balance difference still shows a green "Synced" badge, and the mismatch is now a grey "Note"
 
 - **Page:** Connections, EVM card.
 - **Steps:** set an Etherscan key → add an EVM connection (chain 1, wallet B) → mock scenario `drift` → Sync now.

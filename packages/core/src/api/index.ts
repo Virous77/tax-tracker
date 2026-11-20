@@ -75,6 +75,8 @@ export const SettingsResponseSchema = EngineSettingsSchema.extend({
 	defaultTaxYear: TaxYearSchema,
 	/** When the user acknowledged the first-run "not tax advice" notice; null until then. */
 	disclaimerAcceptedAt: z.iso.datetime().nullable().default(null),
+	/** Last time the user saved Settings; null until then. */
+	settingsSavedAt: z.iso.datetime().nullable().default(null),
 });
 export const GetSettingsRequestSchema = EmptyRequestSchema;
 export const PutSettingsRequestSchema = EngineSettingsPatchSchema.extend({
@@ -386,6 +388,7 @@ export const PatchTransactionRequestSchema = z
 export const PatchTransactionResponseSchema = LedgerTxSchema;
 export const DeleteTransactionRequestSchema = IdParamsSchema;
 export const DeleteTransactionResponseSchema = NoContentResponseSchema;
+export const ReviewSeveritySchema = z.enum(["action", "info"]);
 export const ReviewQuerySchema = z.object({
 	taxYear: TaxYearSchema.optional(),
 });
@@ -396,6 +399,8 @@ export const ReportReviewItemSchema = z.discriminatedUnion("kind", [
 		taxYear: TaxYearSchema,
 		message: z.string(),
 		warning: ReportWarningSchema,
+		/** "info" notes explain how a file was read and need no action; they never block "all reviewed". */
+		severity: ReviewSeveritySchema.default("action"),
 	}),
 	z.object({
 		kind: z.literal("balance"),
@@ -425,10 +430,18 @@ export const ReviewResponseSchema = z.object({
 		z.object({
 			code: ReviewCodeSchema,
 			count: z.number().int().nonnegative(),
+			severity: ReviewSeveritySchema.default("action"),
 			items: z.array(LedgerTxSchema),
 			reportItems: z.array(ReportReviewItemSchema),
 		}),
 	),
+	/** Single source for "N items need review" everywhere in the UI. */
+	totals: z
+		.object({
+			action: z.number().int().nonnegative(),
+			info: z.number().int().nonnegative(),
+		})
+		.default({ action: 0, info: 0 }),
 });
 export const ActualBalancesQuerySchema = z.object({ taxYear: TaxYearSchema });
 export const GetActualBalancesRequestSchema = ActualBalancesQuerySchema;

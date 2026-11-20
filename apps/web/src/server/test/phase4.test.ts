@@ -96,6 +96,7 @@ it("loads one sample import per source, labels reports and every export, and rem
 	expect(await (await call("getDemo")).json()).toEqual({
 		loaded: false,
 		importIds: [],
+		taxYears: [],
 	});
 	const uploads = await Promise.all([
 		call("loadDemo", "POST"),
@@ -189,6 +190,7 @@ it("loads one sample import per source, labels reports and every export, and rem
 	expect(await (await call("getDemo")).json()).toEqual({
 		loaded: false,
 		importIds: [],
+		taxYears: [],
 	});
 	expect(db.imports.list().map(({ id, demo }) => ({ id, demo }))).toEqual([
 		{ id: ordinaryId, demo: false },

@@ -3,9 +3,12 @@ import { z } from "zod";
 export const DemoStatusSchema = z.object({
 	loaded: z.boolean(),
 	importIds: z.array(z.string()),
+	/** Tax years the sample rows fall in, newest first; the UI opens the first. */
+	taxYears: z.array(z.string()).default([]),
 });
 export const DemoLoadResponseSchema = z.object({
 	importIds: z.array(z.string()),
+	taxYears: z.array(z.string()).default([]),
 });
 export type DemoStatus = z.infer<typeof DemoStatusSchema>;
 

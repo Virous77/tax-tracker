@@ -69,6 +69,7 @@ export function reportReviewItems(
 					taxYear: report.taxYear,
 					message: warning.message,
 					warning,
+					severity: "action",
 				},
 			});
 		}

@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/client/api";
 import { formatSourceLabel, type RecipeNames } from "@/lib/client/format";
 
-/** A `formatSourceLabel` that shows the saved recipe's name for generic CSV sources. */
-export function useSourceLabel(): (source: string) => string {
+/** Saved recipe names by fingerprint, for generic CSV sources. */
+export function useRecipeNames(): RecipeNames {
 	const [recipeNames, setRecipeNames] = useState<RecipeNames>(new Map());
 
 	useEffect(() => {
@@ -22,6 +22,12 @@ export function useSourceLabel(): (source: string) => string {
 		};
 	}, []);
 
+	return recipeNames;
+}
+
+/** A `formatSourceLabel` that shows the saved recipe's name for generic CSV sources. */
+export function useSourceLabel(): (source: string) => string {
+	const recipeNames = useRecipeNames();
 	return useMemo(
 		() => (source: string) => formatSourceLabel(source, recipeNames),
 		[recipeNames],

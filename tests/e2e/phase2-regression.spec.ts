@@ -97,7 +97,7 @@ test("statement + Trade History: covered same-second legs leave no empty rows (P
 		}
 	}
 	await shot(page, "statement-trade-history-transactions");
-	await page.goto("/review");
+	await page.goto("/review?taxYear=all");
 	await settled(page);
 	await expect(
 		page.getByText(/non-unique or incomplete trade legs/),
@@ -186,7 +186,7 @@ test("repeated flags of one code merge into one chip without a count and list th
 	await expect(drawerItems.nth(1)).toContainText("second note about this row");
 	await page.keyboard.press("Escape");
 
-	await page.goto("/review");
+	await page.goto("/review?taxYear=all");
 	const parseRow = page
 		.locator("section")
 		.filter({

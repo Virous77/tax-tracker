@@ -171,6 +171,14 @@ export function formatSourceLabel(
 	return source;
 }
 
+/** The server's `sourceLabel` for an import when it sends one, else the label from the source id. */
+export function formatImportSource(
+	imp: { source: string; sourceLabel?: string },
+	recipeNames?: RecipeNames,
+): string {
+	return imp.sourceLabel ?? formatSourceLabel(imp.source, recipeNames);
+}
+
 const TX_TYPE_LABELS: Record<TxType, string> = {
 	buy: "Buy",
 	sell: "Sell",

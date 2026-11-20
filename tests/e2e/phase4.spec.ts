@@ -535,6 +535,10 @@ function notesSection(page: Page) {
 	return page.locator("details").filter({ hasText: "Notes about your files" });
 }
 
+function reportNotesSection(page: Page) {
+	return page.locator("details").filter({ hasText: "Report notes" });
+}
+
 function checklistStep(page: Page, n: number) {
 	return checklist(page)
 		.getByRole("link")
@@ -589,8 +593,9 @@ test.describe("review notes and action counts", () => {
 		expect(await notes.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(
 			false,
 		);
+		// The CA notice is a report note, so it is counted under "Report notes", not here.
 		await expect(notes.locator("summary")).toContainText(
-			`${data.totals.info} notes`,
+			`${data.totals.info - 1} notes`,
 		);
 		const note = page.getByText(/Duplicate columns were renamed/);
 		await expect(note).toBeHidden();
@@ -607,9 +612,21 @@ test.describe("review notes and action counts", () => {
 		await expect(notes).toContainText(
 			"Used +05:00 from the file name instead of the selected UTC.",
 		);
-		await expect(notes).toContainText(
+		await expect(notes).not.toContainText(
 			"Section numbers pending CA verification",
 		);
+		const reportNotes = reportNotesSection(page);
+		await expect(reportNotes.locator("summary")).toContainText("1 note");
+		await reportNotes.locator("summary").click();
+		await expect(reportNotes).toContainText(
+			"Section numbers pending CA verification",
+		);
+		await expect(
+			reportNotes.getByRole("link", { name: "View import" }),
+		).toHaveCount(0);
+		await expect(
+			reportNotes.getByRole("link", { name: "Review sections in Report" }),
+		).toBeVisible();
 
 		await page.goto("/");
 		await settled(page);
@@ -650,9 +667,10 @@ test.describe("review notes and action counts", () => {
 
 		await page.goto(`/review?taxYear=${YEAR}`);
 		await settled(page);
-		await expect(page.getByText("No review flags found")).toBeVisible();
-		await expect(notesSection(page).locator("summary")).toContainText(
-			"2 notes",
+		await expect(page.getByText("All items reviewed")).toBeVisible();
+		await expect(notesSection(page).locator("summary")).toContainText("1 note");
+		await expect(reportNotesSection(page).locator("summary")).toContainText(
+			"1 note",
 		);
 		expect(await actionGroupsOnPage(page)).toEqual([]);
 	});
@@ -1080,7 +1098,7 @@ test.describe("review checking and stale reports", () => {
 			),
 		).toBeVisible();
 		await expect(group).toHaveCount(0);
-		await expect(page.getByText("No review flags found")).toBeVisible();
+		await expect(page.getByText("All items reviewed")).toBeVisible();
 		await expect(notesSection(page)).toBeVisible();
 	});
 
@@ -1092,7 +1110,7 @@ test.describe("review checking and stale reports", () => {
 		expect((await reviewData(api)).totals.action).toBe(0);
 		await page.goto(`/review?taxYear=${YEAR}`);
 		await settled(page);
-		await expect(page.getByText("No review flags found")).toBeVisible();
+		await expect(page.getByText("All items reviewed")).toBeVisible();
 		expect(await actionGroupsOnPage(page)).toEqual([]);
 		await page.goto("/");
 		await settled(page);
@@ -1111,7 +1129,7 @@ test.describe("review checking and stale reports", () => {
 		await settled(page);
 		const bannerOnReview = staleBanner(page);
 		await expect(bannerOnReview).toBeVisible();
-		await expect(page.getByText("No review flags found")).toHaveCount(0);
+		await expect(page.getByText("All items reviewed")).toHaveCount(0);
 		await page.goto("/");
 		await settled(page);
 		await expect(checklistStep(page, 3)).toContainText("— not done");
@@ -1129,7 +1147,7 @@ test.describe("review checking and stale reports", () => {
 		const tds = reviewGroup(page, "tds_not_deducted");
 		await expect(tds).toContainText("1 item");
 		await tds.getByRole("button", { name: "Mark checked" }).click();
-		await expect(page.getByText("No review flags found")).toBeVisible();
+		await expect(page.getByText("All items reviewed")).toBeVisible();
 	});
 
 	test("Report keeps showing the last figures under a stale banner; Recompute clears it", async ({

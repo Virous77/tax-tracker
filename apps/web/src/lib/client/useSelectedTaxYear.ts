@@ -8,6 +8,9 @@ import { type AppSettings, api, type TaxYearInfo } from "@/lib/client/api";
 
 const PICKED_KEY = "tax-tracker-tax-year";
 
+/** Review's "All years" choice, kept in the URL; never remembered as the picked year. */
+export const ALL_YEARS = "all";
+
 function readPicked(): string {
 	try {
 		return sessionStorage.getItem(PICKED_KEY) ?? "";
@@ -17,11 +20,11 @@ function readPicked(): string {
 }
 
 /**
- * The one place Overview and Report read the tax year from: the URL, else the year the user
+ * The one place Overview, Report and Review read the tax year from: the URL, else the year the user
  * last picked this session, else the sample-data year, else the saved default. `taxYear` is
  * empty until every source has answered, so a page never flashes a year it then replaces.
  */
-export function useSelectedTaxYear(path: "/" | "/report") {
+export function useSelectedTaxYear(path: "/" | "/report" | "/review") {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const urlTaxYear = searchParams.get("taxYear") ?? "";
@@ -56,10 +59,12 @@ export function useSelectedTaxYear(path: "/" | "/report") {
 
 	const selectTaxYear = useCallback(
 		(next: string) => {
-			setPicked(next);
-			try {
-				sessionStorage.setItem(PICKED_KEY, next);
-			} catch {}
+			if (next !== ALL_YEARS) {
+				setPicked(next);
+				try {
+					sessionStorage.setItem(PICKED_KEY, next);
+				} catch {}
+			}
 			const params = new URLSearchParams(searchParams.toString());
 			params.set("taxYear", next);
 			router.replace(`${path}?${params.toString()}`);

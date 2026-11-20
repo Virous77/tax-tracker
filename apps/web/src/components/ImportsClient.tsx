@@ -18,12 +18,12 @@ import {
 } from "@/lib/client/api";
 import {
 	effectiveTimezone,
+	formatImportSource,
 	formatIstDate,
 	formatIstDateTime,
 	formatQty,
 	formatReportKindLabel,
 	formatSignStyle,
-	formatSourceLabel,
 	formatTimezoneSourceLabel,
 } from "@/lib/client/format";
 
@@ -63,8 +63,8 @@ export function ImportsClient() {
 		() => new Map(recipes.map((r) => [r.fingerprint, r.name])),
 		[recipes],
 	);
-	const sourceLabel = (source: string) =>
-		formatSourceLabel(source, recipeNames);
+	const sourceLabel = (imp: { source: string; sourceLabel?: string }) =>
+		formatImportSource(imp, recipeNames);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -220,7 +220,7 @@ export function ImportsClient() {
 												/>
 											) : null}
 											<p className="mt-0.5 text-xs text-[var(--text-secondary)]">
-												{sourceLabel(imp.source)}
+												{sourceLabel(imp)}
 												{imp.connectionLabel ? ` · ${imp.connectionLabel}` : ""}{" "}
 												· {effectiveTimezone(imp)} (
 												{formatTimezoneSourceLabel(
@@ -295,6 +295,7 @@ export function ImportsClient() {
 										<button
 											type="button"
 											onClick={() => openDetail(imp.id)}
+											title="Inspect"
 											aria-label={`Inspect ${imp.fileName}`}
 											className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 										>
@@ -304,6 +305,7 @@ export function ImportsClient() {
 										<button
 											type="button"
 											onClick={() => setDeleteTarget(imp)}
+											title="Delete"
 											aria-label={`Delete ${imp.fileName}`}
 											className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--loss)] hover:bg-[var(--loss-soft)]"
 										>
@@ -386,7 +388,7 @@ export function ImportsClient() {
 													) : null}
 												</td>
 												<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
-													{sourceLabel(imp.source)}
+													{sourceLabel(imp)}
 												</td>
 												<td className="px-4 py-2.5 whitespace-nowrap">
 													<Badge tone="neutral">{effectiveTimezone(imp)}</Badge>
@@ -450,6 +452,7 @@ export function ImportsClient() {
 														<button
 															type="button"
 															onClick={() => openDetail(imp.id)}
+															title="Inspect"
 															aria-label={`Inspect ${imp.fileName}`}
 															className="rounded border border-[var(--border)] p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 														>
@@ -458,6 +461,7 @@ export function ImportsClient() {
 														<button
 															type="button"
 															onClick={() => setDeleteTarget(imp)}
+															title="Delete"
 															aria-label={`Delete ${imp.fileName}`}
 															className="rounded border border-[var(--border)] p-1.5 text-[var(--loss)] hover:bg-[var(--loss-soft)]"
 														>
@@ -544,7 +548,7 @@ export function ImportsClient() {
 							<div>
 								<dt className="text-[var(--text-muted)]">Source</dt>
 								<dd className="mt-0.5 flex flex-wrap items-center gap-1.5 font-medium">
-									<span>{sourceLabel(detail.source)}</span>
+									<span>{sourceLabel(detail)}</span>
 									{detail.kind === "api_sync" ? (
 										<Badge tone="accent">Synced</Badge>
 									) : null}

@@ -2,6 +2,7 @@
 
 import { TimezoneSchema } from "@tax/core/api";
 import {
+	AlertTriangle,
 	ArrowRight,
 	CheckCircle2,
 	FileSpreadsheet,
@@ -32,6 +33,7 @@ import {
 	formatReportKindLabel,
 	formatSourceLabel,
 	formatTimezoneSourceLabel,
+	pluralise,
 } from "@/lib/client/format";
 
 type SourceChoice = "auto" | "binance" | "coindcx" | "generic";
@@ -293,6 +295,12 @@ export function ImportClient() {
 	const rowsAmbiguous = result
 		? getOptionalCount(result, "rowsAmbiguous")
 		: null;
+	const noRowsImported =
+		result !== null &&
+		result.status === "imported" &&
+		!balanceSnapshot &&
+		result.rowsInserted === 0 &&
+		result.rowsDuplicate === 0;
 	const hasSnapshotWallet = Boolean(
 		balanceSnapshot?.rows.some((r) => Boolean(r.wallet)),
 	);
@@ -327,7 +335,12 @@ export function ImportClient() {
 				>
 					<div className="flex flex-wrap items-start justify-between gap-3">
 						<div className="flex items-start gap-2.5">
-							{result.status === "imported" ? (
+							{noRowsImported ? (
+								<AlertTriangle
+									className="mt-0.5 h-5 w-5 shrink-0 text-[var(--warning)]"
+									aria-hidden="true"
+								/>
+							) : result.status === "imported" ? (
 								<CheckCircle2
 									className="mt-0.5 h-5 w-5 shrink-0 text-[var(--positive)]"
 									aria-hidden="true"
@@ -341,9 +354,11 @@ export function ImportClient() {
 							<div className="space-y-0.5">
 								<h2 className="text-base font-semibold">
 									{result.fileName} —{" "}
-									{result.status === "imported"
-										? "Import complete"
-										: "Import failed"}
+									{noRowsImported
+										? "No rows imported"
+										: result.status === "imported"
+											? "Import complete"
+											: "Import failed"}
 								</h2>
 								{detectedLabel ? (
 									<p className="text-xs font-medium text-[var(--text-primary)]">
@@ -351,7 +366,7 @@ export function ImportClient() {
 									</p>
 								) : null}
 								<p className="text-xs text-[var(--text-secondary)]">
-									Source: <SourceName source={result.source} /> · Time zone:{" "}
+									Source: <SourceName imp={result} /> · Time zone:{" "}
 									<span className="font-medium text-[var(--text-primary)]">
 										{result.detectedTimezone ?? result.timezone}
 									</span>{" "}
@@ -364,10 +379,36 @@ export function ImportClient() {
 								</p>
 							</div>
 						</div>
-						<Badge tone={result.status === "imported" ? "positive" : "loss"}>
+						<Badge
+							tone={
+								noRowsImported
+									? "warning"
+									: result.status === "imported"
+										? "positive"
+										: "loss"
+							}
+						>
 							{result.status}
 						</Badge>
 					</div>
+
+					{noRowsImported ? (
+						<p className="rounded border border-[var(--warning)]/40 bg-[var(--warning-soft)] px-3 py-2 text-sm text-[var(--text-primary)]">
+							Nothing was added to your ledger.{" "}
+							{result.rowsError > 0 ? (
+								<>
+									All {result.rowsError} {pluralise(result.rowsError, "row")}{" "}
+									had errors — see the{" "}
+									<a href="#row-errors" className="font-medium underline">
+										row errors
+									</a>{" "}
+									below, fix the file or the column mapping, and import again.
+								</>
+							) : (
+								"The file had no rows this importer could use."
+							)}
+						</p>
+					) : null}
 
 					{result.error ? (
 						<p className="rounded border border-[var(--loss)]/40 bg-[var(--loss-soft)] px-3 py-2 text-sm text-[var(--loss)]">
@@ -620,7 +661,7 @@ export function ImportClient() {
 					) : null}
 
 					{rowErrors.length > 0 ? (
-						<div className="space-y-2">
+						<div id="row-errors" className="space-y-2">
 							<h3 className="text-xs font-semibold tracking-wide text-[var(--loss)] uppercase">
 								Row Errors ({rowErrors.length})
 							</h3>

@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
 import { GettingStarted } from "@/components/GettingStarted";
+import { StaleReportBanner } from "@/components/report/StaleReportBanner";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -45,6 +46,7 @@ export function OverviewClient() {
 	const [txTotal, setTxTotal] = useState<number | null>(null);
 	const [reviewCount, setReviewCount] = useState<number>(0);
 	const [reviewCurrent, setReviewCurrent] = useState(false);
+	const [reportStale, setReportStale] = useState(false);
 	const [hasOwnImport, setHasOwnImport] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [computing, setComputing] = useState(false);
@@ -83,9 +85,13 @@ export function OverviewClient() {
 			]);
 			if (repState.status === "ready") {
 				setReport(repState.report);
+				setReportStale(
+					repState.report.stale === true || review?.reportStatus === "stale",
+				);
 				setReportMissing(null);
 			} else {
 				setReport(null);
+				setReportStale(false);
 				setReportMissing(repState.missing);
 			}
 			setReviewCount(review ? reviewActionCount(review) : 0);
@@ -114,6 +120,7 @@ export function OverviewClient() {
 		try {
 			const computed = await api.computeReport(taxYear);
 			setReport(computed);
+			setReportStale(false);
 			setReportMissing(null);
 			setStatusMessage(
 				`Report computed for tax year ${taxYear} (${computed.generatedFrom.txCount} ${pluralise(computed.generatedFrom.txCount, "transaction")} evaluated).`,
@@ -176,6 +183,10 @@ export function OverviewClient() {
 
 			{error ? (
 				<ErrorBanner message={error} onRetry={() => loadData(taxYear)} />
+			) : null}
+
+			{!loading && report && reportStale ? (
+				<StaleReportBanner computing={computing} onRecompute={handleCompute} />
 			) : null}
 
 			{reviewCount > 0 ? (
@@ -318,6 +329,9 @@ export function OverviewClient() {
 								{report.scheduleVdaRows.length}{" "}
 								{pluralise(report.scheduleVdaRows.length, "Schedule VDA row")}
 							</span>
+							{reportStale ? (
+								<Badge tone="warning">From the last computed report</Badge>
+							) : null}
 							{report.includesDemoData ? (
 								<Badge tone="warning">Includes sample data</Badge>
 							) : null}

@@ -66,32 +66,48 @@ test("transactions empty state", async ({ page }) => {
 	await snap(page, "empty-transactions");
 });
 
-// reportStatuses contract: with no stored report Review must not claim the ledger is clean,
-// and the All-years view names every missing year (computeTaxYears), not just the default.
-test("review empty state asks for a compute instead of claiming clean", async ({
+// An empty ledger has nothing to compute: Review opens on the default year and says so, rather
+// than asking for reports of years with no rows. A year with rows but no report asks once.
+test("review empty state opens on the default year and never asks to compute an empty year", async ({
 	page,
+	api,
 }) => {
 	await page.goto("/review");
+	await expect(page).toHaveURL(/\/review$/);
+	await expect(page.getByLabel("Tax year")).toHaveValue("2025-26");
 	await expect(
-		page.getByRole("heading", {
-			name: "Reports not computed for 2025-26, 2026-27",
-		}),
+		page.getByRole("heading", { name: "No transactions in 2025-26" }),
 	).toBeVisible();
+	await expect(page.getByText(/Reports? not computed/)).toHaveCount(0);
+	await expect(page.getByRole("button", { name: /^Compute / })).toHaveCount(0);
+	await page.getByLabel("Tax year").selectOption("");
 	await expect(
-		page.getByText("All ledger transactions are clean."),
-	).toHaveCount(0);
-	await expect(
-		page.getByRole("button", { name: "Compute 2025-26 & 2026-27 reports" }),
+		page.getByRole("heading", { name: "No transactions yet" }),
 	).toBeVisible();
-	await page.getByLabel("Tax year").selectOption("2026-27");
+	await expect(page.getByText(/Reports? not computed/)).toHaveCount(0);
+	await snap(page, "empty-review");
+
+	const { id } = await api.addManual({
+		sourceRef: "e2e-empty-states-review",
+		timestamp: "2026-09-01T06:30:00.000Z",
+		type: "buy",
+		assetIn: "BTC",
+		amountIn: "1",
+		inrValue: "100000",
+	});
+	await page.goto("/review?taxYear=all");
 	await expect(
 		page.getByRole("heading", { name: "Report not computed for 2026-27" }),
 	).toBeVisible();
+	await expect(page.getByText(/Reports? not computed/)).toHaveCount(1);
 	await expect(
 		page.getByRole("button", { name: "Compute 2026-27 report" }),
 	).toBeVisible();
-	await page.getByLabel("Tax year").selectOption("");
-	await snap(page, "empty-review");
+	await expect(
+		page.getByText("All items reviewed"),
+		"a ledger without a report is not 'all reviewed'",
+	).toHaveCount(0);
+	await api.json("DELETE", `/api/transactions/${id}`);
 });
 
 // Phase 4: on an empty ledger the report offers an import or sample data instead of a compute.

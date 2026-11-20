@@ -32,6 +32,7 @@ import {
 	formatIstDateTime,
 	formatQty,
 	formatTxType,
+	pluralise,
 } from "@/lib/client/format";
 
 type ImportSheet = z.infer<typeof ImportSheetSchema>;
@@ -461,6 +462,7 @@ export function RecipeWizard({
 	const customOffsetId = useId();
 	const saveCheckId = useId();
 	const saveNameId = useId();
+	const confirmNoteId = useId();
 
 	useEffect(() => {
 		const next = buildInitialRecipe(
@@ -615,6 +617,13 @@ export function RecipeWizard({
 			setPreviewing(false);
 		}
 	}
+
+	const previewChecks = previewData?.checks;
+	const noValidRows =
+		previewChecks !== undefined && previewChecks.rowCountOut === 0;
+	const failedRows = previewChecks
+		? previewChecks.rowCountIn - previewChecks.rowCountOut
+		: 0;
 
 	async function handleConfirm() {
 		const built = buildCurrentRecipe();
@@ -1370,6 +1379,37 @@ export function RecipeWizard({
 
 			{/* Step 5: Confirm & Optional Save */}
 			<section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4">
+				{noValidRows && previewChecks ? (
+					<p
+						id={confirmNoteId}
+						role="alert"
+						className="flex basis-full items-start gap-2 rounded border border-[var(--loss)]/40 bg-[var(--loss-soft)] px-3 py-2 text-sm text-[var(--loss)]"
+					>
+						<XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+						<span>
+							None of the {previewChecks.rowCountIn}{" "}
+							{pluralise(previewChecks.rowCountIn, "row")} in this file
+							converted, so importing would add nothing. Fix the column mapping
+							or the settings above, then preview again.
+						</span>
+					</p>
+				) : failedRows > 0 && previewChecks ? (
+					<p
+						id={confirmNoteId}
+						role="status"
+						className="flex basis-full items-start gap-2 rounded border border-[var(--warning)]/40 bg-[var(--warning-soft)] px-3 py-2 text-sm text-[var(--text-primary)]"
+					>
+						<AlertTriangle
+							className="mt-0.5 h-4 w-4 shrink-0 text-[var(--warning)]"
+							aria-hidden="true"
+						/>
+						<span>
+							{previewChecks.rowCountOut} of {previewChecks.rowCountIn}{" "}
+							{pluralise(previewChecks.rowCountIn, "row")} will be imported.{" "}
+							{failedRows} cannot be converted and will be listed as row errors.
+						</span>
+					</p>
+				) : null}
 				<div className="flex flex-wrap items-center gap-4">
 					<label
 						htmlFor={saveCheckId}
@@ -1405,7 +1445,8 @@ export function RecipeWizard({
 
 				<button
 					type="button"
-					disabled={confirming}
+					disabled={confirming || noValidRows}
+					aria-describedby={noValidRows ? confirmNoteId : undefined}
 					onClick={handleConfirm}
 					className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
 				>

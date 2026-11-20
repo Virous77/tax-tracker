@@ -37,7 +37,7 @@ test("before any compute the queue does not claim everything is clean", async ({
 	// Flags are attached at compute time (apps/web/src/server/README.md). Until then the
 	// queue cannot know; it must say so rather than declare a ledger with a valueless
 	// income row "clean". The import screen links straight here ("Check review flags").
-	await page.goto("/review");
+	await page.goto("/review?taxYear=all");
 	await expect(
 		page.getByRole("heading", { level: 1, name: "Review Queue" }),
 	).toBeVisible();
@@ -104,7 +104,7 @@ test.describe("after computing", () => {
 	test("groups by reason with an explanation and a fix action", async ({
 		page,
 	}) => {
-		await page.goto("/review");
+		await page.goto("/review?taxYear=all");
 		for (const [title, code, explanation, fix] of [
 			[
 				"Missing acquisition history",
@@ -188,7 +188,7 @@ test.describe("after computing", () => {
 	});
 
 	test("year filter narrows the queue", async ({ page }) => {
-		await page.goto("/review");
+		await page.goto("/review?taxYear=all");
 		const income = page.getByRole("row").filter({ hasText: "05 Oct 2025" });
 		await expect(income).toHaveCount(1);
 		await page.getByLabel("Tax year").selectOption("2026-27");
@@ -240,7 +240,7 @@ test.describe("after computing", () => {
 	});
 
 	test("resolving a flag in the drawer removes the item", async ({ page }) => {
-		await page.goto("/review");
+		await page.goto("/review?taxYear=all");
 		const g = group(page, "Missing INR valuation");
 		await g.getByRole("button", { name: "Inspect" }).click();
 		const drawer = page.getByRole("dialog", { name: /^Income/ });
@@ -260,7 +260,7 @@ test.describe("after computing", () => {
 	test("edit-INR fix link lands on the flagged transaction", async ({
 		page,
 	}) => {
-		await page.goto("/review");
+		await page.goto("/review?taxYear=all");
 		await group(page, "Missing INR valuation")
 			.getByRole("link", { name: "Edit INR value" })
 			.click();
@@ -275,7 +275,7 @@ test("All years: after Recompute the stale banner goes away", async ({
 }) => {
 	// Review without ?taxYear needs every rule year current; Recompute must compute every year
 	// in computeTaxYears, not the default year again and again (BUGS N1).
-	await page.goto("/review");
+	await page.goto("/review?taxYear=all");
 	await expect(page.locator(".animate-pulse")).toHaveCount(0);
 	await expect(staleBanner(page)).toBeVisible();
 	await staleBanner(page).getByRole("button", { name: "Recompute" }).click();
@@ -300,7 +300,7 @@ test("All years with one year current recomputes only the stale year", async ({
 	api,
 }) => {
 	await api.compute("2026-27");
-	await page.goto("/review");
+	await page.goto("/review?taxYear=all");
 	await expect(page.locator(".animate-pulse")).toHaveCount(0);
 	const banner = staleBanner(page);
 	await expect(banner).toBeVisible();

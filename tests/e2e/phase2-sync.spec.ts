@@ -339,7 +339,7 @@ test("bad_signature persists failed status and error on the connection and Revie
 	await expect(card(page, c.label)).toContainText(
 		new RegExp(`Last sync error:.*${VENDOR_ERROR.replaceAll(".", "\\.")}`),
 	);
-	await page.goto("/review");
+	await page.goto("/review?taxYear=all");
 	await expect(
 		page.getByText("Failed or incomplete connection syncs"),
 	).toBeVisible();

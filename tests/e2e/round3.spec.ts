@@ -402,7 +402,7 @@ test("Review lists every flag message of a transaction, not only the first", asy
 		"coindcx",
 		"IST",
 	);
-	await page.goto("/review");
+	await page.goto("/review?taxYear=all");
 	const g = group(page, "Import parse warning");
 	const swap = g.locator("tbody tr").filter({ hasText: "Swap" });
 	await expect(swap).toHaveCount(1);

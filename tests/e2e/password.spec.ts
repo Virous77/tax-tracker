@@ -56,9 +56,7 @@ test("right password enters; logout returns to login", async ({ page }) => {
 		.getByRole("navigation", { name: "Main navigation" })
 		.getByRole("link", { name: "Settings" })
 		.click();
-	await page
-		.getByRole("button", { name: "Log out (if password enabled)" })
-		.click();
+	await page.getByRole("button", { name: "Log out" }).click();
 	await expect(page).toHaveURL(/\/login/);
 	await page.goto("/transactions");
 	await expect(page).toHaveURL(/\/login/);
@@ -95,9 +93,7 @@ test("logout revokes the old session cookie on the server", async ({
 	).toBe(200);
 
 	await page.goto("/settings");
-	await page
-		.getByRole("button", { name: "Log out (if password enabled)" })
-		.click();
+	await page.getByRole("button", { name: "Log out" }).click();
 	await expect(page).toHaveURL(/\/login/);
 	expect(
 		(await request.get("/api/settings", { headers: { cookie } })).status(),
@@ -150,9 +146,7 @@ test("password mode end to end: import, compute, export, logout", async ({
 	await page.locator("a[download]").first().click();
 	expect((await download).suggestedFilename()).toMatch(/\.(csv|xlsx)$/);
 	await page.goto("/settings");
-	await page
-		.getByRole("button", { name: "Log out (if password enabled)" })
-		.click();
+	await page.getByRole("button", { name: "Log out" }).click();
 	await expect(page).toHaveURL(/\/login/);
 	expect(
 		(

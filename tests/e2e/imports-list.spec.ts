@@ -114,3 +114,20 @@ test("delete asks for confirmation; cancel keeps, confirm removes import and its
 	await page.goto("/transactions");
 	await expect(page.getByText("Showing 1–8 of 8")).toBeVisible();
 });
+
+test("icon-only row actions have a visible tooltip and an accessible name", async ({
+	page,
+}) => {
+	await page.goto("/imports");
+	const row = page
+		.getByRole("table")
+		.first()
+		.locator("tbody tr")
+		.filter({ hasText: "coindcx-report.xlsx" });
+	await expect(
+		row.getByRole("button", { name: "Inspect coindcx-report.xlsx" }),
+	).toHaveAttribute("title", "Inspect");
+	await expect(
+		row.getByRole("button", { name: "Delete coindcx-report.xlsx" }),
+	).toHaveAttribute("title", "Delete");
+});

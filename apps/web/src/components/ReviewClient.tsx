@@ -10,9 +10,9 @@ import {
 	CheckCircle2,
 	ChevronDown,
 	Edit3,
+	Upload,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { StaleReportBanner } from "@/components/report/StaleReportBanner";
 import { TransactionDrawer } from "@/components/transactions/TransactionDrawer";
@@ -20,16 +20,8 @@ import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import {
-	FALLBACK_TAX_YEARS,
-	TaxYearSelect,
-} from "@/components/ui/TaxYearSelect";
-import {
-	api,
-	getErrorMessage,
-	type ReviewData,
-	type TaxYearInfo,
-} from "@/lib/client/api";
+import { TaxYearSelect } from "@/components/ui/TaxYearSelect";
+import { api, getErrorMessage, type ReviewData } from "@/lib/client/api";
 import { getEvmChainName } from "@/lib/client/chains";
 import {
 	formatInrNullable,
@@ -46,20 +38,48 @@ import {
 	reviewActionCount,
 	splitReviewGroups,
 } from "@/lib/client/review-codes";
+import { ALL_YEARS, useSelectedTaxYear } from "@/lib/client/useSelectedTaxYear";
 import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 type ReviewGroup = ReviewData["groups"][number];
 
-function reportItemActions(
-	code: keyof typeof REVIEW_CODE_INFO,
-	item: ReportReviewItem,
-	options: { note: boolean; saleTimestamp: string | undefined },
-): {
+/** Notices about the computed report itself; every other note says how a file was read. */
+const REPORT_NOTICE_CODES: ReadonlySet<string> = new Set([
+	"ca_verification_pending",
+]);
+
+function isReportNotice(group: ReviewGroup): boolean {
+	return (
+		REPORT_NOTICE_CODES.has(group.code) &&
+		group.items.length === 0 &&
+		group.reportItems.every((item) => item.kind === "warning")
+	);
+}
+
+type ReportItemActions = {
 	txHref: string | null;
 	txLabel: string | null;
 	fixHref: string | null;
 	fixLabel: string | null;
-} {
+};
+
+/** A stale report can still list an item whose row was deleted; there is nothing to open. */
+function reportItemActions(
+	code: keyof typeof REVIEW_CODE_INFO,
+	item: ReportReviewItem,
+	options: { note: boolean; saleTimestamp: string | undefined },
+): ReportItemActions {
+	const actions = buildReportItemActions(code, item, options);
+	return item.rowDeleted
+		? { ...actions, txHref: null, txLabel: null }
+		: actions;
+}
+
+function buildReportItemActions(
+	code: keyof typeof REVIEW_CODE_INFO,
+	item: ReportReviewItem,
+	options: { note: boolean; saleTimestamp: string | undefined },
+): ReportItemActions {
 	if (item.kind === "balance") {
 		const txCount = item.balance.txIds.length;
 		const txParams = new URLSearchParams({ asset: item.balance.asset });
@@ -216,13 +236,19 @@ function formatComputeLabel(years: string[]): string {
 
 export function ReviewClient() {
 	const sourceLabel = useSourceLabel();
-	const router = useRouter();
-	const searchParams = useSearchParams();
-	const taxYear = searchParams.get("taxYear") ?? "";
-
-	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
-	const [defaultTaxYear, setDefaultTaxYear] = useState("2026-27");
+	const {
+		taxYear: selectedYear,
+		taxYears,
+		settings,
+		selectTaxYear,
+	} = useSelectedTaxYear("/review");
+	const yearReady = selectedYear !== "";
+	const taxYear = selectedYear === ALL_YEARS ? "" : selectedYear;
+	const defaultTaxYear = settings?.defaultTaxYear ?? taxYears[0]?.id ?? "";
 	const [data, setData] = useState<ReviewData | null>(null);
+	const [yearsWithRows, setYearsWithRows] = useState<ReadonlySet<string>>(
+		new Set(),
+	);
 	const [loading, setLoading] = useState(true);
 	const [computing, setComputing] = useState(false);
 	const [computeProgress, setComputeProgress] = useState<{
@@ -236,27 +262,23 @@ export function ReviewClient() {
 	const [resolving, setResolving] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 
-	useEffect(() => {
-		api
-			.getTaxYears()
-			.then((list) => {
-				if (list.length > 0) setTaxYears(list);
-			})
-			.catch(() => {});
-		api
-			.getSettings()
-			.then((s) => {
-				if (s.defaultTaxYear) setDefaultTaxYear(s.defaultTaxYear);
-			})
-			.catch(() => {});
-	}, []);
-
 	const loadReview = useCallback(
 		async (options?: { keepContent?: boolean }) => {
 			if (!options?.keepContent) setLoading(true);
 			setError(null);
 			try {
 				const res = await api.getReview(taxYear || undefined);
+				const counts = await Promise.all(
+					res.reportStatuses.map(async ({ taxYear: year }) => {
+						const page = await api
+							.listTransactions({ taxYear: year, page: 1, pageSize: 1 })
+							.catch(() => null);
+						return [year, page === null || page.total > 0] as const;
+					}),
+				);
+				setYearsWithRows(
+					new Set(counts.filter(([, has]) => has).map(([year]) => year)),
+				);
 				setData(res);
 			} catch (err) {
 				setError(getErrorMessage(err));
@@ -268,20 +290,20 @@ export function ReviewClient() {
 	);
 
 	useEffect(() => {
-		loadReview();
-	}, [loadReview]);
+		if (yearReady) loadReview();
+	}, [yearReady, loadReview]);
 
 	function handleTaxYearChange(next: string) {
-		const params = new URLSearchParams(searchParams.toString());
-		if (next) params.set("taxYear", next);
-		else params.delete("taxYear");
-		const qs = params.toString();
-		router.replace(`/review${qs ? `?${qs}` : ""}`);
+		selectTaxYear(next || ALL_YEARS);
 	}
 
+	// A year with no ledger rows has nothing to compute, so it is never "not computed".
 	const missingYears = data
 		? data.reportStatuses
-				.filter((entry) => entry.status === "missing")
+				.filter(
+					(entry) =>
+						entry.status === "missing" && yearsWithRows.has(entry.taxYear),
+				)
 				.map((entry) => entry.taxYear)
 		: [];
 	const currentYears = data
@@ -295,7 +317,12 @@ export function ReviewClient() {
 				.map((entry) => entry.taxYear)
 		: [];
 	const outdatedYears = [
-		...new Set([...(data?.computeTaxYears ?? []), ...staleYears]),
+		...new Set([
+			...(data?.computeTaxYears ?? []).filter(
+				(year) => yearsWithRows.has(year) || staleYears.includes(year),
+			),
+			...staleYears,
+		]),
 	];
 	const computeTargets =
 		outdatedYears.length > 0 ? outdatedYears : [taxYear || defaultTaxYear];
@@ -367,18 +394,26 @@ export function ReviewClient() {
 
 	const connectionIssues = data?.connections ?? [];
 	const actionTotal = data ? reviewActionCount(data) : 0;
-	const { action: actionGroups, info: noteGroups } = splitReviewGroups(
+	const { action: actionGroups, info: infoGroups } = splitReviewGroups(
 		data?.groups ?? [],
 	);
+	const noteGroups = infoGroups.filter((g) => !isReportNotice(g));
+	const reportNoteGroups = infoGroups.filter(isReportNotice);
 	const noActionItems = actionTotal === 0 && connectionIssues.length === 0;
 	const noteTotal = noteGroups.reduce((sum, g) => sum + g.count, 0);
+	const reportNoteTotal = reportNoteGroups.reduce((sum, g) => sum + g.count, 0);
 	const saleTimestamps = new Map(
 		(data?.groups ?? []).flatMap((g) =>
 			g.items.map((tx) => [tx.id, tx.timestamp] as const),
 		),
 	);
-	const reportMissing = data && data.reportStatus === "missing";
-	const reportStale = data && data.reportStatus === "stale";
+	const reportMissing = missingYears.length > 0;
+	const reportStale = data?.reportStatus === "stale";
+	const ledgerEmpty = taxYear
+		? !yearsWithRows.has(taxYear)
+		: yearsWithRows.size === 0;
+	const showMissingEmptyState =
+		noActionItems && !reportStale && !ledgerEmpty && reportMissing;
 	const missingListText =
 		missingYears.length > 0
 			? missingYears.join(", ")
@@ -536,7 +571,7 @@ export function ReviewClient() {
 											? `${group.code}-unres-${ri.taxYear}-${ri.unresolved.txId}-${ri.unresolved.asset}-${ri.unresolved.reason}-${idx}`
 											: `${group.code}-warn-${ri.taxYear}-${ri.warning.asset ?? ""}-${ri.warning.source ?? ""}-${idx}`;
 								const actions = reportItemActions(group.code, ri, {
-									note: neutral,
+									note: neutral && !REPORT_NOTICE_CODES.has(group.code),
 									saleTimestamp:
 										ri.kind === "unresolved"
 											? saleTimestamps.get(ri.unresolved.txId)
@@ -610,15 +645,6 @@ export function ReviewClient() {
 															ri.unresolved.reason}
 													</p>
 												</div>
-											) : ri.kind === "warning" &&
-												ri.warning.count &&
-												ri.warning.count > 1 ? (
-												<span>
-													{ri.message}{" "}
-													<span className="font-medium text-[var(--text-primary)]">
-														(×{ri.warning.count})
-													</span>
-												</span>
 											) : (
 												ri.message
 											)}
@@ -690,9 +716,7 @@ export function ReviewClient() {
 				<StaleReportBanner computing={computing} onRecompute={handleCompute} />
 			) : null}
 
-			{!loading &&
-			reportMissing &&
-			(actionTotal + noteTotal > 0 || connectionIssues.length > 0) ? (
+			{!loading && reportMissing && !showMissingEmptyState ? (
 				<div
 					role="status"
 					className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning-soft)] px-4 py-3 text-sm"
@@ -733,32 +757,26 @@ export function ReviewClient() {
 			) : !data ? null : (
 				<div className="space-y-5">
 					{noActionItems && !reportStale ? (
-						data.reportStatus === "current" ? (
+						ledgerEmpty ? (
 							<EmptyState
-								icon={
-									<CheckCircle2 className="h-8 w-8 text-[var(--positive)]" />
-								}
-								title="No review flags found"
-								description={
+								icon={<Upload className="h-8 w-8" />}
+								title={
 									taxYear
-										? `All ledger transactions in ${taxYear} are clean.`
-										: "All ledger transactions are clean."
+										? `No transactions in ${taxYear}`
+										: "No transactions yet"
 								}
+								description="There is nothing to review until transactions are imported or added."
 								action={
 									<Link
-										href={
-											taxYear
-												? `/report?taxYear=${encodeURIComponent(taxYear)}`
-												: "/report"
-										}
+										href="/import"
 										className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
 									>
-										Open Schedule VDA report
+										Import file
 										<ArrowRight className="h-4 w-4" aria-hidden="true" />
 									</Link>
 								}
 							/>
-						) : (
+						) : showMissingEmptyState ? (
 							<EmptyState
 								icon={<Calculator className="h-8 w-8 text-[var(--warning)]" />}
 								title={
@@ -777,6 +795,27 @@ export function ReviewClient() {
 										<Calculator className="h-4 w-4" aria-hidden="true" />
 										{computeButtonText}
 									</button>
+								}
+							/>
+						) : (
+							<EmptyState
+								icon={
+									<CheckCircle2 className="h-8 w-8 text-[var(--positive)]" />
+								}
+								title="All items reviewed"
+								description={`Nothing${taxYear ? ` in ${taxYear}` : ""} needs your attention. Items you marked as checked stay checked until their data changes.`}
+								action={
+									<Link
+										href={
+											taxYear
+												? `/report?taxYear=${encodeURIComponent(taxYear)}`
+												: "/report"
+										}
+										className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+									>
+										Open Schedule VDA report
+										<ArrowRight className="h-4 w-4" aria-hidden="true" />
+									</Link>
 								}
 							/>
 						)
@@ -909,6 +948,30 @@ export function ReviewClient() {
 									of it counts as a review item.
 								</p>
 								{noteGroups.map((group) => renderGroup(group, true))}
+							</div>
+						</details>
+					) : null}
+					{reportNoteGroups.length > 0 ? (
+						<details className="group rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
+							<summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-3 hover:bg-[var(--bg-hover)]/60">
+								<span className="flex flex-wrap items-center gap-2">
+									<span className="text-sm font-semibold">Report notes</span>
+									<Badge tone="neutral">
+										<span className="num">{reportNoteTotal}</span>{" "}
+										{pluralise(reportNoteTotal, "note")}
+									</Badge>
+								</span>
+								<ChevronDown
+									className="h-4 w-4 shrink-0 text-[var(--text-muted)] transition-transform group-open:rotate-180"
+									aria-hidden="true"
+								/>
+							</summary>
+							<div className="space-y-4 border-t border-[var(--border)] p-4">
+								<p className="text-xs text-[var(--text-secondary)]">
+									About the computed report, not your files. Nothing here needs
+									action and none of it counts as a review item.
+								</p>
+								{reportNoteGroups.map((group) => renderGroup(group, true))}
 							</div>
 						</details>
 					) : null}

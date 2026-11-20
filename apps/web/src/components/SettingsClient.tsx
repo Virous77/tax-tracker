@@ -41,7 +41,11 @@ const RESTORE_STEPS = [
 	{ text: "Start the app again:", command: "docker compose start" },
 ];
 
-export function SettingsClient() {
+export function SettingsClient({
+	passwordEnabled,
+}: {
+	passwordEnabled: boolean;
+}) {
 	const router = useRouter();
 	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
 	const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -199,14 +203,16 @@ export function SettingsClient() {
 						backup location.
 					</p>
 				</div>
-				<button
-					type="button"
-					onClick={handleLogout}
-					className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-				>
-					<LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-					Log out (if password enabled)
-				</button>
+				{passwordEnabled ? (
+					<button
+						type="button"
+						onClick={handleLogout}
+						className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+					>
+						<LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+						Log out
+					</button>
+				) : null}
 			</div>
 
 			{error ? <ErrorBanner message={error} /> : null}

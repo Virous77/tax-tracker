@@ -219,3 +219,12 @@ test("host.docker.internal is local in both UI and server", async ({
 		cloudAcknowledged: false,
 	});
 });
+
+test("Log out is hidden while no password is set", async ({ page }) => {
+	await page.goto("/settings");
+	await settled(page);
+	await expect(
+		page.getByRole("heading", { level: 1, name: "Settings" }),
+	).toBeVisible();
+	await expect(page.getByRole("button", { name: /Log out/ })).toHaveCount(0);
+});

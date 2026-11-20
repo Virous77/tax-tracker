@@ -44,7 +44,7 @@ continue.
 - Once a release exists, `docker compose pull && docker compose up -d` downloads and runs the published image
   without building.
 
-To run another image or tag (for example a pinned `:0.1.0`, or `tax-tracker-app:local` so a local build never
+To run another image or tag (for example a pinned `:v0.1.0`, or `tax-tracker-app:local` so a local build never
 shadows the published tag), set `TAX_TRACKER_IMAGE` in `.env`.
 
 ## 3. Configuration (`.env`)

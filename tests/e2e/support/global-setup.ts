@@ -14,6 +14,34 @@ export default async function globalSetup() {
 	}
 	if (process.env.E2E_REUSE_STACK !== "1") startStacks();
 	await Promise.all(STACKS.map((s) => waitForHealth(s.port)));
+	await Promise.all(STACKS.map((s) => acceptDisclaimer(s.port, s.password)));
+}
+
+// The first-run dialog blocks every page until accepted; specs that are not about it start accepted.
+async function acceptDisclaimer(port: number, password: string) {
+	const base = `http://localhost:${port}`;
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+	};
+	if (password) {
+		const login = await fetch(`${base}/api/auth/login`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ password }),
+		});
+		if (!login.ok) throw new Error(`login on port ${port} → ${login.status}`);
+		headers.Cookie = login.headers
+			.getSetCookie()
+			.map((c) => c.split(";")[0])
+			.join("; ");
+	}
+	const res = await fetch(`${base}/api/settings`, {
+		method: "PUT",
+		headers,
+		body: JSON.stringify({ disclaimerAccepted: true }),
+	});
+	if (!res.ok)
+		throw new Error(`accept disclaimer on port ${port} → ${res.status}`);
 }
 
 function startStacks() {

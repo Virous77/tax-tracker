@@ -24,6 +24,8 @@ import {
 	CreateImportResponseSchema,
 	CreateTransactionRequestSchema,
 	CreateTransactionResponseSchema,
+	DemoLoadResponseSchema,
+	DemoStatusSchema,
 	ErrorEnvelopeSchema,
 	GetImportResponseSchema,
 	GetReportResponseSchema,
@@ -398,9 +400,55 @@ export type ReportState =
 	| { status: "ready"; report: VdaReport }
 	| { status: "missing"; missing: ReportMissingDetails | null };
 
+export type AppHealth = z.infer<typeof HealthResponseSchema>;
+
+const BACKUP_FILE_FALLBACK = "tax-tracker-backup.db";
+
+function backupFileName(res: Response): string {
+	const match = /filename="?([^";]+)"?/.exec(
+		res.headers.get("Content-Disposition") ?? "",
+	);
+	return match?.[1] ?? BACKUP_FILE_FALLBACK;
+}
+
 export const api = {
-	health() {
+	health(): Promise<AppHealth> {
 		return requestJson("/api/health", { schema: HealthResponseSchema });
+	},
+
+	getDemo() {
+		return requestJson("/api/demo", { schema: DemoStatusSchema });
+	},
+
+	loadDemo() {
+		return requestJson("/api/demo", {
+			method: "POST",
+			body: JSON.stringify({}),
+			schema: DemoLoadResponseSchema,
+		});
+	},
+
+	removeDemo(): Promise<void> {
+		return requestJson("/api/demo", { method: "DELETE" });
+	},
+
+	async downloadBackup(): Promise<{ blob: Blob; fileName: string }> {
+		const res = await fetch("/api/backup", { credentials: "same-origin" });
+		if (res.status === 401) {
+			redirectToLogin();
+			throw new ApiError(401, "UNAUTHORIZED", "Authentication required");
+		}
+		if (!res.ok) {
+			const parsed = ErrorEnvelopeSchema.safeParse(
+				await res.json().catch(() => null),
+			);
+			throw new ApiError(
+				res.status,
+				parsed.success ? parsed.data.error.code : `HTTP_${res.status}`,
+				parsed.success ? parsed.data.error.message : "Backup failed",
+			);
+		}
+		return { blob: await res.blob(), fileName: backupFileName(res) };
 	},
 
 	getSettings(): Promise<AppSettings> {

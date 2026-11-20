@@ -651,7 +651,7 @@ export function ConnectionsClient() {
 							<EmptyState
 								icon={<Wallet className="h-8 w-8" />}
 								title="No connections configured"
-								description="Add a read-only Binance or CoinDCX API key, or track an EVM wallet address across Ethereum, Base, Arbitrum, Polygon, or BNB Chain."
+								description="Add a read-only Binance or CoinDCX API key, or track an EVM wallet address across Ethereum, Base, Arbitrum, Polygon, or BNB Chain. Prefer files? Import an export from the Import page instead."
 								action={
 									<button
 										type="button"

@@ -358,7 +358,7 @@ export function TransactionsClient() {
 					description={
 						taxYear || asset || type || source || flagged || q
 							? "Try clearing your filters or selecting another tax year."
-							: "No transactions yet — import an export file or add a manual transaction."
+							: "No transactions yet — import an export file, connect an exchange, or add a manual transaction."
 					}
 					action={
 						<Link

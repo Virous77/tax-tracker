@@ -4,6 +4,7 @@ import type { Recipe } from "@tax/core";
 import { Eye, FileSpreadsheet, Info, Plus, Trash2, Wrench } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
@@ -133,14 +134,17 @@ export function ImportsClient() {
 				<EmptyState
 					icon={<FileSpreadsheet className="h-8 w-8" />}
 					title="No files imported yet"
-					description="Upload a Binance, CoinDCX, or generic CSV export to populate your ledger."
+					description="Upload a Binance, CoinDCX, or generic CSV export to populate your ledger, or load sample data to see a full report first."
 					action={
-						<Link
-							href="/import"
-							className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-						>
-							Import a file
-						</Link>
+						<div className="flex flex-wrap justify-center gap-3">
+							<Link
+								href="/import"
+								className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+							>
+								Import a file
+							</Link>
+							<TrySampleDataButton />
+						</div>
 					}
 				/>
 			) : (
@@ -166,6 +170,7 @@ export function ImportsClient() {
 												{imp.kind === "api_sync" ? (
 													<Badge tone="accent">Synced</Badge>
 												) : null}
+												{imp.demo ? <Badge tone="warning">Sample</Badge> : null}
 											</div>
 											{kindLabel ? (
 												<p className="mt-0.5 text-xs font-medium text-[var(--text-primary)]">
@@ -306,6 +311,9 @@ export function ImportsClient() {
 														<span className="truncate">{imp.fileName}</span>
 														{imp.kind === "api_sync" ? (
 															<Badge tone="accent">Synced</Badge>
+														) : null}
+														{imp.demo ? (
+															<Badge tone="warning">Sample</Badge>
 														) : null}
 													</div>
 													{kindLabel ? (

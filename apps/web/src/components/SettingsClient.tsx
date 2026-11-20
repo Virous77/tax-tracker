@@ -5,6 +5,7 @@ import {
 	AlertTriangle,
 	CheckCircle2,
 	Database,
+	Download,
 	LogOut,
 	Save,
 } from "lucide-react";
@@ -29,6 +30,8 @@ export function SettingsClient() {
 	const [saving, setSaving] = useState(false);
 	const [savedMsg, setSavedMsg] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [backingUp, setBackingUp] = useState(false);
+	const [backupError, setBackupError] = useState<string | null>(null);
 
 	const defaultYearId = useId();
 	const feeId = useId();
@@ -48,6 +51,24 @@ export function SettingsClient() {
 	const pricesEnabledId = useId();
 	const coingeckoFallbackId = useId();
 	const marketBasisId = useId();
+
+	async function handleDownloadBackup() {
+		setBackingUp(true);
+		setBackupError(null);
+		try {
+			const { blob, fileName } = await api.downloadBackup();
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = fileName;
+			link.click();
+			URL.revokeObjectURL(url);
+		} catch (err) {
+			setBackupError(getErrorMessage(err));
+		} finally {
+			setBackingUp(false);
+		}
+	}
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -760,12 +781,51 @@ export function SettingsClient() {
 							<code className="font-mono-code">/data/tax-tracker.db</code> in
 							Docker).
 						</p>
-						<p className="text-xs text-[var(--text-secondary)]">
-							<strong>How to back up:</strong> Copy the{" "}
-							<code className="font-mono-code">.db</code> file (when no import
-							or report computation is running) to an encrypted drive.
-						</p>
 					</div>
+				</div>
+
+				<div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4 text-xs text-[var(--text-secondary)]">
+					<h3 className="text-sm font-semibold text-[var(--text-primary)]">
+						Backup
+					</h3>
+					<p>
+						<strong>How to back up:</strong> download a consistent snapshot of
+						the whole database and keep it on an encrypted drive. It contains
+						your transactions.
+					</p>
+					<button
+						type="button"
+						disabled={backingUp}
+						onClick={handleDownloadBackup}
+						className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-50"
+					>
+						<Download className="h-4 w-4" aria-hidden="true" />
+						{backingUp ? "Preparing backup…" : "Download backup"}
+					</button>
+					{backupError ? (
+						<p role="alert" className="text-[var(--loss)]">
+							{backupError}
+						</p>
+					) : null}
+					<div>
+						<p className="font-medium text-[var(--text-primary)]">
+							To restore a backup
+						</p>
+						<ol className="mt-1 list-decimal space-y-0.5 pl-5">
+							<li>Stop the app.</li>
+							<li>
+								Replace{" "}
+								<code className="font-mono-code">data/tax-tracker.db</code> with
+								your backup file, renamed to{" "}
+								<code className="font-mono-code">tax-tracker.db</code>.
+							</li>
+							<li>Start the app again.</li>
+						</ol>
+					</div>
+					<p>
+						A backup is also made automatically before upgrades that change the
+						database, in <code className="font-mono-code">data/backups/</code>.
+					</p>
 				</div>
 			</section>
 		</div>

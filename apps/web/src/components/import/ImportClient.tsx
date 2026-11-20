@@ -13,6 +13,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { type DragEvent, useEffect, useId, useRef, useState } from "react";
+import { SampleDataPrompt } from "@/components/demo/SampleDataPrompt";
 import { RecipeWizard } from "@/components/import/RecipeWizard";
 import { Badge } from "@/components/ui/Badge";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -315,6 +316,8 @@ export function ImportClient() {
 			</div>
 
 			{error ? <ErrorBanner message={error} /> : null}
+
+			{result ? null : <SampleDataPrompt />}
 
 			{result ? (
 				<section

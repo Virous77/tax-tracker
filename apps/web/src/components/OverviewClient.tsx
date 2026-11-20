@@ -1,6 +1,6 @@
 "use client";
 
-import type { VdaReport } from "@tax/core";
+import { DEFAULT_ENGINE_SETTINGS, type VdaReport } from "@tax/core";
 import {
 	AlertTriangle,
 	ArrowRight,
@@ -12,6 +12,8 @@ import {
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
+import { GettingStarted } from "@/components/GettingStarted";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -20,6 +22,7 @@ import {
 	TaxYearSelect,
 } from "@/components/ui/TaxYearSelect";
 import {
+	type AppSettings,
 	api,
 	getErrorMessage,
 	type ReportMissingDetails,
@@ -34,6 +37,13 @@ import {
 } from "@/lib/client/format";
 import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
 
+function hasCustomisedEngineSettings(settings: AppSettings): boolean {
+	return Object.entries(DEFAULT_ENGINE_SETTINGS).some(
+		([key, value]) =>
+			settings[key as keyof typeof DEFAULT_ENGINE_SETTINGS] !== value,
+	);
+}
+
 export function OverviewClient() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
@@ -46,6 +56,7 @@ export function OverviewClient() {
 		useState<ReportMissingDetails | null>(null);
 	const [txTotal, setTxTotal] = useState<number | null>(null);
 	const [reviewCount, setReviewCount] = useState<number>(0);
+	const [settingsCustomised, setSettingsCustomised] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [computing, setComputing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -61,6 +72,9 @@ export function OverviewClient() {
 				]);
 				if (cancelled) return;
 				if (years.length > 0) setTaxYears(years);
+				if (settings) {
+					setSettingsCustomised(hasCustomisedEngineSettings(settings));
+				}
 				if (!urlTaxYear && settings?.defaultTaxYear) {
 					setTaxYear(settings.defaultTaxYear);
 				}
@@ -240,6 +254,18 @@ export function OverviewClient() {
 				</div>
 			) : null}
 
+			{!loading && !error ? (
+				<GettingStarted
+					facts={{
+						taxYear,
+						settingsCustomised,
+						hasData: (txTotal ?? 0) > 0,
+						reportReady: report !== null,
+						openReviewItems: reviewCount,
+					}}
+				/>
+			) : null}
+
 			{loading ? (
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{["a", "b", "c", "d", "e"].map((k) => (
@@ -256,7 +282,7 @@ export function OverviewClient() {
 					description={
 						reportMissing && reportMissing.cause !== "never_computed"
 							? `${formatReportMissingState(reportMissing, taxYear, "overview").description} Upload your Binance, CoinDCX, or generic CSV/XLSX trade history to build your ledger.`
-							: "Upload your Binance, CoinDCX, or generic CSV/XLSX trade history to build your ledger and compute Schedule VDA."
+							: "Upload your Binance, CoinDCX, or generic CSV/XLSX trade history to build your ledger and compute Schedule VDA. Just looking around? Load sample data to see a full report in one click."
 					}
 					action={
 						<div className="flex flex-wrap justify-center gap-3">
@@ -273,6 +299,7 @@ export function OverviewClient() {
 							>
 								Add manual transaction
 							</Link>
+							<TrySampleDataButton />
 						</div>
 					}
 				/>
@@ -318,6 +345,9 @@ export function OverviewClient() {
 								{report.scheduleVdaRows.length}{" "}
 								{pluralise(report.scheduleVdaRows.length, "Schedule VDA row")}
 							</span>
+							{report.includesDemoData ? (
+								<Badge tone="warning">Includes sample data</Badge>
+							) : null}
 							{!report.sectionsVerified ? (
 								<Badge tone="warning">
 									Section numbers pending CA verification

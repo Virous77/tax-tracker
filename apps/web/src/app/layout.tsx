@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
+import { DemoProvider } from "@/components/demo/DemoProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,7 +19,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 				<script>{THEME_INIT_SCRIPT}</script>
 			</head>
 			<body>
-				<AppShell>{children}</AppShell>
+				<DemoProvider>
+					<AppShell>{children}</AppShell>
+				</DemoProvider>
 			</body>
 		</html>
 	);

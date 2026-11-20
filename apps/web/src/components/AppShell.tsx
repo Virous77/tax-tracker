@@ -1,6 +1,5 @@
 "use client";
 
-import { DISCLAIMER } from "@tax/core";
 import {
 	AlertTriangle,
 	ArrowLeftRight,
@@ -26,6 +25,9 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { DemoBanner } from "@/components/demo/DemoBanner";
+import { AppFooter } from "@/components/shell/AppFooter";
+import { DisclaimerGate } from "@/components/shell/DisclaimerGate";
 
 type ThemePref = "system" | "light" | "dark";
 
@@ -138,9 +140,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 				<main className="flex flex-1 items-center justify-center p-4">
 					{children}
 				</main>
-				<footer className="border-t border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-center text-xs text-[var(--text-muted)]">
-					{DISCLAIMER}
-				</footer>
+				<AppFooter />
 			</div>
 		);
 	}
@@ -282,13 +282,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 			{/* Main Content + Footer */}
 			<div className="flex min-w-0 flex-1 flex-col lg:pl-60">
+				<DemoBanner />
 				<main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
 					{children}
 				</main>
-				<footer className="border-t border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-center text-xs text-[var(--text-muted)] sm:px-6">
-					{DISCLAIMER}
-				</footer>
+				<AppFooter className="sm:px-6" />
 			</div>
+			<DisclaimerGate />
 		</div>
 	);
 }

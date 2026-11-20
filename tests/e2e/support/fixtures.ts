@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS = {
 	transferMatchWindowHours: 72,
 	transferAmountTolerance: "0.01",
 	defaultTaxYear: "2026-27",
+	disclaimerAccepted: true,
 	ai: {
 		baseUrl: "http://ollama:11434/v1",
 		model: "",

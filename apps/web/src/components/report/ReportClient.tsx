@@ -17,10 +17,12 @@ import {
 	Info,
 	RefreshCw,
 	Save,
+	Upload,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
 import { TrailDrawer } from "@/components/report/TrailDrawer";
 import { Badge } from "@/components/ui/Badge";
 import { Drawer } from "@/components/ui/Drawer";
@@ -177,6 +179,7 @@ export function ReportClient() {
 		useState<PriceFillSummary | null>(null);
 	const [priceFillError, setPriceFillError] = useState<string | null>(null);
 	const [missingExpanded, setMissingExpanded] = useState(false);
+	const [ledgerEmpty, setLedgerEmpty] = useState(false);
 
 	const mountedRef = useRef(true);
 	const pricePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -234,13 +237,16 @@ export function ReportClient() {
 		setPriceFillError(null);
 		setMissingExpanded(false);
 		try {
-			const [repState, savedActuals, pStatus, snapList] = await Promise.all([
-				api.getReportState(year),
-				api.getActualBalances(year).catch(() => []),
-				api.getPricesStatus(year).catch(() => null),
-				api.listBalanceSnapshots().catch(() => []),
-			]);
+			const [repState, savedActuals, pStatus, snapList, txPage] =
+				await Promise.all([
+					api.getReportState(year),
+					api.getActualBalances(year).catch(() => []),
+					api.getPricesStatus(year).catch(() => null),
+					api.listBalanceSnapshots().catch(() => []),
+					api.listTransactions({ page: 1, pageSize: 1 }).catch(() => null),
+				]);
 			if (!mountedRef.current) return;
+			setLedgerEmpty(txPage?.total === 0);
 			const rep = repState.status === "ready" ? repState.report : null;
 			setReport(rep);
 			setReportMissing(repState.status === "missing" ? repState.missing : null);
@@ -788,6 +794,27 @@ export function ReportClient() {
 						taxYear,
 						"report",
 					);
+					if (ledgerEmpty) {
+						return (
+							<EmptyState
+								icon={<Upload className="h-8 w-8" />}
+								title="No transactions yet — import an export file"
+								description="The report is built from your ledger. Import a Binance, CoinDCX, or CSV export, or load sample data to see a full report first."
+								action={
+									<div className="flex flex-wrap justify-center gap-3">
+										<Link
+											href="/import"
+											className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+										>
+											<Upload className="h-4 w-4" aria-hidden="true" />
+											Import file
+										</Link>
+										<TrySampleDataButton />
+									</div>
+								}
+							/>
+						);
+					}
 					return (
 						<div className="space-y-6">
 							<EmptyState
@@ -818,6 +845,9 @@ export function ReportClient() {
 							<div className="space-y-1">
 								<div className="flex flex-wrap items-center gap-2">
 									<h2 className="text-sm font-semibold">{report.act}</h2>
+									{report.includesDemoData ? (
+										<Badge tone="warning">Includes sample data</Badge>
+									) : null}
 									{!report.sectionsVerified ? (
 										<Badge tone="warning">Pending CA verification</Badge>
 									) : (

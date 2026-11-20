@@ -38,7 +38,8 @@ Settings. Install first: see the [install guide](install.md).
    exports through the API are not blocked by it.)
 2. **Getting started checklist.** The Overview page shows five steps, each with a link and a done/not-done mark:
    choose the tax year and settings (done once you have saved Settings), import a file or connect an exchange,
-   resolve Review items (notes about your files do not count), open the report, export. You can dismiss it.
+   resolve Review items (done once no action items are left for the computed report; notes about your files do not
+   count), open the report, export. You can dismiss it.
 3. **Try with sample data.** To look around before using your own files, click **Try with sample data** on the
    Overview page. It loads a small, clearly fake history (Binance, CoinDCX and one EVM wallet) so you can see a
    complete report at once. While it is loaded a banner says **Sample data loaded** with a **Remove sample data**
@@ -285,13 +286,25 @@ The **Review** page groups every open problem by code, explains it and links to 
 appear after you compute it. Items come in two kinds:
 
 - **Items that need action.** Something may be wrong or missing: a sale with no buy history, a row with no rupee
-  value, an unmatched transfer, a fee to check. Each has a link to the fix, and you can mark a flag resolved once
-  you have checked it. These are the items counted in "N items need review" on the Overview, and the
-  getting-started step "Resolve Review items" is done when none are left.
+  value, an unmatched transfer, a fee to check. Each has a link to the fix. These are the items counted in
+  "N items need review" on the Overview.
 - **Notes about your files.** Shown in their own section. They record how a file was read, for example "used the
   +05:00 offset from the file name instead of the zone you selected", "duplicate column names were renamed" or
   "this export has no fee column". They need no action, cannot be resolved and are not counted. Read them once;
   if a note surprises you (a wrong time zone, say), fix the import and import again.
+
+**Marking items checked.** Once you have looked at an item, and fixed it if it needed fixing, click **Mark checked**
+on its row (or tick the flag under **Inspect** and save), or click **Mark all as checked** on a group to check every
+item in it for that tax year in one step. That suits groups that are informational by nature, such as
+`tds_not_deducted` on Binance sales (Binance never deducts Indian TDS). Marking an item checked only records that
+you reviewed it: it **never changes a tax figure**. A missing buy stays unresolved and out of the totals until you
+add the buy. Checked items stay checked when you recompute the report. The getting-started step "Resolve Review
+items" is done once no action items are left for the computed report.
+
+**Stale report.** When your inputs change after a compute (a new import, an edited row, a tax setting), the report
+becomes **stale**. Review keeps showing the items from the last compute, with a banner and a **Recompute** button,
+so nothing disappears while you work. Recompute to see items for the new data. Saving settings that do not affect tax
+(such as the default tax year or the AI assistant) does not make the report stale.
 
 **Incomplete reports.** While any sale is unresolved (missing buy history or no rupee value), the report and its
 exports are marked **incomplete**. The unresolved parts are listed under _Unresolved disposal slices_ and left out
@@ -324,11 +337,11 @@ not been computed (or needs recomputing after a change).
 ## 10. Settings, and what a CA should check
 
 Each tax assumption that the law leaves open is a setting, explained in one line on the Settings page and printed
-on every report and export. Changing one invalidates stored reports; recompute afterwards.
+on every report and export. Changing one makes stored reports stale; recompute afterwards.
 
 | Setting                        | Options (default **bold**)                                                             | Open question for your CA                                                                                                                                                                                                   |
 | ------------------------------ | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Default tax year               | 2025-26, 2026-27                                                                       | Which year you are filing for (see [tax year](#two-words-first)).                                                                                                                                                           |
+| Default tax year               | **Latest completed tax year** on a fresh install (2025-26 until 31 March 2027)         | Which year Overview, Review and Report open on (see [tax year](#two-words-first)). Not a tax setting.                                                                                                                       |
 | Head of income                 | **Capital gains**, business                                                            | Which head your VDA income belongs under.                                                                                                                                                                                   |
 | Fees                           | **Exclude**, include (add buy fees to cost, deduct sell fees from consideration)       | Only cost of acquisition is deductible. Whether a buy-side fee and its GST are part of that cost, and whether a sell-side fee can reduce consideration, is unsettled.                                                       |
 | Lot pool                       | **Global FIFO across all wallets**, per-source FIFO                                    | No rule found prescribing either; FIFO itself is also a choice.                                                                                                                                                             |
@@ -421,11 +434,8 @@ pnpm --filter @tax/cli exec node dist/index.js compute --ledger ledger.json --ye
 
 ### The HTTP API
 
-The web app's own API also works without the browser, for scripts. The first-run notice is only a UI gate. Every
-endpoint, with its request and response schema, is listed in `ApiContract` in
-[`packages/core/src/api/index.ts`](../packages/core/src/api/index.ts); the black-box tests in
-[`tests/api/`](../tests/api/) use them all. The API is not versioned yet and may change before 1.0. A minimal
-round trip, with the app on port 3000:
+The web app's own API also works without the browser, for scripts. The first-run notice is only a UI gate. The
+API is not versioned yet and may change before 1.0. A minimal round trip, with the app on port 3000:
 
 ```sh
 # Is it up?
@@ -458,3 +468,63 @@ curl -b cookies.txt "http://localhost:3000/api/review?taxYear=2025-26"
 ```
 
 Delete `cookies.txt` afterwards: it is a valid login for 12 hours.
+
+#### Endpoints
+
+All paths start with `/api`. `:id` is a record id and `:taxYear` is `2025-26` or `2026-27`. The request and response
+schemas are in `ApiContract` in [`packages/core/src/api/index.ts`](../packages/core/src/api/index.ts).
+
+| Method | Path                               | What it does                                                                    |
+| ------ | ---------------------------------- | ------------------------------------------------------------------------------- |
+| GET    | `/health`                          | Is the app up; version and database status                                      |
+| GET    | `/settings`                        | Read settings                                                                   |
+| PUT    | `/settings`                        | Change settings (only the fields you send)                                      |
+| GET    | `/tax-years`                       | The supported tax years with their dates and Act                                |
+| POST   | `/imports`                         | Upload a file (multipart: `file`, `source`, `timezone`, optional `pdfPassword`) |
+| GET    | `/imports`                         | List imports                                                                    |
+| GET    | `/imports/:id`                     | One import, with row errors, TDS summary or balance snapshot                    |
+| POST   | `/imports/:id/confirm`             | Finish an import waiting for a column mapping, with a recipe                    |
+| DELETE | `/imports/:id`                     | Delete an import and its rows                                                   |
+| GET    | `/recipes`                         | List saved recipes                                                              |
+| DELETE | `/recipes/:id`                     | Delete a saved recipe                                                           |
+| POST   | `/recipes/preview`                 | Convert up to 10 rows of a pending import with a recipe, with checks            |
+| POST   | `/recipes/suggest/preview-payload` | Show exactly what would be sent to the AI endpoint, without sending it          |
+| POST   | `/recipes/suggest`                 | Ask the configured AI endpoint to suggest a recipe                              |
+| GET    | `/transactions`                    | List ledger rows (filters, sort, pages)                                         |
+| POST   | `/transactions`                    | Add a manual row (gift, income, missing buy)                                    |
+| PATCH  | `/transactions/:id`                | Edit a row: type, INR value, note, venue, resolve flags                         |
+| DELETE | `/transactions/:id`                | Delete a manual row                                                             |
+| GET    | `/review`                          | Review groups and counts for a tax year (`?taxYear=`), with the report status   |
+| POST   | `/review/resolve`                  | Mark review items checked: listed `txIds`, or a whole group for a tax year      |
+| POST   | `/reports/:taxYear/compute`        | Compute and store the report                                                    |
+| GET    | `/reports/:taxYear`                | Read the stored report                                                          |
+| GET    | `/reports/:taxYear/export`         | Download an export (`kind`, `format`)                                           |
+| GET    | `/balances/snapshots`              | Imported balance statements, compared with computed balances                    |
+| POST   | `/balances/snapshots/:id/apply`    | Use a statement as a year's actual balances                                     |
+| GET    | `/balances/actual`                 | A year's actual balances (`?taxYear=`)                                          |
+| PUT    | `/balances/actual`                 | Replace a year's actual balances (`?taxYear=`)                                  |
+| GET    | `/vault`                           | Key vault status                                                                |
+| POST   | `/vault/setup`                     | Create the vault with a passphrase                                              |
+| POST   | `/vault/unlock`                    | Unlock the vault                                                                |
+| POST   | `/vault/lock`                      | Lock the vault                                                                  |
+| POST   | `/vault/change-passphrase`         | Change the vault passphrase                                                     |
+| POST   | `/vault/reset`                     | Delete the vault and every stored key                                           |
+| GET    | `/providers`                       | Which explorer and price providers have a key saved                             |
+| PUT    | `/providers/:name`                 | Save a provider key                                                             |
+| DELETE | `/providers/:name`                 | Remove a provider key                                                           |
+| GET    | `/connections`                     | List exchange and wallet connections                                            |
+| POST   | `/connections`                     | Add a connection                                                                |
+| PATCH  | `/connections/:id`                 | Change a connection                                                             |
+| DELETE | `/connections/:id`                 | Remove a connection                                                             |
+| POST   | `/connections/:id/check`           | Check a connection's key or address                                             |
+| POST   | `/connections/:id/sync`            | Start a sync (returns a job)                                                    |
+| GET    | `/connections/:id/balances`        | Balances reported by the exchange or chain                                      |
+| GET    | `/jobs/:id`                        | Progress of a sync or price job                                                 |
+| GET    | `/prices/status`                   | Which prices the report still needs                                             |
+| POST   | `/prices/fill`                     | Fetch missing prices (returns a job)                                            |
+| GET    | `/demo`                            | Is sample data loaded                                                           |
+| POST   | `/demo`                            | Load sample data                                                                |
+| DELETE | `/demo`                            | Remove sample data                                                              |
+| GET    | `/backup`                          | Download a consistent copy of the database                                      |
+| POST   | `/auth/login`                      | Sign in when `APP_PASSWORD` is set                                              |
+| POST   | `/auth/logout`                     | Sign out                                                                        |

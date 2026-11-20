@@ -73,11 +73,12 @@ docker compose up -d --build
 Open <http://localhost:3000>. Your data lives in `./data`. The first build takes a few minutes. The app is
 reachable only from this computer unless you set `APP_PASSWORD` and `APP_BIND_ADDRESS`.
 
-**Image name.** `.env.example` sets `TAX_TRACKER_IMAGE=tax-tracker:local`, so the image you build is tagged
-`tax-tracker:local` and never takes the published name. (Without a `.env`, a local build is tagged
-`ghcr.io/virous77/tax-tracker:latest`.) No image is published until the tax rules are signed off by a CA. After
-a release, switch to the published image: set `TAX_TRACKER_IMAGE=ghcr.io/virous77/tax-tracker:latest` (or a pinned
-tag such as `:v0.1.0`) in `.env`, then run `docker compose pull && docker compose up -d`.
+**Image name.** The image you build is tagged `tax-tracker:local` (the default in both `docker-compose.yml` and
+`.env.example`), so it never takes the published name. No image is published until the tax rules are signed off by
+a CA. After a release, you can switch to the published image: set
+`TAX_TRACKER_IMAGE=ghcr.io/virous77/tax-tracker:<release-tag>` (for example `:v0.1.0`) in `.env`, then run
+`docker compose pull && docker compose up -d`. Running more than one copy on one machine? Give each its own
+`TAX_TRACKER_IMAGE`, `APP_PORT` and project name (`COMPOSE_PROJECT_NAME`).
 
 **No exports of your own yet?** Click **Try with sample data** on the Overview page, or import the synthetic
 files in [`examples/`](examples/) to try the import path. Details, `.env` options and troubleshooting are in the
@@ -91,8 +92,10 @@ files in [`examples/`](examples/) to try the import path. Details, `.env` option
    other CSV), or add a read-only exchange key or wallet address under **Connections**. Import every year you
    ever traded, not only the current one: FIFO needs the earlier buys.
 3. **Resolve the Review page.** Each item that needs action says what is wrong and links to the fix: missing
-   buys, rows with no rupee value, unmatched transfers. **Notes about your files** (how a file was read) need no
-   action.
+   buys, rows with no rupee value, unmatched transfers. Fix what you can, then click **Mark checked** on each
+   item, or **Mark all as checked** on a group you have looked through. Marking an item checked never changes a
+   tax figure, and it stays checked when you recompute. **Notes about your files** (how a file was read) need no
+   action. The Overview checklist step is done once no action items are left for the computed report.
 4. **Compute** the report on the **Report** page and walk through it: Schedule VDA rows, TDS, income, balances.
 5. **Export** Schedule VDA, TDS, Income or the full report as CSV or XLSX, and take it to your CA.
 

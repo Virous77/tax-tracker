@@ -41,18 +41,28 @@ No exports of your own yet? Use **Try with sample data** on the Overview page, o
 
 `docker-compose.yml` keeps `build: .` and runs whatever image `TAX_TRACKER_IMAGE` names:
 
-- **Local build (the default for now).** `.env.example` sets `TAX_TRACKER_IMAGE=tax-tracker:local`, so
-  `docker compose up -d --build` builds from the source you cloned and tags the result `tax-tracker:local`. It never
-  takes the published name, and `docker compose pull` never replaces it. Use this until the first release is
-  published (no image is published before the tax rules are signed off by a CA), if you changed the code, or if you
-  want to run exactly the source you read. Without a `.env` file the compose default
-  `ghcr.io/virous77/tax-tracker:latest` is used as the tag, so a local build would take the published name.
-- **Published image (after a release).** Set `TAX_TRACKER_IMAGE=ghcr.io/virous77/tax-tracker:latest` in `.env`,
-  or a pinned tag such as `ghcr.io/virous77/tax-tracker:v0.1.0`, then run
+- **Local build (the default).** `docker compose up -d --build` builds from the source you cloned and tags the
+  result `tax-tracker:local`. That name is the default in `docker-compose.yml` and in `.env.example`, so it applies
+  with or without a `.env` file. It never takes the published name, and `docker compose pull` never replaces it. Use
+  this until the first release is published (no image is published before the tax rules are signed off by a CA), if
+  you changed the code, or if you want to run exactly the source you read.
+- **Published image (after a release).** Set `TAX_TRACKER_IMAGE=ghcr.io/virous77/tax-tracker:<release-tag>` in
+  `.env` (for example `ghcr.io/virous77/tax-tracker:v0.1.0`), then run
   `docker compose pull && docker compose up -d`. It is built for `linux/amd64` and `linux/arm64`. Your `data/`
   folder is the same either way.
 
-To see which image you are running: `docker compose images app`.
+**Running more than one copy on one machine?** Give each its own `TAX_TRACKER_IMAGE`, `APP_PORT` and project name
+(`COMPOSE_PROJECT_NAME` in its `.env`). Otherwise two clones build into the same `tax-tracker:local` tag and
+overwrite each other's image, and their ports clash.
+
+To see which version is running, ask the app itself (use your `APP_PORT`):
+
+```sh
+curl http://localhost:3000/api/health     # {"ok":true,"version":"…","dbOk":true}
+```
+
+`docker compose images app` shows the image name, but after a rebuild it can show `<none>` or a bare image id;
+`/api/health` is the reliable check.
 
 ## 3. Configuration (`.env`)
 
@@ -88,13 +98,13 @@ Docker Compose reads `.env` from the repository root. Restart after a change wit
 
 Image and build variables (compose only):
 
-| Variable                     | Default                               | What it does                                                                                                                 |
-| ---------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `TAX_TRACKER_IMAGE`          | `ghcr.io/virous77/tax-tracker:latest` | Image to run or to tag a local build as. `.env.example` sets `tax-tracker:local`; see [§2](#published-image-or-local-build). |
-| `TAX_TRACKER_VERSION`        | empty                                 | Version label written into a local build's image metadata.                                                                   |
-| `TAX_TRACKER_REVISION`       | empty                                 | Git commit written into a local build's image metadata.                                                                      |
-| `TAX_TRACKER_REPOSITORY_URL` | empty                                 | Source repository written into a local build's image metadata.                                                               |
-| `SOURCE_URL`                 | empty                                 | Link shown as **Source code** in the app footer (AGPL §13). Set it if you run a modified copy for others. Hidden when empty. |
+| Variable                     | Default             | What it does                                                                                                                 |
+| ---------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `TAX_TRACKER_IMAGE`          | `tax-tracker:local` | Image to run or to tag a local build as. Give each copy on one machine its own; see [§2](#published-image-or-local-build).   |
+| `TAX_TRACKER_VERSION`        | empty               | Version label written into a local build's image metadata.                                                                   |
+| `TAX_TRACKER_REVISION`       | empty               | Git commit written into a local build's image metadata.                                                                      |
+| `TAX_TRACKER_REPOSITORY_URL` | empty               | Source repository written into a local build's image metadata.                                                               |
+| `SOURCE_URL`                 | empty               | Link shown as **Source code** in the app footer (AGPL §13). Set it if you run a modified copy for others. Hidden when empty. |
 
 An empty `*_API_BASE` uses the production address shown. Nothing is contacted until you turn on the matching
 feature; see [Privacy in the README](../README.md#privacy).
@@ -152,10 +162,15 @@ will be sent to it.
 
 ```sh
 git pull
-docker compose up -d --build    # local build
+docker compose up -d --build --force-recreate    # local build
 ```
 
-With the published image: `docker compose pull && docker compose up -d`.
+`--force-recreate` makes sure the container restarts on the new image; without it, compose can report the
+container as `Running` and keep the old one. With the published image:
+`docker compose pull && docker compose up -d`.
+
+Confirm what is running with `curl http://localhost:3000/api/health` (use your `APP_PORT`): the `version` field is
+the version of the running app.
 
 When a new version includes database changes, the app copies the database to
 `data/backups/tax-tracker-<UTC time>-pre-<migration>.db` **before** applying them, using SQLite's online
@@ -221,8 +236,8 @@ docker compose --profile ai down --volumes --rmi all
 
 `--rmi all` removes the app image under the name compose resolves from `TAX_TRACKER_IMAGE`, and the
 `ollama/ollama` image when `--profile ai` is given. To remove the images by hand instead, first read the app
-image's name: it is the `TAX_TRACKER_IMAGE` line in `.env` (`tax-tracker:local` with the example file), or
-`ghcr.io/virous77/tax-tracker:latest` when that line is missing or commented out.
+image's name: it is the `TAX_TRACKER_IMAGE` line in `.env`, or `tax-tracker:local` (the compose default) when that
+line is missing or commented out.
 
 ```sh
 grep '^TAX_TRACKER_IMAGE=' .env           # prints the name, if it is set
@@ -231,6 +246,9 @@ docker image rm tax-tracker:local         # the name you found
 docker image ls ollama/ollama             # AI users: the Ollama image (pinned by digest, so its tag may show <none>)
 docker image rm <IMAGE ID from the line above>
 ```
+
+Optional: Docker keeps a build cache after the image is gone. `docker builder prune` frees it, but that cache is
+shared with every other project you build with Docker on this machine, so they will rebuild from scratch next time.
 
 Then delete the `tax-tracker` folder. **This deletes `data/` and your whole history**; download a backup first
 if you might need it.

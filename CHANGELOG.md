@@ -21,13 +21,18 @@ Phase 4: public release polish (in progress; see `docs/SPEC-phase4.md`).
   five kept).
 - Shared recipe library as data (`packages/recipes/library/<id>/`) with `pnpm recipes:check` and
   `pnpm recipes:new`.
-- Multi-architecture image published to GitHub Container Registry; Docker Compose uses it by default, keeps
-  `build: .` for local builds, and binds to `127.0.0.1`.
+- Release workflow for a multi-architecture image on GitHub Container Registry (nothing published before CA
+  sign-off). Docker Compose builds locally as `tax-tracker:local` by default and binds to `127.0.0.1`.
 - CI, release, CodeQL and Dependabot workflows (with a 10-day cooldown), issue and PR templates.
 - `examples/`: synthetic Binance, CoinDCX and generic-CSV exports to try the import path and the recipe wizard,
   pointed to from the README quick start, the install guide and the user guide.
 - User guide: a minimal HTTP API walk-through with `curl` (health, import upload, review, compute, read and export a
-  report, password login), pointing to `ApiContract` for the full list.
+  report, password login) and a table of every endpoint with its method and purpose.
+- Review: mark items checked one by one or a whole group at once (**Mark all as checked**,
+  `POST /api/review/resolve`). Checked items stay checked across recomputes and never change tax figures. The user
+  guide and README explain checking, the stale report and when the checklist step completes.
+- Install guide: running more than one copy on one machine (own `TAX_TRACKER_IMAGE`, `APP_PORT` and project name),
+  and an optional `docker builder prune` note in uninstall (the build cache is shared with other projects).
 
 ### Changed
 
@@ -38,10 +43,20 @@ Phase 4: public release polish (in progress; see `docs/SPEC-phase4.md`).
   action and do not hold back the getting-started checklist. The user guide explains both, and that a report with
   unresolved sales is marked incomplete with provisional totals.
 - The Schedule VDA export uses human column titles; the JSON trail is only in the full export.
+- When inputs change, the report becomes **stale** and Review keeps showing the last compute's items with a
+  Recompute banner, instead of hiding them. Saving settings that do not affect tax no longer invalidates the report.
+- On a fresh install the default tax year is the latest completed tax year; the user-guide settings table says so.
+- `examples/README.md` uses the recipe wizard's own field labels for the generic file, and its pointer to the
+  importer test fixtures moved to CONTRIBUTING.
 - `pnpm test` picks up new library recipes without a rebuild, `pnpm recipes:check` lists each differing field, and `pnpm recipes:new` gives a one-line error for an id that already exists.
 
 ### Fixed
 
+- README and install guide: the default image name is `tax-tracker:local`, as in `docker-compose.yml` and
+  `.env.example` (they wrongly said `ghcr.io/virous77/tax-tracker:latest`); switching to the published image uses a
+  release tag.
+- Install guide: updating uses `docker compose up -d --build --force-recreate` so the container really restarts on
+  the new image, and `/api/health` (its `version`) is the way to confirm what is running.
 - Install guide: the restore steps are exact (stop, delete `-wal`/`-shm`, replace the database, `chown` on Linux,
   start) and are the single source for the restore text in Settings.
 - Install guide: uninstall removes the image named in `TAX_TRACKER_IMAGE` (`docker compose down --rmi all`, or by

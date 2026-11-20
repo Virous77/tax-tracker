@@ -304,7 +304,8 @@ with different meanings, an operation-per-row statement, amounts with units glue
 
 1. Add the header samples you found to `docs/research/export-samples/` (synthetic values) and the format notes to
    `docs/research/export-catalogue.md`, with the source and date. A full synthetic example file for users to try
-   goes in `examples/`, listed in `examples/README.md`.
+   goes in `examples/`, listed in `examples/README.md`. The files in `examples/` are adapted from the importer test
+   fixtures; see [`packages/importers/test/fixtures/README.md`](packages/importers/test/fixtures/README.md).
 2. Add a report kind: a header detector (by header, never by file extension) and a parser that returns `LedgerTx`
    rows. Keep the `raw` row, use the exchange's id as `sourceRef` (or the package's canonical row hash), and account
    for every input row: `rowsRead = transactions + rowErrors + skippedRows`.

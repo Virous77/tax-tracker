@@ -119,3 +119,6 @@ SPEC default (`ledger_usdt_inr`, falling back to `sbi_usd_tt` on the trade date)
 - FIFO vs other lot methods, global vs per-exchange pools (plan §11; no rule found prescribing one).
 - Cost basis of staking / airdrop receipts on later sale.
 - Who must deduct TDS on a Binance P2P sale.
+- Order of two acquisitions with the same timestamp under FIFO (e.g. two fills of one order in the same second).
+  The engine uses a deterministic order, but no rule says which lot goes first; the effect is usually tiny
+  (₹0.93 in the synthetic examples) but should be confirmed.

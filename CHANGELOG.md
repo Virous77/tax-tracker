@@ -52,6 +52,9 @@ Phase 4: public release polish (in progress; see `docs/SPEC-phase4.md`).
 
 ### Fixed
 
+- Install guide: restoring into a new, empty data folder (`docker compose up -d` picks up a changed
+  `DATA_HOST_DIR`; `start` does not).
+- `examples/README.md` says the recipe wizard pre-fills its own guesses to check.
 - README and install guide: the default image name is `tax-tracker:local`, as in `docker-compose.yml` and
   `.env.example` (they wrongly said `ghcr.io/virous77/tax-tracker:latest`); switching to the published image uses a
   release tag.

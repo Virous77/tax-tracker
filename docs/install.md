@@ -222,7 +222,14 @@ Keep backups somewhere encrypted. They contain your history and your encrypted k
    docker compose start
    ```
 
-If you set `DATA_HOST_DIR`, use that folder instead of `data/`. Your vault passphrase is the one that was in use
+If you set `DATA_HOST_DIR`, use that folder instead of `data/`.
+
+**Restoring into a new, empty data folder** (for example on a new machine): create the folder, copy the backup
+in as `tax-tracker.db`, chown it on Linux as in step 4, point `DATA_HOST_DIR` in `.env` at it, then run
+`docker compose up -d` instead of `docker compose start`. `start` reuses the existing container and ignores a
+changed `DATA_HOST_DIR`; `up -d` recreates the container with the new folder.
+
+Your vault passphrase is the one that was in use
 when the backup was taken. Stored reports come back with the backup; recompute them if you changed settings since.
 
 ## 9. Uninstall

@@ -11,7 +11,8 @@ All trades, account details, addresses and transaction hashes are made up. Impor
 | [generic-unknown-exchange.SYNTHETIC.csv](generic-unknown-exchange.SYNTHETIC.csv)     | IST       | A made-up exchange format for trying the CSV recipe wizard.                                         |
 
 For the generic file, choose **Other CSV / XLSX** and set these fields in the recipe wizard (the labels are the wizard's
-own). Fill them in by hand, or let the optional AI suggest them and check against this table. Leave every other
+own). The wizard pre-fills its own guess (for example the side column and the quote assets); check each field
+against this table and correct it, or let the optional AI suggest them and check those too. Leave every other
 column as **(None)**.
 
 | Wizard field                               | Value                       |

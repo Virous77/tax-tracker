@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Pagination } from "@/components/ui/Pagination";
+import { Select, SelectItem } from "@/components/ui/Select";
 import {
 	FALLBACK_TAX_YEARS,
 	TaxYearSelect,
@@ -212,7 +213,7 @@ export function TransactionsClient() {
 						taxYears={taxYears}
 						includeAllOption
 						label="Year"
-						className="flex-col items-stretch! gap-1!"
+						layout="stacked"
 					/>
 				</div>
 
@@ -240,19 +241,19 @@ export function TransactionsClient() {
 					>
 						Type
 					</label>
-					<select
+					<Select
 						id={typeFilterId}
 						value={type}
-						onChange={(e) => updateParams({ type: e.target.value || null })}
-						className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+						onValueChange={(value) => updateParams({ type: value || null })}
+						className="mt-1 w-full"
 					>
-						<option value="">All types</option>
+						<SelectItem value="">All types</SelectItem>
 						{TxTypeSchema.options.map((opt) => (
-							<option key={opt} value={opt}>
+							<SelectItem key={opt} value={opt}>
 								{formatTxType(opt)}
-							</option>
+							</SelectItem>
 						))}
-					</select>
+					</Select>
 				</div>
 
 				<div>
@@ -262,22 +263,22 @@ export function TransactionsClient() {
 					>
 						Source
 					</label>
-					<select
+					<Select
 						id={sourceFilterId}
 						value={source}
-						onChange={(e) => updateParams({ source: e.target.value || null })}
-						className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+						onValueChange={(value) => updateParams({ source: value || null })}
+						className="mt-1 w-full"
 					>
-						<option value="">All sources</option>
+						<SelectItem value="">All sources</SelectItem>
 						{SOURCE_FILTER_OPTIONS.map((opt) => (
-							<option key={opt} value={opt}>
+							<SelectItem key={opt} value={opt}>
 								{sourceLabel(opt)}
-							</option>
+							</SelectItem>
 						))}
 						{source && !SOURCE_FILTER_OPTIONS.includes(source) ? (
-							<option value={source}>{sourceLabel(source)}</option>
+							<SelectItem value={source}>{sourceLabel(source)}</SelectItem>
 						) : null}
-					</select>
+					</Select>
 				</div>
 
 				<div>
@@ -287,19 +288,19 @@ export function TransactionsClient() {
 					>
 						Sort
 					</label>
-					<select
+					<Select
 						id={sortFilterId}
 						value={sort}
-						onChange={(e) => updateParams({ sort: e.target.value })}
-						className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+						onValueChange={(value) => updateParams({ sort: value })}
+						className="mt-1 w-full"
 					>
-						<option value="timestamp:desc">Newest first</option>
-						<option value="timestamp:asc">Oldest first</option>
-						<option value="asset:asc">Asset A→Z</option>
-						<option value="asset:desc">Asset Z→A</option>
-						<option value="source:asc">Source A→Z</option>
-						<option value="source:desc">Source Z→A</option>
-					</select>
+						<SelectItem value="timestamp:desc">Newest first</SelectItem>
+						<SelectItem value="timestamp:asc">Oldest first</SelectItem>
+						<SelectItem value="asset:asc">Asset A→Z</SelectItem>
+						<SelectItem value="asset:desc">Asset Z→A</SelectItem>
+						<SelectItem value="source:asc">Source A→Z</SelectItem>
+						<SelectItem value="source:desc">Source Z→A</SelectItem>
+					</Select>
 				</div>
 
 				<div className="flex flex-col justify-between gap-2">

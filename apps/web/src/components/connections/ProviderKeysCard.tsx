@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Select, SelectItem } from "@/components/ui/Select";
 import { api, getErrorMessage, type ProvidersMap } from "@/lib/client/api";
 
 interface ProviderMeta {
@@ -294,17 +295,18 @@ export function ProviderKeysCard({
 												>
 													Plan tier
 												</label>
-												<select
+												<Select
 													id={tierId}
 													value={tierDraft}
-													onChange={(e) =>
-														setTierDraft(e.target.value as "free" | "paid")
+													onValueChange={(value) =>
+														setTierDraft(value as "free" | "paid")
 													}
-													className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-sm"
+													className="mt-1 w-full"
+													tone="surface"
 												>
-													<option value="free">Free plan</option>
-													<option value="paid">Paid plan</option>
-												</select>
+													<SelectItem value="free">Free plan</SelectItem>
+													<SelectItem value="paid">Paid plan</SelectItem>
+												</Select>
 											</div>
 										) : null}
 										<button

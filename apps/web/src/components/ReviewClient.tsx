@@ -685,7 +685,7 @@ export function ReviewClient() {
 
 	return (
 		<div className="space-y-6">
-			<div className="flex flex-wrap items-center justify-between gap-3">
+			<div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 				<div>
 					<h1 className="text-xl font-semibold tracking-tight">Review Queue</h1>
 					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
@@ -698,6 +698,7 @@ export function ReviewClient() {
 					onChange={handleTaxYearChange}
 					taxYears={taxYears}
 					includeAllOption
+					className="w-full sm:w-auto"
 				/>
 			</div>
 

@@ -51,6 +51,9 @@ function applyTheme(pref: ThemePref) {
 	}
 }
 
+/** Table-heavy pages that benefit from the full content width. */
+const WIDE_ROUTES = new Set(["/imports"]);
+
 export function AppShell({ children }: { children: ReactNode }) {
 	const pathname = usePathname();
 	const [mobileOpen, setMobileOpen] = useState(false);
@@ -283,7 +286,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 			{/* Main Content + Footer */}
 			<div className="flex min-w-0 flex-1 flex-col lg:pl-60">
 				<DemoBanner />
-				<main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+				<main
+					className={`mx-auto w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 ${
+						WIDE_ROUTES.has(pathname) ? "max-w-screen-2xl" : "max-w-6xl"
+					}`}
+				>
 					{children}
 				</main>
 				<AppFooter className="sm:px-6" />

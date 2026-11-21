@@ -20,6 +20,7 @@ import type { z } from "zod";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Select, SelectItem } from "@/components/ui/Select";
 import {
 	api,
 	getErrorMessage,
@@ -779,18 +780,17 @@ export function RecipeWizard({
 					>
 						Select sheet
 					</label>
-					<select
+					<Select
 						id={sheetSelectId}
 						value={currentSheet.name}
-						onChange={(e) => setSelectedSheetName(e.target.value)}
-						className="rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+						onValueChange={(value) => setSelectedSheetName(value)}
 					>
 						{sheets.map((s) => (
-							<option key={s.name} value={s.name}>
+							<SelectItem key={s.name} value={s.name}>
 								{s.name} ({s.headers.length} columns)
-							</option>
+							</SelectItem>
 						))}
-					</select>
+					</Select>
 				</div>
 			) : null}
 
@@ -950,20 +950,24 @@ export function RecipeWizard({
 						>
 							Buy / Sell sign style
 						</label>
-						<select
+						<Select
 							id={signStyleId}
 							value={recipe.signStyle}
-							onChange={(e) =>
+							onValueChange={(value) =>
 								setRecipe((prev) => ({
 									...prev,
-									signStyle: e.target.value as Recipe["signStyle"],
+									signStyle: value as Recipe["signStyle"],
 								}))
 							}
-							className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+							className="mt-1 w-full"
 						>
-							<option value="side_column">Separate side / type column</option>
-							<option value="negative_is_sell">Negative amount is sell</option>
-						</select>
+							<SelectItem value="side_column">
+								Separate side / type column
+							</SelectItem>
+							<SelectItem value="negative_is_sell">
+								Negative amount is sell
+							</SelectItem>
+						</Select>
 					</div>
 
 					<div>
@@ -1016,19 +1020,19 @@ export function RecipeWizard({
 						>
 							What time zone are the times in this file?
 						</label>
-						<select
+						<Select
 							id={tzSelectId}
 							value={tzMode}
-							onChange={(e) => {
-								setTzMode(e.target.value as "IST" | "UTC" | "custom");
+							onValueChange={(value) => {
+								setTzMode(value as "IST" | "UTC" | "custom");
 								setTzError(null);
 							}}
-							className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+							className="mt-1 w-full"
 						>
-							<option value="IST">IST (+05:30)</option>
-							<option value="UTC">UTC (+00:00)</option>
-							<option value="custom">Other offset (±HH:MM)</option>
-						</select>
+							<SelectItem value="IST">IST (+05:30)</SelectItem>
+							<SelectItem value="UTC">UTC (+00:00)</SelectItem>
+							<SelectItem value="custom">Other offset (±HH:MM)</SelectItem>
+						</Select>
 					</div>
 
 					{tzMode === "custom" ? (
@@ -1086,19 +1090,22 @@ export function RecipeWizard({
 											</span>
 										) : null}
 									</label>
-									<select
+									<Select
 										id={selectId}
 										value={val}
-										onChange={(e) => updateColumn(col.key, e.target.value)}
-										className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2 py-1.5 text-xs"
+										onValueChange={(value) => updateColumn(col.key, value)}
+										className="mt-1 w-full"
+										size="sm"
 									>
-										{!col.required ? <option value="">(None)</option> : null}
+										{!col.required ? (
+											<SelectItem value="">(None)</SelectItem>
+										) : null}
 										{currentSheet.headers.map((h) => (
-											<option key={h} value={h}>
+											<SelectItem key={h} value={h}>
 												{h}
-											</option>
+											</SelectItem>
 										))}
-									</select>
+									</Select>
 								</div>
 							);
 						})}
@@ -1164,25 +1171,26 @@ export function RecipeWizard({
 										className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-xs"
 									/>
 									<span className="text-xs text-[var(--text-muted)]">→</span>
-									<select
+									<Select
 										aria-label="Mapped transaction type"
 										value={entry.target}
-										onChange={(e) => {
-											const target = e.target.value as SideTarget;
+										onValueChange={(value) => {
+											const target = value as SideTarget;
 											setSideMapEntries((prev) =>
 												prev.map((item) =>
 													item.id === entry.id ? { ...item, target } : item,
 												),
 											);
 										}}
-										className="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-xs"
+										size="sm"
+										tone="surface"
 									>
 										{SIDE_TARGETS.map((t) => (
-											<option key={t} value={t}>
+											<SelectItem key={t} value={t}>
 												{formatTxType(t)}
-											</option>
+											</SelectItem>
 										))}
-									</select>
+									</Select>
 									<button
 										type="button"
 										aria-label="Remove mapping"

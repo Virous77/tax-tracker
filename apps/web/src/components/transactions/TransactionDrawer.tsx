@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Select, SelectItem } from "@/components/ui/Select";
 import {
 	api,
 	getErrorMessage,
@@ -286,18 +287,18 @@ export function TransactionDrawer({
 									>
 										Transaction type
 									</label>
-									<select
+									<Select
 										id={typeId}
 										value={type}
-										onChange={(e) => setType(e.target.value as TxType)}
-										className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+										onValueChange={(value) => setType(value as TxType)}
+										className="mt-1 w-full"
 									>
 										{TxTypeSchema.options.map((opt) => (
-											<option key={opt} value={opt}>
+											<SelectItem key={opt} value={opt}>
 												{formatTxType(opt)}
-											</option>
+											</SelectItem>
 										))}
-									</select>
+									</Select>
 								</div>
 
 								{type === "income" ? (
@@ -308,21 +309,21 @@ export function TransactionDrawer({
 										>
 											Income kind
 										</label>
-										<select
+										<Select
 											id={incomeKindId}
 											value={incomeKind}
-											onChange={(e) =>
-												setIncomeKind(e.target.value as IncomeKind | "")
+											onValueChange={(value) =>
+												setIncomeKind(value as IncomeKind | "")
 											}
-											className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+											className="mt-1 w-full"
 										>
-											<option value="">Select kind…</option>
+											<SelectItem value="">Select kind…</SelectItem>
 											{IncomeKindSchema.options.map((k) => (
-												<option key={k} value={k}>
+												<SelectItem key={k} value={k}>
 													{formatIncomeKind(k)}
-												</option>
+												</SelectItem>
 											))}
-										</select>
+										</Select>
 									</div>
 								) : null}
 
@@ -334,18 +335,18 @@ export function TransactionDrawer({
 										>
 											Counts toward
 										</label>
-										<select
+										<Select
 											id={venueId}
 											value={venue}
-											onChange={(e) => setVenue(e.target.value as ManualVenue)}
-											className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+											onValueChange={(value) => setVenue(value as ManualVenue)}
+											className="mt-1 w-full"
 										>
 											{ManualVenueSchema.options.map((opt) => (
-												<option key={opt} value={opt}>
+												<SelectItem key={opt} value={opt}>
 													{formatManualVenueLabel(opt)}
-												</option>
+												</SelectItem>
 											))}
-										</select>
+										</Select>
 									</div>
 								) : null}
 

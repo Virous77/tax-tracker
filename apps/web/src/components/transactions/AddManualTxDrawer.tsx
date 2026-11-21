@@ -10,6 +10,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Select, SelectItem } from "@/components/ui/Select";
 import {
 	api,
 	getErrorMessage,
@@ -230,20 +231,20 @@ export function AddManualTxDrawer({
 					>
 						Counts toward
 					</label>
-					<select
+					<Select
 						id={venueId}
 						value={venue}
 						aria-describedby={venueHintId}
-						onChange={(e) => {
-							setVenue(e.target.value as ManualVenue);
+						onValueChange={(value) => {
+							setVenue(value as ManualVenue);
 							clearFieldError("venue");
 						}}
-						className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+						className="mt-1 w-full"
 					>
-						<option value="manual">Manual (no exchange)</option>
-						<option value="binance">Binance</option>
-						<option value="coindcx">CoinDCX</option>
-					</select>
+						<SelectItem value="manual">Manual (no exchange)</SelectItem>
+						<SelectItem value="binance">Binance</SelectItem>
+						<SelectItem value="coindcx">CoinDCX</SelectItem>
+					</Select>
 					<p
 						id={venueHintId}
 						className="mt-1 text-[11px] text-[var(--text-muted)]"
@@ -290,21 +291,21 @@ export function AddManualTxDrawer({
 						>
 							Income kind
 						</label>
-						<select
+						<Select
 							id={kindId}
 							value={incomeKind}
-							onChange={(e) => {
-								setIncomeKind(e.target.value as IncomeKind);
+							onValueChange={(value) => {
+								setIncomeKind(value as IncomeKind);
 								clearFieldError("incomeKind");
 							}}
-							className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+							className="mt-1 w-full"
 						>
 							{IncomeKindSchema.options.map((k) => (
-								<option key={k} value={k}>
+								<SelectItem key={k} value={k}>
 									{formatIncomeKind(k)}
-								</option>
+								</SelectItem>
 							))}
-						</select>
+						</Select>
 					</div>
 				) : null}
 

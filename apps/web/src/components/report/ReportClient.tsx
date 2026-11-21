@@ -584,7 +584,7 @@ export function ReportClient() {
 	return (
 		<div className="space-y-6">
 			{/* Header */}
-			<div className="flex flex-wrap items-center justify-between gap-4">
+			<div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 				<div>
 					<h1 className="text-xl font-semibold tracking-tight">
 						Schedule VDA &amp; Tax Report
@@ -595,7 +595,7 @@ export function ReportClient() {
 					</p>
 				</div>
 
-				<div className="flex flex-wrap items-center gap-3">
+				<div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
 					<TaxYearSelect
 						value={taxYear}
 						onChange={selectTaxYear}
@@ -605,7 +605,7 @@ export function ReportClient() {
 						type="button"
 						disabled={computing}
 						onClick={handleCompute}
-						className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+						className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 sm:w-auto"
 					>
 						<Calculator className="h-4 w-4" aria-hidden="true" />
 						{computing

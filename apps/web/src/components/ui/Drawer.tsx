@@ -76,7 +76,10 @@ export function Drawer({
 			<div className="flex h-full flex-col">
 				<div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 py-4">
 					<div className="min-w-0">
-						<h2 id={titleId} className="text-base font-semibold tracking-tight">
+						<h2
+							id={titleId}
+							className="text-base font-semibold tracking-tight [overflow-wrap:anywhere]"
+						>
 							{title}
 						</h2>
 						{subtitle ? (

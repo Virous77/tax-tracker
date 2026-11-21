@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { KeyCheckBanner } from "@/components/connections/KeyCheckBanner";
 import { SymbolTagInput } from "@/components/connections/SymbolTagInput";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Select, SelectItem } from "@/components/ui/Select";
 import {
 	api,
 	type Connection,
@@ -384,18 +385,18 @@ export function AddConnectionDialog({
 								>
 									Chain
 								</label>
-								<select
+								<Select
 									id={chainSelectId}
-									value={chainId}
-									onChange={(e) => setChainId(Number(e.target.value))}
-									className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+									value={String(chainId)}
+									onValueChange={(value) => setChainId(Number(value))}
+									className="mt-1 w-full"
 								>
 									{EVM_CHAINS.map((c) => (
-										<option key={c.chainId} value={c.chainId}>
+										<SelectItem key={c.chainId} value={String(c.chainId)}>
 											{c.name} ({c.chainId})
-										</option>
+										</SelectItem>
 									))}
-								</select>
+								</Select>
 								<p className="mt-1 text-xs text-[var(--text-muted)]">
 									Base needs a free Alchemy key, and BNB Chain a free NodeReal
 									key (or a paid Etherscan key).

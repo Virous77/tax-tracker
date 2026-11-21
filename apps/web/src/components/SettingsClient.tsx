@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { Select, SelectItem } from "@/components/ui/Select";
 import { FALLBACK_TAX_YEARS } from "@/components/ui/TaxYearSelect";
 import {
 	type AppSettings,
@@ -241,20 +242,20 @@ export function SettingsClient({
 							>
 								Default tax year
 							</label>
-							<select
+							<Select
 								id={defaultYearId}
 								value={settings.defaultTaxYear}
-								onChange={(e) =>
-									setSettings({ ...settings, defaultTaxYear: e.target.value })
+								onValueChange={(value) =>
+									setSettings({ ...settings, defaultTaxYear: value })
 								}
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+								className="mt-1 w-full"
 							>
 								{taxYears.map((ty) => (
-									<option key={ty.id} value={ty.id}>
+									<SelectItem key={ty.id} value={ty.id}>
 										{ty.id} ({ty.act})
-									</option>
+									</SelectItem>
 								))}
-							</select>
+							</Select>
 							<p className="mt-1 text-xs text-[var(--text-muted)]">
 								Which financial year (1 April – 31 March IST) opens by default.
 							</p>
@@ -264,20 +265,20 @@ export function SettingsClient({
 							<label htmlFor={headId} className="block text-sm font-medium">
 								Head of income
 							</label>
-							<select
+							<Select
 								id={headId}
 								value={settings.headOfIncome}
-								onChange={(e) =>
+								onValueChange={(value) =>
 									setSettings({
 										...settings,
-										headOfIncome: e.target.value as AppSettings["headOfIncome"],
+										headOfIncome: value as AppSettings["headOfIncome"],
 									})
 								}
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+								className="mt-1 w-full"
 							>
-								<option value="capital_gains">Capital Gains</option>
-								<option value="business">Business Income</option>
-							</select>
+								<SelectItem value="capital_gains">Capital Gains</SelectItem>
+								<SelectItem value="business">Business Income</SelectItem>
+							</Select>
 							<p className="mt-1 text-xs text-[var(--text-muted)]">
 								Schedule VDA classification printed on every disposal row (ask
 								your CA which applies to your trading frequency).
@@ -288,24 +289,24 @@ export function SettingsClient({
 							<label htmlFor={feeId} className="block text-sm font-medium">
 								Fee &amp; GST treatment
 							</label>
-							<select
+							<Select
 								id={feeId}
 								value={settings.feeTreatment}
-								onChange={(e) =>
+								onValueChange={(value) =>
 									setSettings({
 										...settings,
-										feeTreatment: e.target.value as AppSettings["feeTreatment"],
+										feeTreatment: value as AppSettings["feeTreatment"],
 									})
 								}
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+								className="mt-1 w-full"
 							>
-								<option value="exclude">
+								<SelectItem value="exclude">
 									Exclude fees (strict statutory default)
-								</option>
-								<option value="include">
+								</SelectItem>
+								<SelectItem value="include">
 									Include fees (add to buy cost / reduce sell consideration)
-								</option>
-							</select>
+								</SelectItem>
+							</Select>
 							<p className="mt-1 text-xs text-[var(--text-muted)]">
 								Statutory VDA rules allow only cost of acquisition; some CAs
 								treat brokerage as part of cost or reduction of full value.
@@ -316,22 +317,24 @@ export function SettingsClient({
 							<label htmlFor={lotPoolId} className="block text-sm font-medium">
 								Lot pool scope
 							</label>
-							<select
+							<Select
 								id={lotPoolId}
 								value={settings.lotPool}
-								onChange={(e) =>
+								onValueChange={(value) =>
 									setSettings({
 										...settings,
-										lotPool: e.target.value as AppSettings["lotPool"],
+										lotPool: value as AppSettings["lotPool"],
 									})
 								}
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+								className="mt-1 w-full"
 							>
-								<option value="global">Global FIFO across all wallets</option>
-								<option value="per_source">
+								<SelectItem value="global">
+									Global FIFO across all wallets
+								</SelectItem>
+								<SelectItem value="per_source">
 									Per-source FIFO (separate per exchange)
-								</option>
-							</select>
+								</SelectItem>
+							</Select>
 							<p className="mt-1 text-xs text-[var(--text-muted)]">
 								Determines whether FIFO lot queues are matched per exchange or
 								pooled across your entire portfolio.
@@ -345,14 +348,14 @@ export function SettingsClient({
 							>
 								Lot matching method
 							</label>
-							<select
+							<Select
 								id={lotMethodId}
 								value={settings.lotMethod}
 								disabled
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-1.5 text-sm text-[var(--text-secondary)]"
+								className="mt-1 w-full"
 							>
-								<option value="FIFO">FIFO (First-In, First-Out)</option>
-							</select>
+								<SelectItem value="FIFO">FIFO (First-In, First-Out)</SelectItem>
+							</Select>
 							<p className="mt-1 text-xs text-[var(--text-muted)]">
 								Standard Indian accounting method for fungible digital assets.
 							</p>
@@ -362,24 +365,24 @@ export function SettingsClient({
 							<label htmlFor={usdtRateId} className="block text-sm font-medium">
 								USDT / USD-stablecoin INR rate
 							</label>
-							<select
+							<Select
 								id={usdtRateId}
 								value={settings.usdtInrRate}
-								onChange={(e) =>
+								onValueChange={(value) =>
 									setSettings({
 										...settings,
-										usdtInrRate: e.target.value as AppSettings["usdtInrRate"],
+										usdtInrRate: value as AppSettings["usdtInrRate"],
 									})
 								}
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+								className="mt-1 w-full"
 							>
-								<option value="ledger_usdt_inr">
+								<SelectItem value="ledger_usdt_inr">
 									Latest ledger USDT/INR trade (fallback to SBI TT)
-								</option>
-								<option value="sbi_usd_tt">
+								</SelectItem>
+								<SelectItem value="sbi_usd_tt">
 									Always SBI TT buying USD/INR rate
-								</option>
-							</select>
+								</SelectItem>
+							</Select>
 							<p className="mt-1 text-xs text-[var(--text-muted)]">
 								How crypto trades quoted in USDT are converted to INR when no
 								direct INR price is recorded.
@@ -393,23 +396,22 @@ export function SettingsClient({
 							>
 								Income receipt cost basis
 							</label>
-							<select
+							<Select
 								id={incomeBasisId}
 								value={settings.incomeCostBasis}
-								onChange={(e) =>
+								onValueChange={(value) =>
 									setSettings({
 										...settings,
-										incomeCostBasis: e.target
-											.value as AppSettings["incomeCostBasis"],
+										incomeCostBasis: value as AppSettings["incomeCostBasis"],
 									})
 								}
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+								className="mt-1 w-full"
 							>
-								<option value="zero">₹0 (conservative default)</option>
-								<option value="fmv_at_receipt">
+								<SelectItem value="zero">₹0 (conservative default)</SelectItem>
+								<SelectItem value="fmv_at_receipt">
 									Fair market value (FMV) at receipt
-								</option>
-							</select>
+								</SelectItem>
+							</Select>
 							<p className="mt-1 text-xs text-[var(--text-muted)]">
 								Cost assigned to staking, mining, or airdrop coins when they are
 								later sold (if already taxed as income at receipt).
@@ -423,24 +425,29 @@ export function SettingsClient({
 							>
 								Surcharge rate
 							</label>
-							<select
+							<Select
 								id={surchargeId}
 								value={settings.surchargeRate}
-								onChange={(e) =>
+								onValueChange={(value) =>
 									setSettings({
 										...settings,
-										surchargeRate: e.target
-											.value as AppSettings["surchargeRate"],
+										surchargeRate: value as AppSettings["surchargeRate"],
 									})
 								}
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+								className="mt-1 w-full"
 							>
-								<option value="0">0% (income up to ₹50 lakh)</option>
-								<option value="0.10">10% (above ₹50 lakh – ₹1 crore)</option>
-								<option value="0.15">15% (above ₹1 crore – ₹2 crore)</option>
-								<option value="0.25">25% (above ₹2 crore – ₹5 crore)</option>
-								<option value="0.37">37% (above ₹5 crore)</option>
-							</select>
+								<SelectItem value="0">0% (income up to ₹50 lakh)</SelectItem>
+								<SelectItem value="0.10">
+									10% (above ₹50 lakh – ₹1 crore)
+								</SelectItem>
+								<SelectItem value="0.15">
+									15% (above ₹1 crore – ₹2 crore)
+								</SelectItem>
+								<SelectItem value="0.25">
+									25% (above ₹2 crore – ₹5 crore)
+								</SelectItem>
+								<SelectItem value="0.37">37% (above ₹5 crore)</SelectItem>
+							</Select>
 							<p className="mt-1 text-xs text-[var(--text-muted)]">
 								Applied on top of the 30% base VDA tax before calculating 4%
 								Health &amp; Education Cess.
@@ -613,21 +620,20 @@ export function SettingsClient({
 							>
 								Market price basis
 							</label>
-							<select
+							<Select
 								id={marketBasisId}
 								value={settings.marketPriceBasis}
-								onChange={(e) =>
+								onValueChange={(value) =>
 									setSettings({
 										...settings,
-										marketPriceBasis: e.target
-											.value as AppSettings["marketPriceBasis"],
+										marketPriceBasis: value as AppSettings["marketPriceBasis"],
 									})
 								}
-								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-3 py-1.5 text-sm"
+								className="mt-1 w-full"
 							>
-								<option value="close">IST-day close</option>
-								<option value="vwap">IST-day VWAP</option>
-							</select>
+								<SelectItem value="close">IST-day close</SelectItem>
+								<SelectItem value="vwap">IST-day VWAP</SelectItem>
+							</Select>
 							<p className="mt-1 text-xs text-[var(--text-muted)]">
 								Which daily rate from the local price cache is used when valuing
 								unpriced swaps, fees, or receipts.

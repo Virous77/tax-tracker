@@ -9,6 +9,7 @@ import {
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
+import { InrAmountField } from "@/components/transactions/InrAmountField";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { Select, SelectItem } from "@/components/ui/Select";
@@ -28,9 +29,35 @@ import {
 	formatIstDateTime,
 	formatQty,
 } from "@/lib/client/format";
+import { type InrEntryMode, inrTotalFromEntry } from "@/lib/client/inr-cost";
+import { usePriceReference } from "@/lib/client/usePriceReference";
 import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 const DEFAULT_DATE_TIME = "2026-04-01T12:00";
+
+/** The stored INR value is always the row total; the labels say so. */
+const INR_LABELS = {
+	buy: {
+		total: "Total cost in INR (₹)",
+		perUnit: (asset: string) => `Cost per ${asset || "unit"} in INR (₹)`,
+	},
+	gift: {
+		total: "Total cost / FMV in INR (₹)",
+		perUnit: (asset: string) => `Cost / FMV per ${asset || "unit"} in INR (₹)`,
+	},
+	income: {
+		total: "Total FMV at receipt in INR (₹)",
+		perUnit: (asset: string) => `FMV per ${asset || "unit"} in INR (₹)`,
+	},
+	sell: {
+		total: "Total consideration in INR (₹)",
+		perUnit: (asset: string) => `Price per ${asset || "unit"} in INR (₹)`,
+	},
+} as const;
+
+function decimalOrNull(text: string): boolean {
+	return /^\d+(\.\d+)?$/.test(text);
+}
 
 export type ManualPreset = "buy" | "gift" | "income" | "sell";
 
@@ -118,12 +145,29 @@ export function AddManualTxDrawer({
 	const [assetOut, setAssetOut] = useState("");
 	const [amountOut, setAmountOut] = useState("");
 	const [inrValue, setInrValue] = useState("");
+	const [inrMode, setInrMode] = useState<InrEntryMode>("total");
 	const [incomeKind, setIncomeKind] = useState<IncomeKind>("staking");
 	const [tdsInr, setTdsInr] = useState("");
 	const [userNote, setUserNote] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+	const pricedAsset = (type === "sell" ? assetOut : assetIn)
+		.trim()
+		.toUpperCase();
+	const pricedQuantity = type === "sell" ? amountOut : amountIn;
+	const inrLabelKey: keyof typeof INR_LABELS =
+		type === "buy" || type === "gift" || type === "income" ? type : "sell";
+	const entryDate = new Date(`${istDateTime}:00+05:30`);
+	const entryInstant = Number.isFinite(entryDate.getTime())
+		? entryDate.toISOString()
+		: undefined;
+	const priceReference = usePriceReference(pricedAsset, {
+		enabled: open,
+		...(saleContext && type === "buy" ? { sale: saleContext.tx } : {}),
+		...(entryInstant ? { at: entryInstant } : {}),
+	});
 
 	const venueId = useId();
 	const venueHintId = useId();
@@ -138,7 +182,6 @@ export function AddManualTxDrawer({
 	const noteId = useId();
 	const dtHintId = useId();
 	const amountInHintId = useId();
-	const inrHintId = useId();
 
 	function clearFieldError(field: string) {
 		setFieldErrors((prev) => {
@@ -164,6 +207,7 @@ export function AddManualTxDrawer({
 		setAmountIn(initialPreset === "sell" ? "" : initialAmount);
 		setAmountOut("");
 		setInrValue("");
+		setInrMode("total");
 		setTdsInr("");
 		setUserNote("");
 		setError(null);
@@ -205,7 +249,19 @@ export function AddManualTxDrawer({
 			const trimmedAmountIn = amountIn.trim();
 			const normAssetOut = assetOut.trim().toUpperCase();
 			const trimmedAmountOut = amountOut.trim();
-			const trimmedInr = inrValue.trim();
+			const typedInr = inrValue.trim();
+			const trimmedInr =
+				inrMode === "perUnit" && typedInr !== ""
+					? inrTotalFromEntry(inrMode, typedInr, pricedQuantity)
+					: typedInr;
+			if (trimmedInr === null) {
+				const msg = decimalOrNull(typedInr)
+					? `Enter the quantity first: the total is the price per ${pricedAsset || "unit"} times the quantity.`
+					: "Enter the price as a number, e.g. 95.";
+				setFieldErrors({ inrValue: msg });
+				setError(msg);
+				return;
+			}
 
 			const payload = {
 				sourceRef: `manual-${crypto.randomUUID()}`,
@@ -238,6 +294,8 @@ export function AddManualTxDrawer({
 					assetOut: normAssetOut || undefined,
 					amountOut: trimmedAmountOut || undefined,
 					inrValue: trimmedInr || undefined,
+					inrPerUnitEntered:
+						inrMode === "perUnit" && typedInr ? typedInr : undefined,
 					note: userNote.trim() || undefined,
 				},
 				reviewFlags: [],
@@ -571,66 +629,35 @@ export function AddManualTxDrawer({
 				) : null}
 
 				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-					<div>
-						<label
-							htmlFor={inrId}
-							className="block text-xs font-medium text-[var(--text-secondary)]"
-						>
-							{type === "gift"
-								? "Cost / FMV in INR (₹)"
-								: type === "buy"
-									? "Cost in INR (₹)"
-									: type === "income"
-										? "FMV at receipt in INR (₹)"
-										: "Consideration in INR (₹)"}
-						</label>
-						<input
+					<div className="sm:col-span-2">
+						<InrAmountField
 							id={inrId}
-							type="text"
-							inputMode="decimal"
-							required={type === "buy" && !assetOut.trim()}
-							placeholder="e.g. 200000"
-							value={inrValue}
-							aria-invalid={Boolean(fieldErrors.inrValue)}
-							aria-describedby={
-								[
-									type === "buy" ? inrHintId : null,
-									fieldErrors.inrValue ? `${inrId}-error` : null,
-								]
-									.filter(Boolean)
-									.join(" ") || undefined
-							}
-							onChange={(e) => {
-								setInrValue(e.target.value);
+							totalLabel={INR_LABELS[inrLabelKey].total}
+							perUnitLabel={INR_LABELS[inrLabelKey].perUnit(pricedAsset)}
+							mode={inrMode}
+							onModeChange={(next) => {
+								setInrMode(next);
 								clearFieldError("inrValue");
 							}}
-							className={`num mt-1 w-full rounded border ${inputBorderClass("inrValue")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
+							text={inrValue}
+							onTextChange={(next) => {
+								setInrValue(next);
+								clearFieldError("inrValue");
+							}}
+							quantity={pricedQuantity}
+							asset={pricedAsset}
+							reference={priceReference}
+							required={type === "buy" && !assetOut.trim()}
+							placeholder={inrMode === "total" ? "e.g. 200000" : "e.g. 95"}
+							error={fieldErrors.inrValue}
+							hint={
+								type === "buy"
+									? "Required unless you fill in the quote asset and quantity paid: the app then values it from those and flags the row if it can't. It never guesses a cost."
+									: type === "gift"
+										? "Enter donor cost or receipt FMV in INR for gift threshold tracking."
+										: undefined
+							}
 						/>
-						{fieldErrors.inrValue ? (
-							<p
-								id={`${inrId}-error`}
-								className="mt-1 text-xs text-[var(--loss)]"
-							>
-								{fieldErrors.inrValue}
-							</p>
-						) : null}
-						{type === "buy" ? (
-							<p
-								id={inrHintId}
-								className="mt-1 text-[11px] text-[var(--text-muted)]"
-							>
-								What you paid in rupees, fees included. Required unless you fill
-								in the quote asset and quantity paid: the app then values it
-								from those and flags the row if it can't. It never guesses a
-								cost.
-							</p>
-						) : null}
-						{type === "gift" ? (
-							<p className="mt-1 text-[11px] text-[var(--text-muted)]">
-								Enter donor cost or receipt FMV in INR for gift threshold
-								tracking.
-							</p>
-						) : null}
 					</div>
 
 					<div>

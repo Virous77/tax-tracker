@@ -39,13 +39,13 @@ test.describe("golden worked example built through the UI", () => {
 			"Date & time (IST)": "2026-05-01T12:00",
 			"Asset received *": "ETH",
 			"Quantity received *": "1",
-			"Cost in INR (₹)": "200000",
+			"Total cost in INR (₹)": "200000",
 		});
 		await addViaUi(page, "Sell", {
 			"Date & time (IST)": "2026-08-01T12:00",
 			"Asset sold *": "ETH",
 			"Quantity sold *": "1",
-			"Consideration in INR (₹)": "250000",
+			"Total consideration in INR (₹)": "250000",
 			"TDS deducted (₹, optional)": "2500",
 		});
 		await expect(page.getByText("Showing 1–2 of 2")).toBeVisible();

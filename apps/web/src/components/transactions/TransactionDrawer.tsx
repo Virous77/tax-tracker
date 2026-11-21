@@ -11,6 +11,7 @@ import {
 } from "@tax/core";
 import { ExternalLink, Info, Save, Trash2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
+import { InrAmountField } from "@/components/transactions/InrAmountField";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
@@ -33,7 +34,13 @@ import {
 	formatTxTitle,
 	formatTxType,
 } from "@/lib/client/format";
+import {
+	type InrEntryMode,
+	inrTotalFromEntry,
+	pricedLeg,
+} from "@/lib/client/inr-cost";
 import { groupReviewFlags } from "@/lib/client/review-codes";
+import { usePriceReference } from "@/lib/client/usePriceReference";
 import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 export function TransactionDrawer({
@@ -52,6 +59,7 @@ export function TransactionDrawer({
 	const [incomeKind, setIncomeKind] = useState<IncomeKind | "">("");
 	const [venue, setVenue] = useState<ManualVenue>("manual");
 	const [inrValue, setInrValue] = useState("");
+	const [inrMode, setInrMode] = useState<InrEntryMode>("total");
 	const [userNote, setUserNote] = useState("");
 	const [resolveFlags, setResolveFlags] = useState<Set<ReviewCode>>(new Set());
 	const [saving, setSaving] = useState(false);
@@ -59,6 +67,12 @@ export function TransactionDrawer({
 	const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [inrError, setInrError] = useState<string | null>(null);
+
+	const priced = tx ? pricedLeg(tx, type) : null;
+	const priceReference = usePriceReference(priced?.asset ?? "", {
+		enabled: tx !== null && priced !== null,
+		...(tx ? { excludeTxId: tx.id, at: tx.timestamp } : {}),
+	});
 
 	const typeId = useId();
 	const incomeKindId = useId();
@@ -73,6 +87,7 @@ export function TransactionDrawer({
 		setIncomeKind(tx.incomeKind ?? "");
 		setVenue(tx.venue ?? "manual");
 		setInrValue(tx.inrValue ?? "");
+		setInrMode("total");
 		setUserNote(tx.userNote ?? "");
 		setResolveFlags(new Set());
 		setError(null);
@@ -101,7 +116,17 @@ export function TransactionDrawer({
 			if (tx.source === "manual" && venue !== (tx.venue ?? "manual")) {
 				patch.venue = venue;
 			}
-			const trimmedInr = inrValue.trim();
+			const typedInr = inrValue.trim();
+			const trimmedInr =
+				inrMode === "perUnit" && typedInr !== ""
+					? inrTotalFromEntry(inrMode, typedInr, priced?.quantity)
+					: typedInr;
+			if (trimmedInr === null) {
+				const msg = "Enter the price per unit as a number, e.g. 95.";
+				setInrError(msg);
+				setError(msg);
+				return;
+			}
 			if (trimmedInr !== "" && trimmedInr !== (tx.inrValue ?? "")) {
 				patch.inrValue = trimmedInr;
 			}
@@ -350,36 +375,29 @@ export function TransactionDrawer({
 									</div>
 								) : null}
 
-								<div>
-									<label
-										htmlFor={inrId}
-										className="block text-xs font-medium text-[var(--text-secondary)]"
-									>
-										INR value (₹)
-									</label>
-									<input
-										id={inrId}
-										type="text"
-										inputMode="decimal"
-										value={inrValue}
-										aria-invalid={Boolean(inrError)}
-										aria-describedby={inrError ? `${inrId}-error` : undefined}
-										onChange={(e) => {
-											setInrValue(e.target.value);
-											setInrError(null);
-										}}
-										placeholder="e.g. 250000.00"
-										className={`num mt-1 w-full rounded border ${inrError ? "border-[var(--loss)]" : "border-[var(--border)]"} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
-									/>
-									{inrError ? (
-										<p
-											id={`${inrId}-error`}
-											className="mt-1 text-xs text-[var(--loss)]"
-										>
-											{inrError}
-										</p>
-									) : null}
-								</div>
+								<InrAmountField
+									id={inrId}
+									totalLabel="Total INR value (₹)"
+									perUnitLabel={`INR value per ${priced?.asset ?? "unit"} (₹)`}
+									perUnitAvailable={priced !== null}
+									mode={inrMode}
+									onModeChange={(next) => {
+										setInrMode(next);
+										setInrError(null);
+									}}
+									text={inrValue}
+									onTextChange={(next) => {
+										setInrValue(next);
+										setInrError(null);
+									}}
+									quantity={priced?.quantity}
+									asset={priced?.asset ?? ""}
+									reference={priceReference}
+									error={inrError}
+									placeholder={
+										inrMode === "total" ? "e.g. 250000.00" : "e.g. 95"
+									}
+								/>
 							</div>
 
 							<div>

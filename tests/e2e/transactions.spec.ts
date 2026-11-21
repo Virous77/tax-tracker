@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { Page } from "@playwright/test";
-import { GENERATED } from "./support/env";
+import { GENERATED, REPO_ROOT } from "./support/env";
 import { expect, settled, snap, test } from "./support/fixtures";
 import { chooseOption, SELECT_VALUE } from "./support/select";
 import { statement } from "./support/statements";
@@ -271,5 +271,72 @@ test.describe("manual entries", () => {
 		await expect(
 			page.getByRole("heading", { name: "No transactions match" }),
 		).toBeVisible();
+	});
+
+	test("INR cost: per unit or total, the other value shown live, and a soft warning", async ({
+		page,
+		api,
+	}) => {
+		// CoinDCX example: USDT bought at ₹88.50 and sold at ₹91.20, the price reference.
+		await api.importFile(
+			path.join(REPO_ROOT, "examples/coindcx-trade-report.SYNTHETIC.csv"),
+			"coindcx",
+			"IST",
+		);
+		await page.goto("/transactions");
+		const drawer = await openAddDrawer(page);
+		await drawer.getByLabel("Date & time (IST)").fill("2026-05-01T10:00");
+		await drawer.getByLabel("Asset received *").fill("USDT");
+		await drawer.getByLabel("Quantity received *").fill("1234.5");
+		const total = drawer.getByLabel("Total cost in INR (₹)");
+		await total.fill("95");
+		await expect(drawer.getByText("= ₹0.077 per USDT")).toBeVisible();
+		await expect(
+			drawer.getByText(
+				/₹0\.019 per USDT looks very low .* Did you mean ₹95\.00 per USDT\?/,
+			),
+		).toBeVisible();
+
+		await drawer.getByText("Per unit", { exact: true }).click();
+		const perUnit = drawer.getByLabel("Cost per USDT in INR (₹)");
+		await expect(perUnit).toHaveValue("95");
+		await expect(
+			drawer.getByText("= ₹1,17,277.50 total for 1234.5 USDT"),
+		).toBeVisible();
+		await expect(drawer.getByText(/looks very low/)).toHaveCount(0);
+		await drawer.getByRole("button", { name: "Add transaction" }).click();
+		await expect(drawer).toBeHidden();
+		const row = rows(page).filter({ hasText: "₹1,17,277.50" });
+		await expect(row).toHaveCount(1);
+
+		await row.getByRole("button").first().click();
+		const edit = page.getByRole("dialog");
+		await expect(edit.getByLabel("Total INR value (₹)")).toHaveValue(
+			"117277.5",
+		);
+		await expect(edit.getByText("= ₹95.00 per USDT")).toBeVisible();
+	});
+
+	test("an implausible INR cost warns but still saves as typed", async ({
+		page,
+		api,
+	}) => {
+		await api.importFile(
+			path.join(REPO_ROOT, "examples/coindcx-trade-report.SYNTHETIC.csv"),
+			"coindcx",
+			"IST",
+		);
+		await page.goto("/transactions");
+		const drawer = await openAddDrawer(page);
+		await drawer.getByLabel("Date & time (IST)").fill("2026-05-01T10:00");
+		await drawer.getByLabel("Asset received *").fill("USDT");
+		await drawer.getByLabel("Quantity received *").fill("1234.5");
+		await drawer.getByLabel("Total cost in INR (₹)").fill("95");
+		await expect(drawer.getByText(/looks very low/)).toBeVisible();
+		await drawer.getByRole("button", { name: "Add transaction" }).click();
+		await expect(drawer).toBeHidden();
+		await expect(rows(page).filter({ hasText: "1234.5" })).toContainText(
+			"₹95.00",
+		);
 	});
 });

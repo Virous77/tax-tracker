@@ -299,7 +299,7 @@ export function TransactionsClient() {
 						placeholder="e.g. BTC"
 						value={assetDraft}
 						onChange={(e) => setAssetDraft(e.target.value)}
-						className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase"
+						className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase placeholder:normal-case"
 					/>
 				</div>
 

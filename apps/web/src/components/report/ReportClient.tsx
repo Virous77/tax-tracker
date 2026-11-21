@@ -7,7 +7,6 @@ import {
 	type VdaReport,
 } from "@tax/core";
 import {
-	AlertTriangle,
 	Calculator,
 	CheckCircle2,
 	ChevronDown,
@@ -24,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
 import { StaleReportBanner } from "@/components/report/StaleReportBanner";
 import { TrailDrawer } from "@/components/report/TrailDrawer";
+import { UnresolvedSalesSection } from "@/components/report/UnresolvedSalesSection";
 import { Badge } from "@/components/ui/Badge";
 import { Drawer } from "@/components/ui/Drawer";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -59,7 +59,7 @@ import {
 	isZeroDecimal,
 	pluralise,
 } from "@/lib/client/format";
-import { addMissingBuyHref, REVIEW_CODE_INFO } from "@/lib/client/review-codes";
+import { useScrollToHash } from "@/lib/client/useScrollToHash";
 import { useSelectedTaxYear } from "@/lib/client/useSelectedTaxYear";
 import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
@@ -178,6 +178,8 @@ export function ReportClient() {
 	const [missingExpanded, setMissingExpanded] = useState(false);
 	const [ledgerEmpty, setLedgerEmpty] = useState(false);
 	const [reportStale, setReportStale] = useState(false);
+
+	useScrollToHash(!loading && report !== null);
 
 	const mountedRef = useRef(true);
 	const pricePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -957,88 +959,8 @@ export function ReportClient() {
 						))}
 					</section>
 
-					{/* Unresolved rows */}
 					{report.unresolved.length > 0 ? (
-						<section
-							id="unresolved"
-							className="space-y-3 rounded-lg border border-[var(--loss)]/40 bg-[var(--loss-soft)] p-4"
-						>
-							<div className="flex flex-wrap items-center justify-between gap-2">
-								<div className="flex items-center gap-2">
-									<AlertTriangle
-										className="h-4 w-4 text-[var(--loss)]"
-										aria-hidden="true"
-									/>
-									<h2 className="text-sm font-semibold text-[var(--loss)]">
-										Unresolved Disposal Slices ({report.unresolved.length}) —
-										Excluded from Totals
-									</h2>
-								</div>
-								<Link
-									href={`/review?taxYear=${encodeURIComponent(taxYear)}`}
-									className="text-xs font-medium text-[var(--loss)] underline"
-								>
-									Resolve in Review Queue
-								</Link>
-							</div>
-							{isReportIncomplete(report) ? (
-								<p className="text-xs text-[var(--text-primary)]">
-									{formatIncompleteSummary(report)}. These sales are left out of
-									Schedule VDA and net payable is not shown until you fix them.
-								</p>
-							) : null}
-							<div className="overflow-x-auto rounded border border-[var(--loss)]/25 bg-[var(--bg-surface)]">
-								<table className="w-full border-collapse text-left text-xs">
-									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
-										<tr>
-											<th className="px-3 py-2 font-medium">Sold on</th>
-											<th className="px-3 py-2 font-medium">Asset</th>
-											<th className="num-right px-3 py-2 font-medium">
-												Uncovered Qty
-											</th>
-											<th className="px-3 py-2 font-medium">Reason</th>
-											<th className="px-3 py-2 text-right font-medium">Fix</th>
-										</tr>
-									</thead>
-									<tbody>
-										{report.unresolved.map((u) => {
-											const sale = report.ledger.find((t) => t.id === u.txId);
-											return (
-												<tr
-													key={`${u.txId}:${u.asset}:${u.reason}`}
-													className="border-b border-[var(--border)] last:border-b-0"
-												>
-													<td className="px-3 py-2 whitespace-nowrap">
-														{sale ? formatIstDate(sale.timestamp) : "—"}
-													</td>
-													<td className="px-3 py-2 font-medium">{u.asset}</td>
-													<td className="num-right px-3 py-2">
-														{formatQty(u.quantity)}
-													</td>
-													<td className="px-3 py-2">
-														<Badge tone="loss">
-															{REVIEW_CODE_INFO[u.reason]?.title ?? u.reason}
-														</Badge>
-													</td>
-													<td className="px-3 py-2 text-right">
-														<Link
-															href={addMissingBuyHref(
-																u.asset,
-																taxYear,
-																sale?.timestamp,
-															)}
-															className="font-medium text-[var(--accent-text)] hover:underline"
-														>
-															Add missing buy
-														</Link>
-													</td>
-												</tr>
-											);
-										})}
-									</tbody>
-								</table>
-							</div>
-						</section>
+						<UnresolvedSalesSection report={report} taxYear={taxYear} />
 					) : null}
 
 					{/* Excluded rows (e.g. spam tokens) */}

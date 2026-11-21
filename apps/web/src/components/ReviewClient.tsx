@@ -38,6 +38,7 @@ import {
 	reviewActionCount,
 	splitReviewGroups,
 } from "@/lib/client/review-codes";
+import { useScrollToHash } from "@/lib/client/useScrollToHash";
 import { ALL_YEARS, useSelectedTaxYear } from "@/lib/client/useSelectedTaxYear";
 import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
@@ -123,6 +124,7 @@ function buildReportItemActions(
 					item.unresolved.asset,
 					item.taxYear,
 					options.saleTimestamp,
+					item.unresolved.txId,
 				),
 				fixLabel: "Add missing buy",
 			};
@@ -292,6 +294,7 @@ export function ReviewClient() {
 	useEffect(() => {
 		if (yearReady) loadReview();
 	}, [yearReady, loadReview]);
+	useScrollToHash(!loading && data !== null);
 
 	function handleTaxYearChange(next: string) {
 		selectTaxYear(next || ALL_YEARS);
@@ -438,7 +441,8 @@ export function ReviewClient() {
 		return (
 			<section
 				key={group.code}
-				className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]"
+				id={`review-${group.code}`}
+				className="scroll-mt-16 overflow-hidden lg:scroll-mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]"
 			>
 				<div className="border-b border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-3">
 					<div className="flex flex-wrap items-center justify-between gap-2">

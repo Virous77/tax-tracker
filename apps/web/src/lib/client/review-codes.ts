@@ -1,5 +1,6 @@
 import type { LedgerTx, ReviewCode } from "@tax/core";
 import type { ReviewData } from "@/lib/client/api";
+import { pluralise } from "@/lib/client/format";
 
 type ReviewGroup = ReviewData["groups"][number];
 
@@ -25,16 +26,79 @@ export function reviewActionCount(
 	);
 }
 
+/** `saleTxId` lets the form show which sale the purchase is for and prefill from it. */
 export function addMissingBuyHref(
 	asset: string,
 	taxYear?: string,
 	saleTimestamp?: string,
+	saleTxId?: string,
 ): string {
 	const params = new URLSearchParams({ add: "buy" });
 	if (asset) params.set("asset", asset);
 	if (taxYear) params.set("taxYear", taxYear);
 	if (saleTimestamp) params.set("before", saleTimestamp);
+	if (saleTxId) params.set("sale", saleTxId);
 	return `/transactions?${params.toString()}`;
+}
+
+export function reviewGroupHref(code: ReviewCode, taxYear?: string): string {
+	const params = taxYear ? `?taxYear=${encodeURIComponent(taxYear)}` : "";
+	return `/review${params}#review-${code}`;
+}
+
+/** Venue names for a TDS line, e.g. "Binance"; empty when the sources are mixed or unknown. */
+function singleVenueName(
+	group: ReviewGroup,
+	sourceLabel: (source: string) => string,
+): string {
+	const sources = new Set(
+		group.items.map((tx) => sourceLabel(tx.source).replace(/ \(API\)$/, "")),
+	);
+	return sources.size === 1 ? `${[...sources][0]} ` : "";
+}
+
+export interface ReviewGroupSummary {
+	headline: string;
+	hint: string;
+}
+
+/** One plain-language line per review group for the Overview. */
+export function summariseReviewGroup(
+	group: ReviewGroup,
+	sourceLabel: (source: string) => string,
+): ReviewGroupSummary {
+	const n = group.count;
+	switch (group.code) {
+		case "tds_not_deducted": {
+			const venue = singleVenueName(group, sourceLabel);
+			return {
+				headline: `${n} ${venue}${pluralise(n, "sale has", "sales have")} no TDS deducted`,
+				hint: `${venue ? `${venue.trim()} doesn't` : "The exchange didn't"} deduct India's crypto TDS. Confirm with your CA whether you owe it, then mark them checked.`,
+			};
+		}
+		case "missing_history":
+			return {
+				headline: `${n} ${pluralise(n, "item", "items")} about coins sold with no purchase record`,
+				hint: "The app can't see what you paid for these coins. Import your earlier exports first; add a purchase by hand only for what is still missing.",
+			};
+		case "missing_inr_value":
+			return {
+				headline: `${n} ${pluralise(n, "transaction has", "transactions have")} no rupee value`,
+				hint: "No INR price was found. Enter the INR value yourself.",
+			};
+		case "unmatched_transfer":
+			return {
+				headline: `${n} ${pluralise(n, "deposit or withdrawal", "deposits or withdrawals")} not matched to another account`,
+				hint: "Import the other exchange or wallet, or confirm where the coins went.",
+			};
+		default: {
+			const info = REVIEW_CODE_INFO[group.code];
+			return {
+				headline: `${n} × ${info.title}`,
+				hint: info.fixLabel,
+			};
+		}
+	}
 }
 
 export interface ReviewCodeInfo {
@@ -52,7 +116,7 @@ export const REVIEW_CODE_INFO: Record<ReviewCode, ReviewCodeInfo> = {
 		title: "Missing acquisition history",
 		severity: "error",
 		explanation:
-			"A disposal (sell or swap) happened for an asset where FIFO lots ran out. Under Indian VDA rules, missing cost of acquisition cannot be guessed silently — these slices are excluded from computed totals until you import earlier history or add a manual missing buy.",
+			"You sold or swapped coins, but none of your imported files show how you got them, so the app doesn't know what you paid. Cost is never guessed: these sales stay out of your totals (they are the unresolved sales in the Report). What to do: 1) import your other exports (deposits, Convert, P2P, older trade history) — most fill in on their own; 2) recompute; 3) only then add a purchase by hand for what is still missing.",
 		fixLabel: "Add missing buy",
 		fixHref: (tx, taxYear) => {
 			const asset = tx.assetOut ?? tx.assetIn ?? "";
@@ -102,7 +166,7 @@ export const REVIEW_CODE_INFO: Record<ReviewCode, ReviewCodeInfo> = {
 		title: "TDS not deducted by platform",
 		severity: "warning",
 		explanation:
-			"Offshore or non-FIU exchanges (like Binance) generally do not deduct 1% VDA TDS under Section 194S/393. You may still need to verify whether TDS obligation applied and reconcile in your report.",
+			"Offshore exchanges such as Binance don't deduct India's crypto TDS on your sales, so there is no TDS credit for them. This doesn't change the tax on your gains. What to do: confirm with your CA whether you owed TDS on these sales (see the TDS section of the Report), then mark them checked.",
 		fixLabel: "Review TDS in Report",
 		fixHref: (_tx, taxYear) =>
 			taxYear

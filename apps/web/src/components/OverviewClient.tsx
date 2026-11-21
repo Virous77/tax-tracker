@@ -2,7 +2,6 @@
 
 import type { VdaReport } from "@tax/core";
 import {
-	AlertTriangle,
 	ArrowRight,
 	Calculator,
 	CheckCircle2,
@@ -13,6 +12,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { TrySampleDataButton } from "@/components/demo/TrySampleDataButton";
 import { GettingStarted } from "@/components/GettingStarted";
+import { OverviewAlerts } from "@/components/overview/OverviewAlerts";
 import { StaleReportBanner } from "@/components/report/StaleReportBanner";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -23,6 +23,7 @@ import {
 	getErrorMessage,
 	REPORT_NOT_COMPUTED,
 	type ReportMissingDetails,
+	type ReviewData,
 } from "@/lib/client/api";
 import {
 	formatIncompleteSummary,
@@ -44,7 +45,7 @@ export function OverviewClient() {
 	const [reportMissing, setReportMissing] =
 		useState<ReportMissingDetails | null>(null);
 	const [txTotal, setTxTotal] = useState<number | null>(null);
-	const [reviewCount, setReviewCount] = useState<number>(0);
+	const [review, setReview] = useState<ReviewData | null>(null);
 	const [reviewCurrent, setReviewCurrent] = useState(false);
 	const [reportStale, setReportStale] = useState(false);
 	const [hasOwnImport, setHasOwnImport] = useState(false);
@@ -94,7 +95,7 @@ export function OverviewClient() {
 				setReportStale(false);
 				setReportMissing(repState.missing);
 			}
-			setReviewCount(review ? reviewActionCount(review) : 0);
+			setReview(review);
 			setReviewCurrent(review?.reportStatus === "current");
 			setTxTotal(txPage ? txPage.total : null);
 		} catch (err) {
@@ -125,9 +126,9 @@ export function OverviewClient() {
 			setStatusMessage(
 				`Report computed for tax year ${taxYear} (${computed.generatedFrom.txCount} ${pluralise(computed.generatedFrom.txCount, "transaction")} evaluated).`,
 			);
-			const review = await api.getReview(taxYear).catch(() => null);
-			setReviewCount(review ? reviewActionCount(review) : 0);
-			setReviewCurrent(review?.reportStatus === "current");
+			const nextReview = await api.getReview(taxYear).catch(() => null);
+			setReview(nextReview);
+			setReviewCurrent(nextReview?.reportStatus === "current");
 		} catch (err) {
 			setError(getErrorMessage(err));
 		} finally {
@@ -135,6 +136,7 @@ export function OverviewClient() {
 		}
 	}
 
+	const reviewCount = review ? reviewActionCount(review) : 0;
 	const incomplete = report ? isReportIncomplete(report) : false;
 	const netIsRefund =
 		report && !incomplete ? isNegativeDecimal(report.totals.netPayable) : false;
@@ -189,53 +191,12 @@ export function OverviewClient() {
 				<StaleReportBanner computing={computing} onRecompute={handleCompute} />
 			) : null}
 
-			{reviewCount > 0 ? (
-				<div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning-soft)] px-4 py-3 text-sm">
-					<div className="flex items-center gap-2.5">
-						<AlertTriangle
-							className="h-4 w-4 shrink-0 text-[var(--warning)]"
-							aria-hidden="true"
-						/>
-						<span>
-							<strong className="font-semibold num">{reviewCount}</strong>{" "}
-							{pluralise(reviewCount, "item")}{" "}
-							{pluralise(reviewCount, "needs", "need")} review before filing.
-						</span>
-					</div>
-					<Link
-						href={`/review?taxYear=${encodeURIComponent(taxYear)}`}
-						className="inline-flex items-center gap-1 font-medium text-[var(--accent-text)] hover:underline"
-					>
-						Review items
-						<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-					</Link>
-				</div>
-			) : null}
-
-			{report && report.unresolved.length > 0 ? (
-				<div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--loss)]/40 bg-[var(--loss-soft)] px-4 py-3 text-sm">
-					<div className="flex items-center gap-2.5">
-						<AlertTriangle
-							className="h-4 w-4 shrink-0 text-[var(--loss)]"
-							aria-hidden="true"
-						/>
-						<span>
-							<strong className="font-semibold num">
-								{report.unresolved.length}
-							</strong>{" "}
-							{pluralise(report.unresolved.length, "unresolved disposal slice")}{" "}
-							excluded from totals due to missing history or INR value.
-						</span>
-					</div>
-					<Link
-						href={`/report?taxYear=${encodeURIComponent(taxYear)}#unresolved`}
-						className="inline-flex items-center gap-1 font-medium text-[var(--loss)] hover:underline"
-					>
-						Inspect unresolved
-						<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-					</Link>
-				</div>
-			) : null}
+			<OverviewAlerts
+				report={report}
+				review={review}
+				reviewCount={reviewCount}
+				taxYear={taxYear}
+			/>
 
 			{!loading && !error ? (
 				<GettingStarted

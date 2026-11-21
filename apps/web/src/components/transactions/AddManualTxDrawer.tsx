@@ -7,6 +7,7 @@ import {
 	type TxType,
 } from "@tax/core";
 import { Plus } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 import { Drawer } from "@/components/ui/Drawer";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -17,11 +18,70 @@ import {
 	type ManualVenue,
 	ValidationError,
 } from "@/lib/client/api";
-import { formatIncomeKind } from "@/lib/client/format";
+import {
+	describeDisposal,
+	missingExportHints,
+	saleSourceLabel,
+} from "@/lib/client/disposals";
+import {
+	formatIncomeKind,
+	formatIstDateTime,
+	formatQty,
+} from "@/lib/client/format";
+import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 const DEFAULT_DATE_TIME = "2026-04-01T12:00";
 
 export type ManualPreset = "buy" | "gift" | "income" | "sell";
+
+/** The sale a missing purchase is being added for. */
+export interface SaleContext {
+	tx: LedgerTx;
+	asset: string;
+	/** Quantity of `asset` the sale has no purchase record for. */
+	quantity: string;
+	taxYear: string;
+}
+
+function SaleContextBox({ sale }: { sale: SaleContext }) {
+	const sourceLabel = useSourceLabel();
+	const hints = missingExportHints([sale.tx.source]);
+	return (
+		<div className="space-y-1.5 rounded-md border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-3 py-2.5 text-xs">
+			<p>
+				<span className="font-semibold">For:</span>{" "}
+				{describeDisposal(sale.tx, sale.asset)} on{" "}
+				{formatIstDateTime(sale.tx.timestamp)} (
+				{saleSourceLabel(sale.tx, sourceLabel)}).
+			</p>
+			<p>
+				No record shows how you got this{" "}
+				<span className="num font-medium">
+					{formatQty(sale.quantity)} {sale.asset}
+				</span>
+				. Enter when and how you acquired it.
+			</p>
+			<p className="text-[var(--text-secondary)]">
+				Prefer importing the export that contains it
+				{hints.length > 0
+					? ` (${hints
+							.map(
+								(hint) =>
+									`${hint.venue}: ${hint.exports.map((e) => e.name).join(", ")}`,
+							)
+							.join("; ")})`
+					: ""}
+				: it fills in this and similar sales on its own.{" "}
+				<Link
+					href={`/report?taxYear=${encodeURIComponent(sale.taxYear)}#unresolved`}
+					className="font-medium text-[var(--accent-text)] hover:underline"
+				>
+					Where to download each export
+				</Link>
+			</p>
+		</div>
+	);
+}
 
 export function AddManualTxDrawer({
 	open,
@@ -29,6 +89,9 @@ export function AddManualTxDrawer({
 	initialAsset = "",
 	initialVenue = "manual",
 	initialDateTime,
+	initialAmount = "",
+	saleContext,
+	notAfter,
 	onClose,
 	onCreated,
 }: {
@@ -38,6 +101,10 @@ export function AddManualTxDrawer({
 	initialVenue?: ManualVenue;
 	/** IST `YYYY-MM-DDTHH:mm`; defaults to the start of 2026-27. */
 	initialDateTime?: string;
+	initialAmount?: string;
+	saleContext?: SaleContext;
+	/** ISO instant of the sale this entry precedes; the date must be before it. */
+	notAfter?: string;
 	onClose: () => void;
 	onCreated: (tx: LedgerTx) => void;
 }) {
@@ -69,6 +136,9 @@ export function AddManualTxDrawer({
 	const kindId = useId();
 	const tdsId = useId();
 	const noteId = useId();
+	const dtHintId = useId();
+	const amountInHintId = useId();
+	const inrHintId = useId();
 
 	function clearFieldError(field: string) {
 		setFieldErrors((prev) => {
@@ -91,14 +161,21 @@ export function AddManualTxDrawer({
 			setAssetOut("");
 		}
 		setIstDateTime(initialDateTime ?? DEFAULT_DATE_TIME);
-		setAmountIn("");
+		setAmountIn(initialPreset === "sell" ? "" : initialAmount);
 		setAmountOut("");
 		setInrValue("");
 		setTdsInr("");
 		setUserNote("");
 		setError(null);
 		setFieldErrors({});
-	}, [open, initialPreset, initialAsset, initialVenue, initialDateTime]);
+	}, [
+		open,
+		initialPreset,
+		initialAsset,
+		initialVenue,
+		initialDateTime,
+		initialAmount,
+	]);
 
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault();
@@ -109,6 +186,16 @@ export function AddManualTxDrawer({
 			const parsedInstant = new Date(`${istDateTime}:00+05:30`);
 			if (!Number.isFinite(parsedInstant.getTime())) {
 				const msg = "Please enter a valid date and time in IST.";
+				setFieldErrors({ timestamp: msg });
+				setError(msg);
+				return;
+			}
+			if (
+				notAfter &&
+				type !== "sell" &&
+				parsedInstant.getTime() >= Date.parse(notAfter)
+			) {
+				const msg = `Must be before the sale on ${formatIstDateTime(notAfter)}.`;
 				setFieldErrors({ timestamp: msg });
 				setError(msg);
 				return;
@@ -189,6 +276,10 @@ export function AddManualTxDrawer({
 			subtitle="Record a missing buy, gift (with optional cost/FMV), or staking/airdrop income."
 		>
 			<form onSubmit={handleSubmit} className="space-y-4">
+				{saleContext && type === "buy" ? (
+					<SaleContextBox sale={saleContext} />
+				) : null}
+
 				{error ? <ErrorBanner message={error} /> : null}
 
 				<div className="space-y-1.5">
@@ -268,7 +359,12 @@ export function AddManualTxDrawer({
 						value={istDateTime}
 						aria-invalid={Boolean(fieldErrors.timestamp)}
 						aria-describedby={
-							fieldErrors.timestamp ? `${dtId}-error` : undefined
+							[
+								notAfter && type !== "sell" ? dtHintId : null,
+								fieldErrors.timestamp ? `${dtId}-error` : null,
+							]
+								.filter(Boolean)
+								.join(" ") || undefined
 						}
 						onChange={(e) => {
 							setIstDateTime(e.target.value);
@@ -276,6 +372,15 @@ export function AddManualTxDrawer({
 						}}
 						className={`mt-1 w-full rounded border ${inputBorderClass("timestamp")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
 					/>
+					{notAfter && type !== "sell" ? (
+						<p
+							id={dtHintId}
+							className="mt-1 text-[11px] text-[var(--text-muted)]"
+						>
+							Set this to when you actually got the coins (must be before the
+							sale on {formatIstDateTime(notAfter)}). Prefilled one day earlier.
+						</p>
+					) : null}
 					{fieldErrors.timestamp ? (
 						<p id={`${dtId}-error`} className="mt-1 text-xs text-[var(--loss)]">
 							{fieldErrors.timestamp}
@@ -322,7 +427,7 @@ export function AddManualTxDrawer({
 								id={assetInId}
 								type="text"
 								required
-								placeholder="BTC"
+								placeholder="e.g. BTC"
 								value={assetIn}
 								aria-invalid={Boolean(fieldErrors.assetIn)}
 								aria-describedby={
@@ -332,7 +437,7 @@ export function AddManualTxDrawer({
 									setAssetIn(e.target.value);
 									clearFieldError("assetIn");
 								}}
-								className={`mt-1 w-full rounded border ${inputBorderClass("assetIn")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase`}
+								className={`mt-1 w-full rounded border ${inputBorderClass("assetIn")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase placeholder:normal-case`}
 							/>
 							{fieldErrors.assetIn ? (
 								<p
@@ -355,11 +460,16 @@ export function AddManualTxDrawer({
 								type="text"
 								required
 								inputMode="decimal"
-								placeholder="0.5"
+								placeholder="e.g. 0.5"
 								value={amountIn}
 								aria-invalid={Boolean(fieldErrors.amountIn)}
 								aria-describedby={
-									fieldErrors.amountIn ? `${amountInId}-error` : undefined
+									[
+										saleContext && type === "buy" ? amountInHintId : null,
+										fieldErrors.amountIn ? `${amountInId}-error` : null,
+									]
+										.filter(Boolean)
+										.join(" ") || undefined
 								}
 								onChange={(e) => {
 									setAmountIn(e.target.value);
@@ -373,6 +483,15 @@ export function AddManualTxDrawer({
 									className="mt-1 text-xs text-[var(--loss)]"
 								>
 									{fieldErrors.amountIn}
+								</p>
+							) : null}
+							{saleContext && type === "buy" ? (
+								<p
+									id={amountInHintId}
+									className="mt-1 text-[11px] text-[var(--text-muted)]"
+								>
+									Prefilled with what the sale is missing. Change it if you got
+									a different amount at that time.
 								</p>
 							) : null}
 						</div>
@@ -394,7 +513,7 @@ export function AddManualTxDrawer({
 								id={assetOutId}
 								type="text"
 								required={type !== "buy"}
-								placeholder={type === "buy" ? "INR or USDT" : "ETH"}
+								placeholder={type === "buy" ? "e.g. INR or USDT" : "e.g. ETH"}
 								value={assetOut}
 								aria-invalid={Boolean(fieldErrors.assetOut)}
 								aria-describedby={
@@ -404,7 +523,7 @@ export function AddManualTxDrawer({
 									setAssetOut(e.target.value);
 									clearFieldError("assetOut");
 								}}
-								className={`mt-1 w-full rounded border ${inputBorderClass("assetOut")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase`}
+								className={`mt-1 w-full rounded border ${inputBorderClass("assetOut")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase placeholder:normal-case`}
 							/>
 							{fieldErrors.assetOut ? (
 								<p
@@ -427,7 +546,7 @@ export function AddManualTxDrawer({
 								type="text"
 								required={type !== "buy"}
 								inputMode="decimal"
-								placeholder="1.0"
+								placeholder="e.g. 1.0"
 								value={amountOut}
 								aria-invalid={Boolean(fieldErrors.amountOut)}
 								aria-describedby={
@@ -470,11 +589,16 @@ export function AddManualTxDrawer({
 							type="text"
 							inputMode="decimal"
 							required={type === "buy" && !assetOut.trim()}
-							placeholder="200000.00"
+							placeholder="e.g. 200000"
 							value={inrValue}
 							aria-invalid={Boolean(fieldErrors.inrValue)}
 							aria-describedby={
-								fieldErrors.inrValue ? `${inrId}-error` : undefined
+								[
+									type === "buy" ? inrHintId : null,
+									fieldErrors.inrValue ? `${inrId}-error` : null,
+								]
+									.filter(Boolean)
+									.join(" ") || undefined
 							}
 							onChange={(e) => {
 								setInrValue(e.target.value);
@@ -488,6 +612,17 @@ export function AddManualTxDrawer({
 								className="mt-1 text-xs text-[var(--loss)]"
 							>
 								{fieldErrors.inrValue}
+							</p>
+						) : null}
+						{type === "buy" ? (
+							<p
+								id={inrHintId}
+								className="mt-1 text-[11px] text-[var(--text-muted)]"
+							>
+								What you paid in rupees, fees included. Required unless you fill
+								in the quote asset and quantity paid: the app then values it
+								from those and flags the row if it can't. It never guesses a
+								cost.
 							</p>
 						) : null}
 						{type === "gift" ? (
@@ -509,7 +644,7 @@ export function AddManualTxDrawer({
 							id={tdsId}
 							type="text"
 							inputMode="decimal"
-							placeholder="0"
+							placeholder="e.g. 0"
 							value={tdsInr}
 							aria-invalid={Boolean(fieldErrors.tdsInr)}
 							aria-describedby={

@@ -1,13 +1,14 @@
 "use client";
 
-import { type LedgerTx, type TxType, TxTypeSchema } from "@tax/core";
-import { Plus, Search } from "lucide-react";
+import { istDate, type LedgerTx, type TxType, TxTypeSchema } from "@tax/core";
+import { Calculator, CheckCircle2, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useState } from "react";
 import {
 	AddManualTxDrawer,
 	type ManualPreset,
+	type SaleContext,
 } from "@/components/transactions/AddManualTxDrawer";
 import { TransactionDrawer } from "@/components/transactions/TransactionDrawer";
 import { Badge } from "@/components/ui/Badge";
@@ -27,6 +28,7 @@ import {
 	type TransactionsPage,
 } from "@/lib/client/api";
 import { EVM_CHAINS } from "@/lib/client/chains";
+import { unresolvedSales, venueForSource } from "@/lib/client/disposals";
 import {
 	defaultMissingBuyDateTime,
 	formatInrNullable,
@@ -34,6 +36,7 @@ import {
 	formatManualVenueLabel,
 	formatQty,
 	formatTxType,
+	pluralise,
 } from "@/lib/client/format";
 import { groupReviewFlags, REVIEW_CODE_INFO } from "@/lib/client/review-codes";
 import { useSourceLabel } from "@/lib/client/useSourceLabel";
@@ -69,6 +72,7 @@ export function TransactionsClient() {
 	const addParam = searchParams.get("add");
 	const venueParam = searchParams.get("venue");
 	const beforeParam = searchParams.get("before");
+	const saleParam = searchParams.get("sale");
 
 	const [taxYears, setTaxYears] = useState<TaxYearInfo[]>(FALLBACK_TAX_YEARS);
 	const [data, setData] = useState<TransactionsPage | null>(null);
@@ -76,6 +80,13 @@ export function TransactionsClient() {
 	const [error, setError] = useState<string | null>(null);
 	const [selectedTx, setSelectedTx] = useState<LedgerTx | null>(null);
 	const [addOpen, setAddOpen] = useState(false);
+	const [saleContext, setSaleContext] = useState<SaleContext | null>(null);
+	const [savedForYear, setSavedForYear] = useState<string | null>(null);
+	const [recompute, setRecompute] = useState<{
+		running: boolean;
+		message: string | null;
+		error: string | null;
+	}>({ running: false, message: null, error: null });
 
 	const [searchDraft, setSearchDraft] = useState(q);
 	const [assetDraft, setAssetDraft] = useState(asset);
@@ -94,14 +105,47 @@ export function TransactionsClient() {
 
 	useEffect(() => {
 		if (
-			addParam === "buy" ||
-			addParam === "gift" ||
-			addParam === "income" ||
-			addParam === "sell"
+			addParam !== "buy" &&
+			addParam !== "gift" &&
+			addParam !== "income" &&
+			addParam !== "sell"
 		) {
-			setAddOpen(true);
+			return;
 		}
-	}, [addParam]);
+		if (addParam !== "buy" || !saleParam || !taxYear) {
+			setSaleContext(null);
+			setAddOpen(true);
+			return;
+		}
+		let cancelled = false;
+		api
+			.getReportOrNull(taxYear)
+			.catch(() => null)
+			.then((report) => {
+				if (cancelled) return;
+				const match = report
+					? unresolvedSales(report).find(
+							(s) =>
+								s.txId === saleParam &&
+								(!asset || s.asset === asset.toUpperCase()),
+						)
+					: undefined;
+				setSaleContext(
+					match?.tx
+						? {
+								tx: match.tx,
+								asset: match.asset,
+								quantity: match.quantity,
+								taxYear,
+							}
+						: null,
+				);
+				setAddOpen(true);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [addParam, saleParam, taxYear, asset]);
 
 	useEffect(() => {
 		api
@@ -147,6 +191,7 @@ export function TransactionsClient() {
 		params.delete("add");
 		params.delete("venue");
 		params.delete("before");
+		params.delete("sale");
 		for (const [k, v] of Object.entries(updates)) {
 			if (v === null || v === "") params.delete(k);
 			else params.set(k, v);
@@ -168,18 +213,42 @@ export function TransactionsClient() {
 		addParam === "gift" || addParam === "income" || addParam === "sell"
 			? addParam
 			: "buy";
-	const initialVenue: ManualVenue =
-		venueParam === "binance" || venueParam === "coindcx"
+	const initialVenue: ManualVenue = saleContext
+		? venueForSource(saleContext.tx)
+		: venueParam === "binance" || venueParam === "coindcx"
 			? venueParam
 			: "manual";
+	const saleTimestamp = saleContext?.tx.timestamp ?? beforeParam;
 
 	const initialDateTime =
 		manualPreset === "buy"
 			? defaultMissingBuyDateTime(
-					beforeParam,
+					saleTimestamp,
 					taxYears.find((y) => y.id === taxYear),
 				)
 			: undefined;
+
+	async function handleRecompute(year: string) {
+		setRecompute({ running: true, message: null, error: null });
+		try {
+			const report = await api.computeReport(year);
+			const left = new Set(report.unresolved.map((u) => u.txId)).size;
+			setRecompute({
+				running: false,
+				message:
+					left === 0
+						? `Report recomputed for ${year}: no sales are left out any more.`
+						: `Report recomputed for ${year}: ${left} ${pluralise(left, "sale is", "sales are")} still left out.`,
+				error: null,
+			});
+		} catch (err) {
+			setRecompute({
+				running: false,
+				message: null,
+				error: getErrorMessage(err),
+			});
+		}
+	}
 
 	return (
 		<div className="space-y-5">
@@ -359,6 +428,46 @@ export function TransactionsClient() {
 				</div>
 			</form>
 
+			{savedForYear ? (
+				<div
+					role="status"
+					className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--positive)]/40 bg-[var(--positive-soft)] px-4 py-2.5 text-sm"
+				>
+					<div className="flex items-center gap-2">
+						<CheckCircle2
+							className="h-4 w-4 shrink-0 text-[var(--positive)]"
+							aria-hidden="true"
+						/>
+						<span>
+							{recompute.message ??
+								`Transaction added. Recompute the ${savedForYear} report to see its effect.`}
+						</span>
+					</div>
+					<div className="flex flex-wrap items-center gap-3">
+						<button
+							type="button"
+							disabled={recompute.running}
+							onClick={() => handleRecompute(savedForYear)}
+							className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+						>
+							<Calculator className="h-3.5 w-3.5" aria-hidden="true" />
+							{recompute.running ? "Computing…" : "Recompute report"}
+						</button>
+						<Link
+							href={`/report?taxYear=${encodeURIComponent(savedForYear)}#unresolved`}
+							className="text-xs font-medium text-[var(--accent-text)] hover:underline"
+						>
+							Back to the report
+						</Link>
+					</div>
+					{recompute.error ? (
+						<p className="w-full text-xs text-[var(--loss)]">
+							{recompute.error}
+						</p>
+					) : null}
+				</div>
+			) : null}
+
 			{error ? (
 				<ErrorBanner message={error} onRetry={loadTransactions} />
 			) : null}
@@ -531,14 +640,29 @@ export function TransactionsClient() {
 				initialAsset={asset}
 				initialVenue={initialVenue}
 				{...(initialDateTime ? { initialDateTime } : {})}
+				{...(saleContext
+					? { saleContext, initialAmount: saleContext.quantity }
+					: {})}
+				{...(saleTimestamp && manualPreset === "buy"
+					? { notAfter: saleTimestamp }
+					: {})}
 				onClose={() => {
 					setAddOpen(false);
+					setSaleContext(null);
 					if (addParam || venueParam) {
 						updateParams({ add: null, venue: null }, false);
 					}
 				}}
-				onCreated={() => {
+				onCreated={(created) => {
 					setAddOpen(false);
+					setSaleContext(null);
+					const day = istDate(created.timestamp);
+					setSavedForYear(
+						taxYear ||
+							taxYears.find((y) => day >= y.start && day <= y.end)?.id ||
+							null,
+					);
+					setRecompute({ running: false, message: null, error: null });
 					if (addParam || venueParam) {
 						updateParams({ add: null, venue: null }, false);
 					}

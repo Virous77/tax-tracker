@@ -110,7 +110,7 @@ test.describe("after computing", () => {
 			[
 				"Missing acquisition history",
 				"missing_history",
-				"missing cost of acquisition cannot be guessed silently",
+				"Cost is never guessed",
 				"Add missing buy",
 			],
 			[
@@ -122,7 +122,7 @@ test.describe("after computing", () => {
 			[
 				"TDS not deducted by platform",
 				"tds_not_deducted",
-				"do not deduct 1% VDA TDS",
+				"don't deduct India's crypto TDS",
 				"Review TDS in Report",
 			],
 		] as const) {
@@ -166,7 +166,7 @@ test.describe("after computing", () => {
 			slice.getByRole("link", { name: "Add missing buy" }),
 		).toHaveAttribute(
 			"href",
-			"/transactions?add=buy&asset=ETH&taxYear=2026-27&before=2026-05-15T10%3A00%3A00.000Z",
+			/^\/transactions\?add=buy&asset=ETH&taxYear=2026-27&before=2026-05-15T10%3A00%3A00\.000Z&sale=[0-9a-f-]{36}$/,
 		);
 		// The swap itself is not repeated as a ledger item in this group.
 		await expect(rows.filter({ hasText: "Inspect" })).toHaveCount(0);

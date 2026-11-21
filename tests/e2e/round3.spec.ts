@@ -310,13 +310,13 @@ test.describe("singular and plural wording", () => {
 				),
 		).toBeVisible();
 		await expect(
-			page.getByText(/1 unresolved disposal slice excluded/),
+			page.getByText(/1 sale is left out of your totals/),
 		).toBeVisible();
 		await page.goto("/report?taxYear=2026-27");
 		// Phase 4: a sale with no buy history is kept out of Schedule VDA and the report is incomplete.
 		await expect(page.getByText("Schedule VDA (0 rows)")).toBeVisible();
 		await expect(
-			page.getByText("Unresolved Disposal Slices (1) — Excluded from Totals"),
+			page.getByText("1 sale left out of your totals"),
 		).toBeVisible();
 		await expect(page.getByText(/\b1 (rows|transactions|items)\b/)).toHaveCount(
 			0,

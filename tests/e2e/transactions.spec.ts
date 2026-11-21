@@ -2,6 +2,7 @@ import path from "node:path";
 import type { Page } from "@playwright/test";
 import { GENERATED } from "./support/env";
 import { expect, settled, snap, test } from "./support/fixtures";
+import { chooseOption, SELECT_VALUE } from "./support/select";
 import { statement } from "./support/statements";
 
 const rows = (page: Page) => page.getByRole("table").locator("tbody tr");
@@ -29,7 +30,7 @@ test.describe("with a large Binance history", () => {
 		await page.goto("/transactions");
 		await expect(page.getByText("Showing 1–50 of 5000")).toBeVisible();
 
-		await page.getByLabel("Type").selectOption("sell");
+		await chooseOption(page.getByLabel("Type"), "sell");
 		await expect(page).toHaveURL(/[?&]type=sell/);
 		await settled(page);
 		const typeCells = rows(page).locator("td:nth-child(2)");
@@ -38,7 +39,7 @@ test.describe("with a large Binance history", () => {
 			new Set(["Sell"]),
 		);
 
-		await page.getByLabel("Year").selectOption("2025-26");
+		await chooseOption(page.getByLabel("Year"), "2025-26");
 		await expect(page).toHaveURL(/taxYear=2025-26/);
 
 		await page.getByLabel("Asset").fill("btc");
@@ -54,14 +55,17 @@ test.describe("with a large Binance history", () => {
 			.textContent();
 
 		await page.reload();
-		await expect(page.getByLabel("Type")).toHaveValue("sell");
-		await expect(page.getByLabel("Year")).toHaveValue("2025-26");
+		await expect(page.getByLabel("Type")).toHaveAttribute(SELECT_VALUE, "sell");
+		await expect(page.getByLabel("Year")).toHaveAttribute(
+			SELECT_VALUE,
+			"2025-26",
+		);
 		await expect(page.getByLabel("Asset")).toHaveValue("BTC");
 		await expect(page.getByText(/^Showing \d+–\d+ of \d+$/)).toHaveText(
 			filteredTotal ?? "",
 		);
 
-		await page.getByLabel("Sort").selectOption("timestamp:asc");
+		await chooseOption(page.getByLabel("Sort"), "timestamp:asc");
 		await expect(page).toHaveURL(/sort=timestamp%3Aasc|sort=timestamp:asc/);
 
 		await page.getByRole("button", { name: "Clear all filters" }).click();
@@ -149,8 +153,8 @@ test.describe("flags, drawer and editing", () => {
 		await expect(drawer.locator("pre")).toContainText("Operation");
 		await snap(page, "transactions-drawer");
 
-		await drawer.getByLabel("Transaction type").selectOption("income");
-		await drawer.getByLabel("Income kind").selectOption("airdrop");
+		await chooseOption(drawer.getByLabel("Transaction type"), "income");
+		await chooseOption(drawer.getByLabel("Income kind"), "airdrop");
 		await drawer.getByLabel("INR value (₹)").fill("1234.50");
 		await drawer
 			.getByLabel("Note (saved for CA / audit trail)")
@@ -170,7 +174,10 @@ test.describe("flags, drawer and editing", () => {
 		await expect(
 			again.getByLabel("Note (saved for CA / audit trail)"),
 		).toHaveValue("e2e: valued from CoinGecko close");
-		await expect(again.getByLabel("Income kind")).toHaveValue("airdrop");
+		await expect(again.getByLabel("Income kind")).toHaveAttribute(
+			SELECT_VALUE,
+			"airdrop",
+		);
 	});
 });
 
@@ -199,7 +206,7 @@ test.describe("manual entries", () => {
 		drawer = await openAddDrawer(page);
 		await drawer.getByRole("button", { name: "Income", exact: true }).click();
 		await drawer.getByLabel("Date & time (IST)").fill("2026-07-01T10:00");
-		await drawer.getByLabel("Income kind").selectOption("staking");
+		await chooseOption(drawer.getByLabel("Income kind"), "staking");
 		await drawer.getByLabel("Asset received *").fill("ETH");
 		await drawer.getByLabel("Quantity received *").fill("0.1");
 		await drawer.getByLabel("FMV at receipt in INR (₹)").fill("20000");

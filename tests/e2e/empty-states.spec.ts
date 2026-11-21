@@ -1,4 +1,5 @@
 import { expect, settled, snap, test } from "./support/fixtures";
+import { chooseOption, SELECT_VALUE } from "./support/select";
 
 // Runs first, against the freshly created data dir: no imports, no reports, default settings.
 
@@ -74,13 +75,16 @@ test("review empty state opens on the default year and never asks to compute an 
 }) => {
 	await page.goto("/review");
 	await expect(page).toHaveURL(/\/review$/);
-	await expect(page.getByLabel("Tax year")).toHaveValue("2025-26");
+	await expect(page.getByLabel("Tax year")).toHaveAttribute(
+		SELECT_VALUE,
+		"2025-26",
+	);
 	await expect(
 		page.getByRole("heading", { name: "No transactions in 2025-26" }),
 	).toBeVisible();
 	await expect(page.getByText(/Reports? not computed/)).toHaveCount(0);
 	await expect(page.getByRole("button", { name: /^Compute / })).toHaveCount(0);
-	await page.getByLabel("Tax year").selectOption("");
+	await chooseOption(page.getByLabel("Tax year"), "");
 	await expect(
 		page.getByRole("heading", { name: "No transactions yet" }),
 	).toBeVisible();
@@ -124,8 +128,9 @@ test("report empty state offers an import or sample data", async ({ page }) => {
 	await expect(
 		page.getByRole("button", { name: "Try with sample data" }),
 	).toBeVisible();
-	await page.getByLabel("Tax year").selectOption("2025-26");
-	await expect(page).toHaveURL(/taxYear=2025-26/);
+	// A custom select (like a native one used by hand) does not fire on re-picking the current year.
+	await chooseOption(page.getByLabel("Tax year"), "2026-27");
+	await expect(page).toHaveURL(/taxYear=2026-27/);
 	await expect(empty).toBeVisible();
 	await expect(page.getByText(/cleared because/)).toHaveCount(0);
 	for (const year of ["2025-26", "2026-27"]) {
@@ -144,10 +149,19 @@ test("report empty state offers an import or sample data", async ({ page }) => {
 test("settings shows defaults on a fresh install", async ({ page }) => {
 	await page.goto("/settings");
 	await settled(page);
-	await expect(page.getByLabel("Fee & GST treatment")).toHaveValue("exclude");
-	await expect(page.getByLabel("Surcharge rate")).toHaveValue("0");
+	await expect(page.getByLabel("Fee & GST treatment")).toHaveAttribute(
+		SELECT_VALUE,
+		"exclude",
+	);
+	await expect(page.getByLabel("Surcharge rate")).toHaveAttribute(
+		SELECT_VALUE,
+		"0",
+	);
 	// Phase 4 (2d31f5f): a fresh install defaults to the latest completed year in IST.
-	await expect(page.getByLabel("Default tax year")).toHaveValue("2025-26");
+	await expect(page.getByLabel("Default tax year")).toHaveAttribute(
+		SELECT_VALUE,
+		"2025-26",
+	);
 	await expect(page.getByLabel("OpenAI-compatible base URL")).toHaveValue(
 		"http://ollama:11434/v1",
 	);

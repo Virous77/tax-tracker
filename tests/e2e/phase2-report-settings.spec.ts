@@ -1,4 +1,5 @@
 import { expect, reset, shot, test } from "./support/phase2";
+import { chooseOption, listOptionValues, SELECT_VALUE } from "./support/select";
 
 test.beforeEach(async ({ api }) => reset(api));
 
@@ -10,7 +11,10 @@ test("price lookup toggles, basis and exact host explanation persist", async ({
 		page.getByLabel("Enable historical market price lookups"),
 	).not.toBeChecked();
 	await expect(page.getByLabel("Use CoinGecko fallback")).toBeChecked();
-	await expect(page.getByLabel("Market price basis")).toHaveValue("close");
+	await expect(page.getByLabel("Market price basis")).toHaveAttribute(
+		SELECT_VALUE,
+		"close",
+	);
 	await expect(
 		page.locator("p").filter({ hasText: "Hosts contacted when enabled:" }),
 	).toHaveText(
@@ -18,7 +22,7 @@ test("price lookup toggles, basis and exact host explanation persist", async ({
 	);
 	await page.getByLabel("Enable historical market price lookups").check();
 	await page.getByLabel("Use CoinGecko fallback").uncheck();
-	await page.getByLabel("Market price basis").selectOption("vwap");
+	await chooseOption(page.getByLabel("Market price basis"), "vwap");
 	await page.getByRole("button", { name: "Save settings" }).click();
 	await expect(page.getByText(/Settings saved/)).toBeVisible();
 	await page.reload();
@@ -26,7 +30,10 @@ test("price lookup toggles, basis and exact host explanation persist", async ({
 		page.getByLabel("Enable historical market price lookups"),
 	).toBeChecked();
 	await expect(page.getByLabel("Use CoinGecko fallback")).not.toBeChecked();
-	await expect(page.getByLabel("Market price basis")).toHaveValue("vwap");
+	await expect(page.getByLabel("Market price basis")).toHaveAttribute(
+		SELECT_VALUE,
+		"vwap",
+	);
 	await shot(page, "settings-price-lookups");
 });
 
@@ -152,10 +159,9 @@ test("Transactions includes new sources and possible_duplicate chip", async ({
 		],
 	});
 	await page.goto("/transactions");
-	const options = await page
-		.getByLabel("Source", { exact: true })
-		.locator("option")
-		.evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value));
+	const options = await listOptionValues(
+		page.getByLabel("Source", { exact: true }),
+	);
 	for (const source of [
 		"binance-api",
 		"coindcx-api",

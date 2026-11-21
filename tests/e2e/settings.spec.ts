@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { MOCK_LLM_IN_CONTAINER } from "./support/env";
 import { expect, settled, snap, test } from "./support/fixtures";
+import { chooseOption, SELECT_VALUE } from "./support/select";
 
 function card(page: Page, label: string) {
 	return page
@@ -69,10 +70,13 @@ test("fee treatment changes the report after recompute and is shown on it", asyn
 
 	await page.goto("/settings");
 	await settled(page);
-	await page.getByLabel("Fee & GST treatment").selectOption("include");
+	await chooseOption(page.getByLabel("Fee & GST treatment"), "include");
 	await saveSettings(page);
 	await page.reload();
-	await expect(page.getByLabel("Fee & GST treatment")).toHaveValue("include");
+	await expect(page.getByLabel("Fee & GST treatment")).toHaveAttribute(
+		SELECT_VALUE,
+		"include",
+	);
 
 	await recompute(page);
 	await expect(card(page, "Cost")).toHaveText("₹1,01,000.00");
@@ -94,7 +98,7 @@ test("surcharge rate changes total tax after recompute", async ({
 	await api.compute("2026-27");
 	await page.goto("/settings");
 	await settled(page);
-	await page.getByLabel("Surcharge rate").selectOption("0.10");
+	await chooseOption(page.getByLabel("Surcharge rate"), "0.10");
 	await saveSettings(page);
 	await recompute(page);
 	await expect(card(page, "Taxable Income")).toHaveText("₹50,000.00");

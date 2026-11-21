@@ -12,6 +12,7 @@ import {
 	test,
 	WALLET_B,
 } from "./support/phase2";
+import { chooseOption } from "./support/select";
 
 test.beforeEach(async ({ api }) => reset(api));
 test.setTimeout(300000);
@@ -263,9 +264,10 @@ for (const [chainId, name, host, address] of CHAINS)
 			)
 			.toEqual([]);
 		await page.goto("/transactions");
-		await page
-			.getByLabel("Source", { exact: true })
-			.selectOption(`evm:${chainId}`);
+		await chooseOption(
+			page.getByLabel("Source", { exact: true }),
+			`evm:${chainId}`,
+		);
 		await expect(page).toHaveURL(new RegExp(`source=evm(%3A|:)${chainId}`));
 		const rows = page.getByRole("table").locator("tbody tr");
 		await expect(rows.first()).toBeVisible();

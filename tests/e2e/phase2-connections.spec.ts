@@ -12,6 +12,7 @@ import {
 	shot,
 	test,
 } from "./support/phase2";
+import { chooseOption } from "./support/select";
 
 test.beforeEach(async ({ api }) => reset(api, false));
 
@@ -158,7 +159,7 @@ for (const name of [
 		await row.getByRole("button", { name: "Set key" }).click();
 		await row.locator("input[type=password]").fill(`mock-${name}-key`);
 		if (name === "etherscan")
-			await row.getByLabel("Plan tier").selectOption("free");
+			await chooseOption(row.getByLabel("Plan tier"), "free");
 		await row.getByRole("button", { name: "Save key" }).click();
 		await expect(row.getByText("Key set", { exact: true })).toBeVisible();
 		await noSecrets(page);
@@ -174,7 +175,7 @@ for (const name of [
 					: `phase2-replaced-${name}-key`,
 			);
 		if (name === "etherscan")
-			await row.getByLabel("Plan tier").selectOption("paid");
+			await chooseOption(row.getByLabel("Plan tier"), "paid");
 		await row.getByRole("button", { name: "Save key" }).click();
 		await expect(row.getByRole("button", { name: "Replace" })).toBeVisible();
 		if (name === "etherscan")
@@ -321,7 +322,7 @@ for (const [chainId, name, , address] of CHAINS)
 		const d = page.getByRole("dialog");
 		await d.getByRole("button", { name: "EVM address" }).click();
 		await d.getByLabel("Label", { exact: true }).fill(`${name} wallet`);
-		await d.getByLabel("Chain", { exact: true }).selectOption(String(chainId));
+		await chooseOption(d.getByLabel("Chain", { exact: true }), String(chainId));
 		await d.getByLabel("Wallet address").fill("0xinvalid");
 		await d.getByRole("button", { name: "Save connection" }).click();
 		await expect(d.getByRole("alert")).toContainText(

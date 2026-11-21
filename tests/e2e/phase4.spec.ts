@@ -16,6 +16,7 @@ import {
 	test,
 } from "./support/fixtures";
 import { textContrastFailures } from "./support/phase2-contrast";
+import { chooseOption, SELECT_VALUE } from "./support/select";
 
 // Runs on the Phase 4 stacks, whose disclaimer starts unaccepted, so the tests run in order.
 test.describe.configure({ mode: "serial" });
@@ -720,7 +721,10 @@ test.describe("demo tax year", () => {
 				page.getByText(/\b[1-9]\d* Schedule VDA rows?\b/),
 			).toBeVisible();
 			await expect(page.getByText("Includes sample data")).toBeVisible();
-			await expect(page.getByRole("combobox").first()).toHaveValue(YEAR);
+			await expect(page.getByRole("combobox").first()).toHaveAttribute(
+				SELECT_VALUE,
+				YEAR,
+			);
 			await expect(checklistStep(page, 4)).toHaveAttribute(
 				"href",
 				`/report?taxYear=${YEAR}`,
@@ -1196,18 +1200,24 @@ test.describe("one tax year for Overview and Report", () => {
 		await page.goto("/");
 		await settled(page);
 		const year = page.getByLabel("Tax year");
-		await expect(year).toHaveValue(YEAR);
-		await year.selectOption("2026-27");
+		await expect(year).toHaveAttribute(SELECT_VALUE, YEAR);
+		await chooseOption(year, "2026-27");
 		await expect(page).toHaveURL(/taxYear=2026-27/);
 		await mainNav(page).getByRole("link", { name: "Report" }).click();
 		await expect(page).toHaveURL(/\/report/);
 		await settled(page);
-		await expect(page.getByLabel("Tax year")).toHaveValue("2026-27");
-		await page.getByLabel("Tax year").selectOption(YEAR);
+		await expect(page.getByLabel("Tax year")).toHaveAttribute(
+			SELECT_VALUE,
+			"2026-27",
+		);
+		await chooseOption(page.getByLabel("Tax year"), YEAR);
 		await expect(page).toHaveURL(new RegExp(`taxYear=${YEAR}`));
 		await mainNav(page).getByRole("link", { name: "Overview" }).click();
 		await settled(page);
-		await expect(page.getByLabel("Tax year")).toHaveValue(YEAR);
+		await expect(page.getByLabel("Tax year")).toHaveAttribute(
+			SELECT_VALUE,
+			YEAR,
+		);
 	});
 });
 
@@ -1220,9 +1230,16 @@ test.describe("recipe wizard on the example file", () => {
 		page,
 	}) => {
 		await uploadExample(page);
-		await expect(wizardColumn(page, /^Side column/)).toHaveValue("Trade");
-		await expect(wizardColumn(page, /^Type column/)).not.toHaveValue("Trade");
-		await expect(page.getByLabel("Buy / Sell sign style")).toHaveValue(
+		await expect(wizardColumn(page, /^Side column/)).toHaveAttribute(
+			SELECT_VALUE,
+			"Trade",
+		);
+		await expect(wizardColumn(page, /^Type column/)).not.toHaveAttribute(
+			SELECT_VALUE,
+			"Trade",
+		);
+		await expect(page.getByLabel("Buy / Sell sign style")).toHaveAttribute(
+			SELECT_VALUE,
 			"side_column",
 		);
 		await expect(page.getByLabel("Recipe name")).toHaveValue(
@@ -1315,7 +1332,7 @@ test.describe("recipe wizard on the example file", () => {
 			[/^Fee Asset/, "Fee Currency"],
 			[/^TDS \(INR\)/, "TDS"],
 		] as const)
-			await wizardColumn(page, label).selectOption(value);
+			await chooseOption(wizardColumn(page, label), value);
 		await page.getByLabel("Date format").fill("yyyy-MM-dd HH:mm:ss");
 		await page.getByLabel("Recipe name").fill(RECIPE_NAME);
 		await page.getByRole("button", { name: /^Preview \d+ rows$/ }).click();
@@ -1444,7 +1461,7 @@ async function mapExampleBasics(page: Page, dateFormat: string) {
 		[/^Amount \/ Quantity/, "Volume"],
 		[/^Trading Pair/, "Market"],
 	] as const)
-		await wizardColumn(page, label).selectOption(value);
+		await chooseOption(wizardColumn(page, label), value);
 	await page.getByLabel("Date format").fill(dateFormat);
 }
 
@@ -1503,27 +1520,36 @@ test.describe("release candidate: stale Overview and Review's year", () => {
 		await api.compute("2026-27");
 		await page.goto("/");
 		await settled(page);
-		await page.getByLabel("Tax year").selectOption("2026-27");
+		await chooseOption(page.getByLabel("Tax year"), "2026-27");
 		await expect(page).toHaveURL(/taxYear=2026-27/);
 		await mainNav(page).getByRole("link", { name: "Review" }).click();
 		await expect(page).toHaveURL(/\/review/);
 		await settled(page);
-		await expect(page.getByLabel("Tax year")).toHaveValue("2026-27");
+		await expect(page.getByLabel("Tax year")).toHaveAttribute(
+			SELECT_VALUE,
+			"2026-27",
+		);
 
-		await page.getByLabel("Tax year").selectOption("");
+		await chooseOption(page.getByLabel("Tax year"), "");
 		await expect(page).toHaveURL(/\/review\?taxYear=all$/);
 		await settled(page);
-		await expect(page.getByLabel("Tax year")).toHaveValue("");
+		await expect(page.getByLabel("Tax year")).toHaveAttribute(SELECT_VALUE, "");
 		await page.reload();
 		await settled(page);
-		await expect(page.getByLabel("Tax year")).toHaveValue("");
+		await expect(page.getByLabel("Tax year")).toHaveAttribute(SELECT_VALUE, "");
 
 		await mainNav(page).getByRole("link", { name: "Overview" }).click();
 		await settled(page);
-		await expect(page.getByLabel("Tax year")).toHaveValue("2026-27");
+		await expect(page.getByLabel("Tax year")).toHaveAttribute(
+			SELECT_VALUE,
+			"2026-27",
+		);
 		await page.goto("/review");
 		await settled(page);
-		await expect(page.getByLabel("Tax year")).toHaveValue("2026-27");
+		await expect(page.getByLabel("Tax year")).toHaveAttribute(
+			SELECT_VALUE,
+			"2026-27",
+		);
 	});
 
 	test("Review opens on the saved default year in a new session", async ({
@@ -1533,7 +1559,10 @@ test.describe("release candidate: stale Overview and Review's year", () => {
 		await api.putSettings({ defaultTaxYear: "2026-27" });
 		await page.goto("/review");
 		await settled(page);
-		await expect(page.getByLabel("Tax year")).toHaveValue("2026-27");
+		await expect(page.getByLabel("Tax year")).toHaveAttribute(
+			SELECT_VALUE,
+			"2026-27",
+		);
 		await expect(
 			page.getByRole("heading", { name: "No transactions in 2026-27" }),
 		).toBeVisible();

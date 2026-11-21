@@ -10,6 +10,7 @@ import {
 	test,
 } from "./support/phase2";
 import { textContrastFailures } from "./support/phase2-contrast";
+import { chooseOption, SELECT_VALUE } from "./support/select";
 
 // A Binance balance gap from history the API cannot see. Synced rows cannot be deleted, so the
 // gap is a withdrawal the user recorded by hand (Counts toward: Binance) from before the API's
@@ -71,7 +72,7 @@ async function usdtRow(page: Page) {
 
 async function addMissingBuy(drawer: Locator, venue: string) {
 	await expect(drawer.getByLabel("Asset received *")).toHaveValue("USDT");
-	await drawer.getByLabel("Counts toward").selectOption({ label: venue });
+	await chooseOption(drawer.getByLabel("Counts toward"), { label: venue });
 	await drawer.getByLabel("Date & time (IST)").fill(istInput(OLD));
 	await drawer.getByLabel("Quantity received *").fill(GAP);
 	await drawer.getByLabel("Cost in INR (₹)").fill("4425");
@@ -105,10 +106,11 @@ test("incomplete Binance history: the flagged gap links to a missing transaction
 	const drawer = page.getByRole("dialog", { name: "Add manual transaction" });
 	await expect(drawer).toBeVisible();
 	await expect(drawer.getByLabel("Asset received *")).toHaveValue("USDT");
-	await expect(drawer.getByLabel("Counts toward")).toHaveValue("binance");
-	await expect(
-		drawer.getByLabel("Counts toward").locator("option:checked"),
-	).toHaveText("Binance");
+	await expect(drawer.getByLabel("Counts toward")).toHaveAttribute(
+		SELECT_VALUE,
+		"binance",
+	);
+	await expect(drawer.getByLabel("Counts toward")).toHaveText("Binance");
 	await expect(drawer).toContainText(
 		"Assigning an exchange lets a missing event (e.g. an old P2P buy) close that exchange's balance gap.",
 	);
@@ -126,7 +128,10 @@ test("Counts toward: a Manual entry leaves the Binance gap open, a Binance entry
 	await drawer
 		.getByRole("button", { name: "Missing Buy", exact: true })
 		.click();
-	await expect(drawer.getByLabel("Counts toward")).toHaveValue("manual");
+	await expect(drawer.getByLabel("Counts toward")).toHaveAttribute(
+		SELECT_VALUE,
+		"manual",
+	);
 	await drawer.getByLabel("Asset received *").fill("USDT");
 	await addMissingBuy(drawer, "Manual (no exchange)");
 	let row = await usdtRow(page);
@@ -170,9 +175,12 @@ for (const theme of ["light", "dark"] as const)
 			const drawer = page.getByRole("dialog", {
 				name: "Add manual transaction",
 			});
-			await expect(drawer.getByLabel("Counts toward")).toHaveValue("binance");
+			await expect(drawer.getByLabel("Counts toward")).toHaveAttribute(
+				SELECT_VALUE,
+				"binance",
+			);
 			const unlabelled = await drawer
-				.locator("input:not([type=hidden]),select,textarea")
+				.locator("input:not([type=hidden]),[role=combobox],textarea")
 				.evaluateAll((els) =>
 					els
 						.filter((el) => {

@@ -2,6 +2,7 @@ import path from "node:path";
 import type { Page } from "@playwright/test";
 import { GENERATED, MOCK_LLM_IN_CONTAINER, MOCK_LLM_PORT } from "./support/env";
 import { expect, snap, test } from "./support/fixtures";
+import { chooseOption, SELECT_VALUE } from "./support/select";
 
 async function uploadGeneric(page: Page, file: string) {
 	await page.goto("/import");
@@ -75,13 +76,24 @@ test("AI-assisted wizard: payload preview, suggestion, hand edit, preview, save,
 	);
 	await page.getByRole("button", { name: "Send & suggest recipe" }).click();
 	await suggested;
-	await expect(column(page, /^Trading Pair/)).toHaveValue("Instrument");
-	await expect(column(page, /^Total \/ Consideration/)).toHaveValue(
+	await expect(column(page, /^Trading Pair/)).toHaveAttribute(
+		SELECT_VALUE,
+		"Instrument",
+	);
+	await expect(column(page, /^Total \/ Consideration/)).toHaveAttribute(
+		SELECT_VALUE,
 		"Net Amount",
 	);
-	await expect(column(page, /^Trade \/ Order ID/)).toHaveValue("Order Ref");
-	await expect(column(page, /^Fee Asset/)).toHaveValue("Fee Coin");
-	await expect(page.getByLabel("Buy / Sell sign style")).toHaveValue(
+	await expect(column(page, /^Trade \/ Order ID/)).toHaveAttribute(
+		SELECT_VALUE,
+		"Order Ref",
+	);
+	await expect(column(page, /^Fee Asset/)).toHaveAttribute(
+		SELECT_VALUE,
+		"Fee Coin",
+	);
+	await expect(page.getByLabel("Buy / Sell sign style")).toHaveAttribute(
+		SELECT_VALUE,
 		"negative_is_sell",
 	);
 	await expect(page.getByLabel("Date format")).toHaveValue(
@@ -180,15 +192,15 @@ for (const [model, message] of [
 
 test("manual recipe path works end to end without AI", async ({ page }) => {
 	await uploadGeneric(page, "generic-ddmmyyyy.csv");
-	await column(page, /^Timestamp/).selectOption("Txn Date");
-	await column(page, /^Amount \/ Quantity/).selectOption("Quantity");
-	await column(page, /^Side column/).selectOption("Side");
-	await column(page, /^Trading Pair/).selectOption("Market");
-	await column(page, /^Unit Price/).selectOption("Rate");
-	await column(page, /^Total \/ Consideration/).selectOption("Value");
-	await column(page, /^Fee Amount/).selectOption("Charges");
-	await column(page, /^Fee Asset/).selectOption("Charges Coin");
-	await column(page, /^Trade \/ Order ID/).selectOption("");
+	await chooseOption(column(page, /^Timestamp/), "Txn Date");
+	await chooseOption(column(page, /^Amount \/ Quantity/), "Quantity");
+	await chooseOption(column(page, /^Side column/), "Side");
+	await chooseOption(column(page, /^Trading Pair/), "Market");
+	await chooseOption(column(page, /^Unit Price/), "Rate");
+	await chooseOption(column(page, /^Total \/ Consideration/), "Value");
+	await chooseOption(column(page, /^Fee Amount/), "Charges");
+	await chooseOption(column(page, /^Fee Asset/), "Charges Coin");
+	await chooseOption(column(page, /^Trade \/ Order ID/), "");
 	await page.getByLabel("Date format").fill("dd/MM/yyyy HH:mm");
 	await page.getByRole("button", { name: "Auto-detect from sample" }).click();
 	const raws = page.getByRole("textbox", { name: "Raw side value" });
@@ -196,7 +208,7 @@ test("manual recipe path works end to end without AI", async ({ page }) => {
 	await expect(raws.nth(0)).toHaveValue("Buy");
 	await expect(
 		page.getByRole("combobox", { name: "Mapped transaction type" }).nth(1),
-	).toHaveValue("sell");
+	).toHaveAttribute(SELECT_VALUE, "sell");
 
 	await page.getByRole("button", { name: "Preview 10 rows" }).click();
 	await expect(page.getByText("Dates OK")).toBeVisible();
@@ -229,7 +241,10 @@ test("the wizard's first guess does not use the Side column as the row ID", asyn
 	await uploadGeneric(page, "generic-ddmmyyyy.csv");
 	// "Side" contains the substring "id"; using it as the dedupe key collapses every Buy
 	// (and every Sell) into one row and silently drops real trades as duplicates.
-	await expect(column(page, /^Trade \/ Order ID/)).not.toHaveValue("Side");
+	await expect(column(page, /^Trade \/ Order ID/)).not.toHaveAttribute(
+		SELECT_VALUE,
+		"Side",
+	);
 });
 
 test("generic-ddmmyyyy.csv with the wizard's ID guess inserts 4 rows; re-import is 4 duplicates", async ({
@@ -240,16 +255,18 @@ test("generic-ddmmyyyy.csv with the wizard's ID guess inserts 4 rows; re-import 
 		["0", "4"],
 	]) {
 		await uploadGeneric(page, "generic-ddmmyyyy.csv");
-		const idGuess = await column(page, /^Trade \/ Order ID/).inputValue();
+		const idGuess = await column(page, /^Trade \/ Order ID/).getAttribute(
+			SELECT_VALUE,
+		);
 		expect(idGuess).not.toBe("Side");
-		await column(page, /^Timestamp/).selectOption("Txn Date");
-		await column(page, /^Amount \/ Quantity/).selectOption("Quantity");
-		await column(page, /^Side column/).selectOption("Side");
-		await column(page, /^Trading Pair/).selectOption("Market");
-		await column(page, /^Unit Price/).selectOption("Rate");
-		await column(page, /^Total \/ Consideration/).selectOption("Value");
-		await column(page, /^Fee Amount/).selectOption("Charges");
-		await column(page, /^Fee Asset/).selectOption("Charges Coin");
+		await chooseOption(column(page, /^Timestamp/), "Txn Date");
+		await chooseOption(column(page, /^Amount \/ Quantity/), "Quantity");
+		await chooseOption(column(page, /^Side column/), "Side");
+		await chooseOption(column(page, /^Trading Pair/), "Market");
+		await chooseOption(column(page, /^Unit Price/), "Rate");
+		await chooseOption(column(page, /^Total \/ Consideration/), "Value");
+		await chooseOption(column(page, /^Fee Amount/), "Charges");
+		await chooseOption(column(page, /^Fee Asset/), "Charges Coin");
 		await page.getByLabel("Date format").fill("dd/MM/yyyy HH:mm");
 		await page.getByRole("button", { name: "Auto-detect from sample" }).click();
 		await page.getByRole("button", { name: "Preview 10 rows" }).click();

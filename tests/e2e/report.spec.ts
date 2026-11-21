@@ -4,6 +4,7 @@ import type { Locator, Page } from "@playwright/test";
 import { unzip } from "../api/zip";
 import { DISCLAIMER_TEXT, GENERATED } from "./support/env";
 import { expect, settled, snap, test } from "./support/fixtures";
+import { chooseOption } from "./support/select";
 
 function card(scope: Page | Locator, label: string) {
 	return scope
@@ -334,13 +335,13 @@ test("switching tax year shows disposals in the right year (31 Mar / 1 Apr IST)"
 	await expect(btcRow().getByRole("cell").nth(1)).toHaveText("31 Mar 2026");
 	await expect(btcRow()).toContainText("BTC 0.001");
 
-	await page.getByLabel("Tax year").selectOption("2026-27");
+	await chooseOption(page.getByLabel("Tax year"), "2026-27");
 	await expect(page).toHaveURL(/taxYear=2026-27/);
 	await expect(btcRow()).toHaveCount(1);
 	await expect(btcRow().getByRole("cell").nth(1)).toHaveText("01 Apr 2026");
 	await expect(btcRow().getByRole("cell").nth(0)).toHaveText("31 Mar 2026");
 	await snap(page, "report-year-2026-27");
 
-	await page.getByLabel("Tax year").selectOption("2025-26");
+	await chooseOption(page.getByLabel("Tax year"), "2025-26");
 	await expect(btcRow().getByRole("cell").nth(1)).toHaveText("31 Mar 2026");
 });

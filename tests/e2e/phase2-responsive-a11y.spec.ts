@@ -80,7 +80,7 @@ for (const theme of ["light", "dark"] as const)
 					"Not tax advice.",
 				);
 				const unlabelled = await page
-					.locator("input:not([type=hidden]),select,textarea")
+					.locator("input:not([type=hidden]),[role=combobox],textarea")
 					.evaluateAll((els) =>
 						els
 							.filter((el) => {

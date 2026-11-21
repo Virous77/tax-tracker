@@ -233,7 +233,9 @@ test("report trail drawer traps focus and closes on Escape", async ({
 });
 
 async function expectNamedControls(page: Page, where: string) {
-	const controls = page.locator("input:not([type=hidden]), select, textarea");
+	const controls = page.locator(
+		"input:not([type=hidden]), [role=combobox], textarea",
+	);
 	const count = await controls.count();
 	expect(count, `${where} has form controls`).toBeGreaterThan(0);
 	for (let i = 0; i < count; i++) {

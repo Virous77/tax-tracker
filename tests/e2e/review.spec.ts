@@ -1,6 +1,7 @@
 import path from "node:path";
 import { GENERATED } from "./support/env";
 import { expect, settled, snap, test } from "./support/fixtures";
+import { chooseOption } from "./support/select";
 import { statement } from "./support/statements";
 
 // Phase 4 (2d31f5f): an input change keeps the last report as stale, so after reset() and an
@@ -191,7 +192,7 @@ test.describe("after computing", () => {
 		await page.goto("/review?taxYear=all");
 		const income = page.getByRole("row").filter({ hasText: "05 Oct 2025" });
 		await expect(income).toHaveCount(1);
-		await page.getByLabel("Tax year").selectOption("2026-27");
+		await chooseOption(page.getByLabel("Tax year"), "2026-27");
 		await expect(page).toHaveURL(/taxYear=2026-27/);
 		await expect(
 			page.getByRole("heading", { name: "Missing acquisition history" }),

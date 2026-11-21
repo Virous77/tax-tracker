@@ -17,6 +17,7 @@ import {
 	WALLET_B,
 } from "./support/phase2";
 import { textContrastFailures } from "./support/phase2-contrast";
+import { chooseOption, SELECT_VALUE } from "./support/select";
 
 const SYNCED_GROUP = "normal Binance sync (one sync for the group)";
 
@@ -484,7 +485,7 @@ test.describe(SYNCED_GROUP, () => {
 		const drawer = page.getByRole("dialog");
 		const select = drawer.getByLabel("Counts toward");
 		await expect(select).toBeEnabled();
-		await select.selectOption({ label });
+		await chooseOption(select, { label });
 		const saved = page.waitForResponse(
 			(r) => r.request().method() === "PATCH" && r.ok(),
 		);
@@ -575,9 +576,12 @@ test.describe(SYNCED_GROUP, () => {
 					.first()
 					.click();
 				const drawer = page.getByRole("dialog");
-				await expect(drawer.getByLabel("Counts toward")).toHaveValue("manual");
+				await expect(drawer.getByLabel("Counts toward")).toHaveAttribute(
+					SELECT_VALUE,
+					"manual",
+				);
 				const unlabelled = await drawer
-					.locator("input:not([type=hidden]),select,textarea")
+					.locator("input:not([type=hidden]),[role=combobox],textarea")
 					.evaluateAll((els) =>
 						els
 							.filter((el) => {

@@ -448,7 +448,7 @@ export function TransactionsClient() {
 							type="button"
 							disabled={recompute.running}
 							onClick={() => handleRecompute(savedForYear)}
-							className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+							className="shrink-0 whitespace-nowrap inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
 						>
 							<Calculator className="h-3.5 w-3.5" aria-hidden="true" />
 							{recompute.running ? "Computing…" : "Recompute report"}

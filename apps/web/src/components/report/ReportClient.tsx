@@ -607,7 +607,7 @@ export function ReportClient() {
 						type="button"
 						disabled={computing}
 						onClick={handleCompute}
-						className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 sm:w-auto"
+						className="shrink-0 whitespace-nowrap inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 sm:w-auto"
 					>
 						<Calculator className="h-4 w-4" aria-hidden="true" />
 						{computing
@@ -801,7 +801,7 @@ export function ReportClient() {
 									type="button"
 									disabled={computing}
 									onClick={handleCompute}
-									className="inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+									className="shrink-0 whitespace-nowrap inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
 								>
 									<Calculator className="h-4 w-4" aria-hidden="true" />
 									{computing ? "Computing…" : `Compute ${taxYear} report`}

@@ -1057,17 +1057,18 @@ test.describe("review checking and stale reports", () => {
 		);
 		await page.goto(`/review?taxYear=${YEAR}`);
 		await settled(page);
-		for (const code of ["tds_not_deducted", "fee_review_required"]) {
-			const group = reviewGroup(page, code);
-			await expect(group).toBeVisible();
-			await group.getByRole("button", { name: "Mark checked" }).first().click();
-			await expect(
-				page.getByText(
-					"Marked 1 item as checked. Your tax figures are unchanged.",
-				),
-			).toBeVisible();
-			await expect(group).toHaveCount(0);
-		}
+		const tdsGroup = reviewGroup(page, "tds_not_deducted");
+		await expect(tdsGroup).toBeVisible();
+		await tdsGroup
+			.getByRole("button", { name: "Mark checked" })
+			.first()
+			.click();
+		await expect(
+			page.getByText(
+				"Marked 1 item as checked. Your tax figures are unchanged.",
+			),
+		).toBeVisible();
+		await expect(tdsGroup).toHaveCount(0);
 		const after = await api.json<{ totals: unknown; stale?: boolean }>(
 			"GET",
 			`/api/reports/${YEAR}`,
@@ -1076,17 +1077,26 @@ test.describe("review checking and stale reports", () => {
 		expect(after.stale).toBeUndefined();
 	});
 
-	test("“Mark all as checked” asks first; Cancel keeps the group, confirming checks every item", async ({
+	test("“Mark all as checked” asks first on advisory groups and is omitted on blocking missing_history", async ({
 		page,
 	}) => {
 		await page.goto(`/review?taxYear=${YEAR}`);
 		await settled(page);
-		const group = reviewGroup(page, "missing_history");
+		const missingGroup = reviewGroup(page, "missing_history");
+		await expect(missingGroup).toBeVisible();
+		await expect(
+			missingGroup.getByRole("button", { name: /Mark all as checked/ }),
+		).toHaveCount(0);
+		await expect(
+			missingGroup.getByRole("link", { name: /Add missing buy/ }).first(),
+		).toBeVisible();
+
+		const group = reviewGroup(page, "fee_review_required");
 		const markAll = group.getByRole("button", { name: /Mark all as checked/ });
 		await expect(markAll).toHaveAccessibleName(/Mark all as checked in .+/);
 		await markAll.click();
 		const dialog = page.getByRole("dialog", {
-			name: "Mark all 2 items as checked?",
+			name: /Mark all \d+ items? as checked\?/,
 		});
 		await expect(dialog).toBeVisible();
 		await expect(dialog).toContainText("It does not change any tax figure");
@@ -1098,18 +1108,22 @@ test.describe("review checking and stale reports", () => {
 		await dialog.getByRole("button", { name: "Mark all as checked" }).click();
 		await expect(
 			page.getByText(
-				"Marked 2 items as checked. Your tax figures are unchanged.",
+				/Marked \d+ items? as checked\. Your tax figures are unchanged\./,
 			),
 		).toBeVisible();
 		await expect(group).toHaveCount(0);
-		await expect(page.getByText("All items reviewed")).toBeVisible();
 		await expect(notesSection(page)).toBeVisible();
 	});
 
-	test("checks survive a recompute and a reload; checklist step 3 completes", async ({
+	test("checks survive a recompute and a reload; resolving missing buy completes checklist step 3", async ({
 		page,
 		api,
 	}) => {
+		await api.compute(YEAR);
+		await page.goto(`/review?taxYear=${YEAR}`);
+		await settled(page);
+		expect(await actionGroupsOnPage(page)).toEqual(["missing_history"]);
+		await usdtBuy(api);
 		await api.compute(YEAR);
 		expect((await reviewData(api)).totals.action).toBe(0);
 		await page.goto(`/review?taxYear=${YEAR}`);

@@ -69,7 +69,7 @@ export function OverviewSection({ vda, equity }: DocsYear) {
 			</div>
 			<ol
 				aria-label="Five-step workflow"
-				className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
+				className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
 			>
 				{workflow.map((step, index) => (
 					<li

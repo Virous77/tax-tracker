@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { EngineSettingsSchema, isLocalAiEndpoint, istDate } from "@tax/core";
 import { SettingsResponseSchema, type SettingsUpdate } from "@tax/core/api";
 import type { TaxDatabase } from "@tax/db";
@@ -91,11 +92,15 @@ export function putSettings(db: TaxDatabase, patch: SettingsUpdate) {
 		if (ai) checkAiEndpoint(nextAi);
 		const hasEnginePatch = Object.keys(engine).length > 0;
 		const savedAt = new Date().toISOString();
-		if (hasEnginePatch)
-			db.settings.set(
-				"engine",
-				EngineSettingsSchema.parse({ ...current, ...engine }),
-			);
+		if (hasEnginePatch) {
+			const currentEngine = EngineSettingsSchema.parse(current);
+			const nextEngine = EngineSettingsSchema.parse({
+				...currentEngine,
+				...engine,
+			});
+			if (!isDeepStrictEqual(currentEngine, nextEngine))
+				db.settings.set("engine", nextEngine);
+		}
 		if (disclaimerAccepted && !db.settings.get("disclaimerAcceptedAt"))
 			db.settings.set("disclaimerAcceptedAt", savedAt);
 		if (!disclaimerAccepted || hasEnginePatch || defaultTaxYear || ai || prices)

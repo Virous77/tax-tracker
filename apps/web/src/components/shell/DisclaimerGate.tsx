@@ -92,8 +92,9 @@ export function DisclaimerGate() {
 				>
 					<p>
 						Tax Tracker is a free, open-source helper that turns your crypto
-						exchange history (US stocks planned) into the rows the Indian
-						income-tax return asks for (Schedule VDA and TDS).
+						exchange/wallet history and US stock broker statements into the rows
+						the Indian income-tax return asks for — Crypto / VDA (Schedule VDA
+						and TDS) and US Stocks (Capital Gains, Form 67, and Schedule FA).
 					</p>
 					<p className="rounded-md border border-[var(--warning)]/40 bg-[var(--warning-soft)] px-3 py-2.5 text-[var(--text-primary)]">
 						<strong className="font-semibold">Not tax advice.</strong>{" "}

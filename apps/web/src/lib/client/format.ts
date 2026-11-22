@@ -142,6 +142,63 @@ export function formatQty(value: string | null | undefined): string {
 	}
 }
 
+export function formatAssetAmount(
+	amount: string | null | undefined,
+	asset: string | null | undefined,
+): string {
+	if (!asset) return "—";
+	if (amount === null || amount === undefined || amount === "") return asset;
+	if (asset.toUpperCase() === "INR") {
+		return formatInrNullable(amount);
+	}
+	return `${formatQty(amount)} ${asset}`;
+}
+
+export function formatTransactionSummary(tx: LedgerTx): string {
+	const out = tx.assetOut ? formatAssetAmount(tx.amountOut, tx.assetOut) : null;
+	const into = tx.assetIn ? formatAssetAmount(tx.amountIn, tx.assetIn) : null;
+	switch (tx.type) {
+		case "swap":
+			if (out && into) return `Swapped ${out} → ${into}`;
+			break;
+		case "sell":
+			if (out && into) return `Sold ${out} for ${into}`;
+			if (out && tx.inrValue)
+				return `Sold ${out} for ${formatInrNullable(tx.inrValue)}`;
+			if (out) return `Sold ${out}`;
+			break;
+		case "buy":
+			if (into && out) return `Bought ${into} with ${out}`;
+			if (into) return `Bought ${into}`;
+			break;
+		case "withdrawal":
+			if (out) return `Withdrew ${out}`;
+			break;
+		case "deposit":
+			if (into) return `Deposited ${into}`;
+			break;
+		case "gift":
+			if (out) return `Gave away ${out}`;
+			if (into) return `Received ${into} as a gift`;
+			break;
+		case "fee":
+			if (out) return `Paid ${out} in fees`;
+			break;
+	}
+	const parts = [out ? `-${out}` : null, into ? `+${into}` : null].filter(
+		Boolean,
+	);
+	const label = tx.type.charAt(0).toUpperCase() + tx.type.slice(1);
+	return parts.length > 0 ? `${label} ${parts.join(" / ")}` : label;
+}
+
+export function formatDisposalSummary(tx: LedgerTx, asset: string): string {
+	if (tx.assetOut !== asset && tx.feeAsset === asset && tx.feeAmount) {
+		return `Paid ${formatAssetAmount(tx.feeAmount, asset)} fee on: ${formatTransactionSummary(tx)}`;
+	}
+	return formatTransactionSummary(tx);
+}
+
 export function formatIstDateTime(utcIso: string): string {
 	const d = new Date(utcIso);
 	if (!Number.isFinite(d.getTime())) return utcIso;

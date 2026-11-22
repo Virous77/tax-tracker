@@ -5,6 +5,8 @@ import {
 	AlertTriangle,
 	ArrowRight,
 	CheckCircle2,
+	ChevronDown,
+	ChevronUp,
 	FileSpreadsheet,
 	Info,
 	Lock,
@@ -35,6 +37,7 @@ import {
 	formatTimezoneSourceLabel,
 	pluralise,
 } from "@/lib/client/format";
+import { REVIEW_CODE_INFO } from "@/lib/client/review-codes";
 
 type SourceChoice = "auto" | "binance" | "coindcx" | "vested" | "generic";
 type TzMode = "IST" | "UTC" | "custom";
@@ -42,8 +45,10 @@ type TzMode = "IST" | "UTC" | "custom";
 const MAX_BYTES = 25 * 1024 * 1024;
 
 function isKnownUsEquityImport(result: ImportSummary | ImportDetail): boolean {
+	const assetClass = (result as { assetClass?: string }).assetClass;
 	return (
 		result.source === "vested" ||
+		assetClass === "us_equity" ||
 		Boolean(result.recipeId?.startsWith("us-stocks-"))
 	);
 }
@@ -132,6 +137,7 @@ export function ImportClient() {
 		null,
 	);
 	const [detectedUsEquityRecipe, setDetectedUsEquityRecipe] = useState(false);
+	const [skippedExpanded, setSkippedExpanded] = useState(false);
 
 	const fileInputId = useId();
 	const customOffsetId = useId();
@@ -282,6 +288,7 @@ export function ImportClient() {
 				...(passwordToSend ? { pdfPassword: passwordToSend } : {}),
 			});
 			setPdfNeedsPassword(false);
+			setSkippedExpanded(false);
 			if (summary.status !== "pending_recipe") {
 				const detail = await api.getImport(summary.id).catch(() => summary);
 				setResult(detail);
@@ -313,6 +320,7 @@ export function ImportClient() {
 		setTzError(null);
 		setPdfNeedsPassword(false);
 		setPdfPassword("");
+		setSkippedExpanded(false);
 	}
 
 	if (loadingResume) {
@@ -492,8 +500,10 @@ export function ImportClient() {
 									/>
 									<div className="space-y-0.5">
 										<p className="font-medium">{w.message}</p>
-										<p className="font-mono-code text-[11px] text-[var(--text-muted)]">
-											{w.code}
+										<p className="text-[11px] text-[var(--text-muted)]">
+											{w.code === "parse_warning"
+												? "Import note"
+												: (REVIEW_CODE_INFO[w.code]?.title ?? "Import note")}
 										</p>
 									</div>
 								</div>
@@ -681,46 +691,98 @@ export function ImportClient() {
 						</div>
 					) : null}
 
-					{result.skippedRows.length > 0 || result.rowsSkipped > 0 ? (
-						<div className="space-y-2">
-							<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
-								Skipped — not added to the ledger ({result.skippedRows.length})
-							</h3>
-							{result.skippedRows.length > 0 ? (
-								<div className="max-h-64 overflow-auto rounded border border-[var(--border)] bg-[var(--bg-subtle)]">
-									<table className="w-full border-collapse text-left text-xs">
-										<thead className="bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
-											<tr>
-												<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
-													Sheet
-												</th>
-												<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
-													Row
-												</th>
-												<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
-													Reason
-												</th>
-											</tr>
-										</thead>
-										<tbody>
-											{result.skippedRows.map((sr) => (
-												<tr
-													key={`${sr.sheet}:${sr.rowIndex}:${sr.reason}`}
-													className="border-b border-[var(--border)] last:border-b-0"
+					{result.skippedRows.length > 0 || result.rowsSkipped > 0
+						? (() => {
+								const reasonCounts = new Map<string, number>();
+								for (const sr of result.skippedRows) {
+									const reason = sr.reason.trim() || "Skipped row";
+									reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+								}
+								const groupedReasons = [...reasonCounts.entries()].sort(
+									(a, b) => b[1] - a[1],
+								);
+								const skippedCount =
+									result.skippedRows.length || result.rowsSkipped;
+								return (
+									<div className="space-y-2">
+										<div className="flex flex-wrap items-center justify-between gap-2">
+											<h3 className="text-xs font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
+												Skipped — not added to the ledger ({skippedCount})
+											</h3>
+											{result.skippedRows.length > 0 ? (
+												<button
+													type="button"
+													aria-expanded={skippedExpanded}
+													onClick={() => setSkippedExpanded((prev) => !prev)}
+													className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
 												>
-													<td className="px-3 py-2">{sr.sheet || "—"}</td>
-													<td className="num px-3 py-2">{sr.rowIndex + 1}</td>
-													<td className="px-3 py-2 text-[var(--text-secondary)]">
-														{sr.reason}
-													</td>
-												</tr>
-											))}
-										</tbody>
-									</table>
-								</div>
-							) : null}
-						</div>
-					) : null}
+													{skippedExpanded ? (
+														<>
+															Hide skipped rows
+															<ChevronUp
+																className="h-3.5 w-3.5"
+																aria-hidden="true"
+															/>
+														</>
+													) : (
+														<>
+															Show {result.skippedRows.length} skipped{" "}
+															{pluralise(result.skippedRows.length, "row")}
+															<ChevronDown
+																className="h-3.5 w-3.5"
+																aria-hidden="true"
+															/>
+														</>
+													)}
+												</button>
+											) : null}
+										</div>
+										{groupedReasons.length > 0 ? (
+											<p className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+												{groupedReasons
+													.map(([reason, count]) => `${reason} (${count})`)
+													.join(" · ")}
+											</p>
+										) : null}
+										{skippedExpanded && result.skippedRows.length > 0 ? (
+											<div className="max-h-64 overflow-auto rounded border border-[var(--border)] bg-[var(--bg-subtle)]">
+												<table className="w-full border-collapse text-left text-xs">
+													<thead className="bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
+														<tr>
+															<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+																Sheet
+															</th>
+															<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+																Row
+															</th>
+															<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+																Reason
+															</th>
+														</tr>
+													</thead>
+													<tbody>
+														{result.skippedRows.map((sr) => (
+															<tr
+																key={`${sr.sheet}:${sr.rowIndex}:${sr.reason}`}
+																className="border-b border-[var(--border)] last:border-b-0"
+															>
+																<td className="px-3 py-2">{sr.sheet || "—"}</td>
+																<td className="num px-3 py-2">
+																	{sr.rowIndex + 1}
+																</td>
+																<td className="px-3 py-2 text-[var(--text-secondary)]">
+																	{sr.reason}
+																</td>
+															</tr>
+														))}
+													</tbody>
+												</table>
+											</div>
+										) : null}
+									</div>
+								);
+							})()
+						: null}
 
 					{rowErrors.length > 0 ? (
 						<div id="row-errors" className="space-y-2">
@@ -768,7 +830,7 @@ export function ImportClient() {
 									href="/us-stocks"
 									className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
 								>
-									View US Stocks
+									Open US Stocks report
 									<ArrowRight className="h-4 w-4" aria-hidden="true" />
 								</Link>
 								<Link
@@ -777,36 +839,40 @@ export function ImportClient() {
 								>
 									View transactions
 								</Link>
-								<Link
-									href={balanceSnapshot ? "/report#statements" : "/report"}
-									className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--bg-hover)]"
-								>
-									{balanceSnapshot ? "View balance comparison" : "Tax report"}
-								</Link>
 							</>
 						) : balanceSnapshot ? (
-							<Link
-								href="/report#statements"
-								className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-							>
-								View balance comparison
-								<ArrowRight className="h-4 w-4" aria-hidden="true" />
-							</Link>
+							<>
+								<Link
+									href="/report#statements"
+									className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+								>
+									View balance comparison
+									<ArrowRight className="h-4 w-4" aria-hidden="true" />
+								</Link>
+								<Link
+									href="/"
+									className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--bg-hover)]"
+								>
+									Overview &amp; compute report
+								</Link>
+							</>
 						) : (
-							<Link
-								href="/transactions"
-								className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-							>
-								View transactions
-								<ArrowRight className="h-4 w-4" aria-hidden="true" />
-							</Link>
+							<>
+								<Link
+									href="/transactions"
+									className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+								>
+									View transactions
+									<ArrowRight className="h-4 w-4" aria-hidden="true" />
+								</Link>
+								<Link
+									href="/"
+									className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--bg-hover)]"
+								>
+									Overview &amp; compute report
+								</Link>
+							</>
 						)}
-						<Link
-							href="/"
-							className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--bg-hover)]"
-						>
-							Overview &amp; compute report
-						</Link>
 						<button
 							type="button"
 							onClick={resetAll}

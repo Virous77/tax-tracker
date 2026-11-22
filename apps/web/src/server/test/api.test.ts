@@ -518,15 +518,21 @@ it("prices quote-funded swaps once and carries prior-year acquisition history", 
 		asset: "USDT",
 		quantity: "1050",
 		dateOfAcquisition: "2025-05-01",
-		considerationReceived: "92925.00",
+		considerationReceived: "99330.00",
 		costOfAcquisition: "92925.00",
-		income: "0.00",
+		income: "6405.00",
 	});
-	expect(
-		report.valuations.find(
-			(row: { valueInr: string }) => row.valueInr === "92925.00",
-		),
-	).toBeDefined();
+	expect(report.valuations).toContainEqual(
+		expect.objectContaining({
+			valueInr: "99330.00",
+			fx: {
+				currency: "USD",
+				rate: "94.6",
+				rateDate: "2026-04-30",
+				source: "SBI TT buying",
+			},
+		}),
+	);
 });
 it("sends exactly the preview payload and accepts only a validated AI recipe", async () => {
 	const imported = await (

@@ -18,15 +18,38 @@ import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 const MAX_GROUP_LINES = 5;
 
-/** The two groups almost every exchange user sees come first; the rest by size. */
-const LEADING_GROUPS: readonly string[] = [
+/** Report-blocking groups come first; advisory groups appear after. */
+const BLOCKING_GROUPS: readonly string[] = [
 	"missing_history",
+	"missing_inr_value",
+	"unmatched_transfer",
+	"ambiguous_transfer",
+	"corporate_action",
+	"unmatched_foreign_tax",
+	"missing_market_price",
+	"fx_unavailable",
+	"unknown_type",
+	"complex_onchain",
+	"balance_mismatch",
+	"import_incomplete",
+];
+
+const ADVISORY_GROUPS: readonly string[] = [
 	"tds_not_deducted",
+	"fee_review_required",
+	"parse_warning",
+	"ambiguous_timezone",
+	"suspected_spam",
+	"possible_duplicate",
+	"ca_verification_pending",
 ];
 
 function groupRank(code: string): number {
-	const index = LEADING_GROUPS.indexOf(code);
-	return index === -1 ? LEADING_GROUPS.length : index;
+	const blockingIdx = BLOCKING_GROUPS.indexOf(code);
+	if (blockingIdx !== -1) return blockingIdx;
+	const advisoryIdx = ADVISORY_GROUPS.indexOf(code);
+	if (advisoryIdx !== -1) return BLOCKING_GROUPS.length + 1 + advisoryIdx;
+	return BLOCKING_GROUPS.length;
 }
 
 function UnresolvedAlert({

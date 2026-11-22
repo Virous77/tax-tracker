@@ -34,6 +34,10 @@ describe("documentation", () => {
 		expect(metadata.twitter).toMatchObject({
 			description: PAGE_SEO.docs.description,
 		});
+		const overview = pageMetadata("overview");
+		expect(overview.title).toEqual({
+			absolute: `${PAGE_SEO.overview.title} — Tax Tracker`,
+		});
 	});
 
 	it.each(["2025-26", "2026-27"])(

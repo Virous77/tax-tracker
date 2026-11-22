@@ -9,6 +9,7 @@ import {
 } from "@tax/core";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { InrAmountField } from "@/components/transactions/InrAmountField";
 import { Drawer } from "@/components/ui/Drawer";
@@ -21,11 +22,12 @@ import {
 	ValidationError,
 } from "@/lib/client/api";
 import {
-	describeDisposal,
 	missingExportHints,
 	saleSourceLabel,
+	venueForSource,
 } from "@/lib/client/disposals";
 import {
+	formatDisposalSummary,
 	formatIncomeKind,
 	formatIstDateTime,
 	formatQty,
@@ -84,7 +86,7 @@ function SaleContextBox({ sale }: { sale: SaleContext }) {
 		<div className="space-y-1.5 rounded-md border border-[var(--accent)]/40 bg-[var(--accent-soft)] px-3 py-2.5 text-xs">
 			<p>
 				<span className="font-semibold">For:</span>{" "}
-				{describeDisposal(sale.tx, sale.asset)} on{" "}
+				{formatDisposalSummary(sale.tx, sale.asset)} on{" "}
 				{formatIstDateTime(sale.tx.timestamp)} (
 				{saleSourceLabel(sale.tx, sourceLabel)}).
 			</p>
@@ -144,9 +146,20 @@ export function AddManualTxDrawer({
 	onClose: () => void;
 	onCreated: (tx: LedgerTx) => void;
 }) {
+	const searchParams = useSearchParams();
+	const urlQty = searchParams.get("qty");
+	const rawUrlVenue = searchParams.get("venue");
+	const urlVenue: ManualVenue | null =
+		rawUrlVenue === "binance" ||
+		rawUrlVenue === "coindcx" ||
+		rawUrlVenue === "us_broker" ||
+		rawUrlVenue === "manual"
+			? rawUrlVenue
+			: null;
+
 	const [assetClass, setAssetClass] = useState<AssetClass>(initialAssetClass);
 	const [type, setType] = useState<TxType>(initialPreset);
-	const [venue, setVenue] = useState<ManualVenue>(initialVenue);
+	const [venue, setVenue] = useState<ManualVenue>(urlVenue ?? initialVenue);
 	const [istDateTime, setIstDateTime] = useState(
 		initialDateTime ?? DEFAULT_DATE_TIME,
 	);
@@ -212,13 +225,22 @@ export function AddManualTxDrawer({
 
 	useEffect(() => {
 		if (!open) return;
+		const derivedSaleVenue: ManualVenue | null = saleContext
+			? saleContext.tx.assetClass === "us_equity" ||
+				saleContext.tx.source === "vested"
+				? "us_broker"
+				: venueForSource(saleContext.tx)
+			: null;
+		const resolvedVenue: ManualVenue =
+			urlVenue ??
+			(initialVenue !== "manual" ? initialVenue : null) ??
+			derivedSaleVenue ??
+			(initialAssetClass === "us_equity" ? "us_broker" : "manual");
+		const resolvedAmount =
+			initialAmount || urlQty || saleContext?.quantity || "";
 		setAssetClass(initialAssetClass);
 		setType(initialPreset);
-		setVenue(
-			initialAssetClass === "us_equity" && initialVenue === "manual"
-				? "us_broker"
-				: initialVenue,
-		);
+		setVenue(resolvedVenue);
 		if (initialPreset === "sell") {
 			setAssetOut(initialAsset.toUpperCase());
 			setAssetIn(initialAssetClass === "us_equity" ? "USD" : "");
@@ -238,7 +260,7 @@ export function AddManualTxDrawer({
 			setDividendAsset("");
 		}
 		setIstDateTime(initialDateTime ?? DEFAULT_DATE_TIME);
-		setAmountIn(initialPreset === "sell" ? "" : initialAmount);
+		setAmountIn(initialPreset === "sell" ? "" : resolvedAmount);
 		setAmountOut("");
 		setWithholdingTaxAmount("");
 		setFeeAmountUsd("");
@@ -257,6 +279,9 @@ export function AddManualTxDrawer({
 		initialVenue,
 		initialDateTime,
 		initialAmount,
+		saleContext,
+		urlQty,
+		urlVenue,
 	]);
 
 	function handleAssetClassChange(next: AssetClass) {
@@ -560,21 +585,20 @@ export function AddManualTxDrawer({
 							setVenue(value as ManualVenue);
 							clearFieldError("venue");
 						}}
+						options={
+							isUsEquity
+								? [
+										{ value: "us_broker", label: "US Broker" },
+										{ value: "manual", label: "Manual (no broker)" },
+									]
+								: [
+										{ value: "manual", label: "Manual (no exchange)" },
+										{ value: "binance", label: "Binance" },
+										{ value: "coindcx", label: "CoinDCX" },
+									]
+						}
 						className="mt-1 w-full"
-					>
-						{isUsEquity ? (
-							<>
-								<SelectItem value="us_broker">US Broker</SelectItem>
-								<SelectItem value="manual">Manual (no broker)</SelectItem>
-							</>
-						) : (
-							<>
-								<SelectItem value="manual">Manual (no exchange)</SelectItem>
-								<SelectItem value="binance">Binance</SelectItem>
-								<SelectItem value="coindcx">CoinDCX</SelectItem>
-							</>
-						)}
-					</Select>
+					/>
 					<p
 						id={venueHintId}
 						className="mt-1 text-[11px] text-[var(--text-muted)]"

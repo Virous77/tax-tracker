@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import {
 	createServer,
@@ -6,8 +7,20 @@ import {
 } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { D, DISCLAIMER, type Recipe, UsEquityReportSchema } from "@tax/core";
-import { ApiContract } from "@tax/core/api";
+import {
+	D,
+	DISCLAIMER,
+	EngineSettingsSchema,
+	type LedgerTx,
+	type Recipe,
+	type ReportWarning,
+	UsEquityReportSchema,
+} from "@tax/core";
+import {
+	ApiContract,
+	GetImportResponseSchema,
+	SettingsResponseSchema,
+} from "@tax/core/api";
 import {
 	csvRecords,
 	headerFingerprint,
@@ -199,6 +212,108 @@ async function importEquity() {
 async function computeVda(year = taxYear) {
 	return json(await call("computeReport", { year }));
 }
+
+it.each(["vda", "us_equity"] as const)(
+	"scopes %s import warnings to transactions evaluated for the report year",
+	async (assetClass) => {
+		const db = await database();
+		const isVda = assetClass === "vda";
+		const source = isVda ? "binance" : "vested";
+		const asset = isVda ? "ETH" : "AAPL";
+		const currency = isVda ? "INR" : "USD";
+		const computeReport = isVda ? "computeReport" : "computeUsEquityReport";
+		const buy = {
+			id: randomUUID(),
+			source,
+			sourceRef: "prior-year-buy",
+			importId: "prior-year",
+			timestamp: "2025-07-01T12:00:00.000Z",
+			assetClass,
+			type: "buy",
+			assetIn: asset,
+			amountIn: "1",
+			assetOut: currency,
+			amountOut: "100",
+			raw: {},
+			reviewFlags: [],
+		} satisfies LedgerTx;
+		const sale = {
+			...buy,
+			id: randomUUID(),
+			sourceRef: "next-year-sale",
+			importId: "next-year",
+			timestamp: "2026-03-31T18:30:00.000Z",
+			type: "sell",
+			assetIn: currency,
+			amountIn: "150",
+			assetOut: asset,
+			amountOut: "1",
+		} satisfies LedgerTx;
+		for (const [id, status, rowsInserted, rowsDuplicate] of [
+			[buy.importId, "imported", 1, 0],
+			[sale.importId, "imported", 1, 0],
+			["duplicate-only", "imported", 0, 1],
+			["pending", "pending_recipe", 0, 0],
+		] as const) {
+			db.imports.save(
+				GetImportResponseSchema.parse({
+					id,
+					source,
+					status,
+					fileName: `${id}.csv`,
+					fileSha256: id,
+					timezone: "UTC",
+					rowsRead: 1,
+					rowsInserted,
+					rowsDuplicate,
+					rowsError: 0,
+					recipeId: null,
+					createdAt: sale.timestamp,
+					error: null,
+					warnings: [{ code: "parse_warning", message: `Check ${id}.csv` }],
+					rowErrors: [],
+				}),
+				assetClass,
+			);
+		}
+		db.transactions.insert([{ tx: buy }, { tx: sale }]);
+
+		const report = (year: string) =>
+			call(computeReport, { year }).then((response) =>
+				json<{ warnings: ReportWarning[] }>(response),
+			);
+		const parseWarningImports = (warnings: ReportWarning[]) =>
+			warnings
+				.filter((warning) => warning.code === "parse_warning")
+				.map(({ importId }) => importId)
+				.sort();
+		const earlier = await report(taxYear);
+		expect(parseWarningImports(earlier.warnings)).toEqual([
+			"duplicate-only",
+			"pending",
+			buy.importId,
+		]);
+		expect(earlier.warnings).toContainEqual(
+			expect.objectContaining({
+				code: "import_incomplete",
+				importId: "pending",
+			}),
+		);
+
+		const later = await report(nextYear);
+		expect(parseWarningImports(later.warnings)).toEqual([
+			"duplicate-only",
+			sale.importId,
+			"pending",
+			buy.importId,
+		]);
+		expect(later).toMatchObject(
+			isVda
+				? { scheduleVdaRows: [{ costOfAcquisition: "100.00" }] }
+				: { capitalGains: { rows: [{ costUsd: "100.00" }] } },
+		);
+	},
+);
 
 it("flags a USD dividend when its prior-month-end SBI rate is stale", async () => {
 	const { id } = await json<{ id: string }>(
@@ -1210,6 +1325,51 @@ it("keeps VDA and US equity reports isolated through imports, deletes and settin
 	await json(await call("putSettings", { body: { feeTreatment: "include" } }));
 	expect((await call("getReport")).status).toBe(404);
 	expect((await call("getUsEquityReport")).status).toBe(200);
+});
+
+it("keeps both reports exportable when the full Settings form only toggles price lookups", async () => {
+	const vda = await computeVda();
+	const equity = await compute();
+	const settings = SettingsResponseSchema.parse(
+		await json(await call("getSettings")),
+	);
+	const { baseUrl, model, cloudAcknowledged } = settings.ai;
+	const db = await database();
+	const storedEngine = db.settings.get("engine");
+	const body = {
+		...EngineSettingsSchema.parse(settings),
+		defaultTaxYear: settings.defaultTaxYear,
+		prices: { ...settings.prices, enabled: !settings.prices.enabled },
+		ai: { baseUrl, model, cloudAcknowledged },
+	};
+	const save = (patch: Partial<typeof body> = {}) =>
+		call("putSettings", { body: { ...body, ...patch } }).then((response) =>
+			json(response),
+		);
+	expect(await save()).toMatchObject({ prices: body.prices });
+	expect(db.settings.get("engine")).toEqual(storedEngine);
+	expect(await json(await call("getReport"))).toEqual(vda);
+	expect(await json(await call("getUsEquityReport"))).toEqual(equity);
+	expect(
+		(await call("exportReport", { query: "?kind=schedule-vda&format=csv" }))
+			.status,
+	).toBe(200);
+	expect(
+		(
+			await call("exportUsEquityReport", {
+				query: "?kind=schedule-fa&format=csv",
+			})
+		).status,
+	).toBe(200);
+
+	await save({ feeTreatment: "include" });
+	await json(await call("getReport"), 404);
+	expect(await json(await call("getUsEquityReport"))).toEqual(equity);
+	const updatedVda = await computeVda();
+
+	await save({ feeTreatment: "include", usEquityFxBasis: "trade_date" });
+	expect(await json(await call("getReport"))).toEqual(updatedVda);
+	await json(await call("getUsEquityReport"), 404);
 });
 
 it("creates, lists, edits and deletes each manual US stock transaction type", async () => {

@@ -10,6 +10,7 @@ import {
 } from "@tax/core";
 export const USD_STABLECOINS = new Set(["USDT"]);
 export const FIAT = new Set(["INR", "USD", "EUR", "GBP"]);
+export const MAX_LEDGER_STABLECOIN_RATE_AGE_DAYS = 14;
 export interface LedgerRate {
 	rate: string;
 	txId: string;
@@ -67,6 +68,14 @@ export function ledgerStablecoinRate(tx: LedgerTx): LedgerRate | null {
 		};
 	return null;
 }
+function isFreshLedgerRate(
+	txTimestamp: string,
+	ledgerRate: LedgerRate | null,
+): ledgerRate is LedgerRate {
+	if (!ledgerRate) return false;
+	const age = Date.parse(txTimestamp) - Date.parse(ledgerRate.timestamp);
+	return age >= 0 && age <= MAX_LEDGER_STABLECOIN_RATE_AGE_DAYS * 86_400_000;
+}
 export function valueTransaction(
 	tx: LedgerTx,
 	settings: EngineSettings,
@@ -113,8 +122,8 @@ export function valueTransaction(
 	if (stableAmount !== undefined) {
 		if (
 			settings.usdtInrRate === "ledger_usdt_inr" &&
-			ledgerRate &&
-			tx.priceQuote?.asset !== "USD"
+			tx.priceQuote?.asset !== "USD" &&
+			isFreshLedgerRate(tx.timestamp, ledgerRate)
 		)
 			return {
 				txId: tx.id,
@@ -163,8 +172,8 @@ export function valueTransaction(
 			if (price.quote === "USD" || price.quote === "USDT") {
 				const rate =
 					settings.usdtInrRate === "ledger_usdt_inr" &&
-					ledgerRate &&
-					price.quote === "USDT"
+					price.quote === "USDT" &&
+					isFreshLedgerRate(tx.timestamp, ledgerRate)
 						? {
 								rate: ledgerRate.rate,
 								rateDate: istDate(ledgerRate.timestamp),

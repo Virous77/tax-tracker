@@ -123,7 +123,7 @@ test("CoinDCX workbook (IST) shows per-sheet summary and row errors", async ({
 		.locator("xpath=following-sibling::div[1]")
 		.getByRole("table");
 	await expect(errorTable.locator("tbody tr")).toHaveCount(2);
-	await expect(page.getByText(/parse_warning/).first()).toBeVisible();
+	await expect(page.getByText(/Import note/).first()).toBeVisible();
 	await snap(page, "import-coindcx-summary");
 });
 

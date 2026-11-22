@@ -1,6 +1,6 @@
 "use client";
 
-import { type LedgerTx, taxYearOf } from "@tax/core";
+import { D, type LedgerTx, taxYearOf } from "@tax/core";
 import type { ReportReviewItem } from "@tax/core/api";
 import {
 	AlertTriangle,
@@ -9,6 +9,7 @@ import {
 	Check,
 	CheckCircle2,
 	ChevronDown,
+	ChevronUp,
 	Edit3,
 	Upload,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import { TaxYearSelect } from "@/components/ui/TaxYearSelect";
 import { api, getErrorMessage, type ReviewData } from "@/lib/client/api";
 import { getEvmChainName } from "@/lib/client/chains";
 import {
+	formatAssetAmount,
 	formatInrNullable,
 	formatIstDateTime,
 	formatQty,
@@ -43,6 +45,43 @@ import { ALL_YEARS, useSelectedTaxYear } from "@/lib/client/useSelectedTaxYear";
 import { useSourceLabel } from "@/lib/client/useSourceLabel";
 
 type ReviewGroup = ReviewData["groups"][number];
+
+const BLOCKING_GROUP_ORDER: readonly string[] = [
+	"missing_history",
+	"missing_inr_value",
+	"unmatched_transfer",
+	"ambiguous_transfer",
+	"corporate_action",
+	"unmatched_foreign_tax",
+	"missing_market_price",
+	"fx_unavailable",
+	"unknown_type",
+	"complex_onchain",
+	"balance_mismatch",
+	"import_incomplete",
+];
+
+const ADVISORY_GROUP_ORDER: readonly string[] = [
+	"fee_review_required",
+	"parse_warning",
+	"tds_not_deducted",
+	"ambiguous_timezone",
+	"suspected_spam",
+	"possible_duplicate",
+	"ca_verification_pending",
+];
+
+const ADVISORY_GROUP_CODES: ReadonlySet<string> = new Set(ADVISORY_GROUP_ORDER);
+const ADVISORY_COLLAPSE_THRESHOLD = 15;
+const EXPANDED_PREVIEW_LIMIT = 10;
+
+function reviewGroupRank(code: string): number {
+	const blockingIdx = BLOCKING_GROUP_ORDER.indexOf(code);
+	if (blockingIdx !== -1) return blockingIdx;
+	const advisoryIdx = ADVISORY_GROUP_ORDER.indexOf(code);
+	if (advisoryIdx !== -1) return BLOCKING_GROUP_ORDER.length + 1 + advisoryIdx;
+	return BLOCKING_GROUP_ORDER.length;
+}
 
 /** Notices about the computed report itself; every other note says how a file was read. */
 const REPORT_NOTICE_CODES: ReadonlySet<string> = new Set([
@@ -263,6 +302,9 @@ export function ReviewClient() {
 	const [confirmGroup, setConfirmGroup] = useState<ReviewGroup | null>(null);
 	const [resolving, setResolving] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
+	const [groupView, setGroupView] = useState<
+		Record<string, "collapsed" | "preview" | "all">
+	>({});
 
 	const loadReview = useCallback(
 		async (options?: { keepContent?: boolean }) => {
@@ -397,8 +439,11 @@ export function ReviewClient() {
 
 	const connectionIssues = data?.connections ?? [];
 	const actionTotal = data ? reviewActionCount(data) : 0;
-	const { action: actionGroups, info: infoGroups } = splitReviewGroups(
+	const { action: rawActionGroups, info: infoGroups } = splitReviewGroups(
 		data?.groups ?? [],
+	);
+	const actionGroups = [...rawActionGroups].sort(
+		(a, b) => reviewGroupRank(a.code) - reviewGroupRank(b.code),
 	);
 	const noteGroups = infoGroups.filter((g) => !isReportNotice(g));
 	const reportNoteGroups = infoGroups.filter(isReportNotice);
@@ -438,6 +483,79 @@ export function ReviewClient() {
 				: info.severity === "warning"
 					? "warning"
 					: "accent";
+		const totalRows = group.items.length + group.reportItems.length;
+		const startsCollapsed =
+			!neutral &&
+			ADVISORY_GROUP_CODES.has(group.code) &&
+			totalRows > ADVISORY_COLLAPSE_THRESHOLD;
+		const defaultView: "collapsed" | "preview" | "all" = startsCollapsed
+			? "collapsed"
+			: totalRows > EXPANDED_PREVIEW_LIMIT
+				? "preview"
+				: "all";
+		const view = groupView[group.code] ?? defaultView;
+		const showMarkAll = !neutral && group.code !== "missing_history";
+
+		const missingHistoryHeaderAction = (() => {
+			if (neutral || group.code !== "missing_history") return null;
+			const assets = new Set<string>();
+			let earliestTs: string | undefined;
+			let totalUnresolvedQty = D("0");
+			let unresolvedCount = 0;
+			let targetYear = taxYear;
+			for (const ri of group.reportItems) {
+				if (!targetYear) targetYear = ri.taxYear;
+				if (ri.kind === "unresolved") {
+					assets.add(ri.unresolved.asset);
+					totalUnresolvedQty = totalUnresolvedQty.plus(ri.unresolved.quantity);
+					unresolvedCount += 1;
+					const ts = saleTimestamps.get(ri.unresolved.txId);
+					if (ts && (!earliestTs || ts < earliestTs)) earliestTs = ts;
+				} else if (ri.kind === "balance") {
+					assets.add(ri.balance.asset);
+				} else if (ri.warning.asset) {
+					assets.add(ri.warning.asset);
+				}
+			}
+			for (const tx of group.items) {
+				const a = tx.assetOut ?? tx.assetIn;
+				if (a) assets.add(a);
+				if (!earliestTs || tx.timestamp < earliestTs) earliestTs = tx.timestamp;
+			}
+			if (assets.size !== 1) return null;
+			const [onlyAsset] = [...assets];
+			if (!onlyAsset) return null;
+			const sp = new URLSearchParams({ add: "buy", asset: onlyAsset });
+			if (unresolvedCount > 1 && totalUnresolvedQty.gt("0")) {
+				sp.set("qty", totalUnresolvedQty.toFixed());
+			}
+			if (earliestTs) sp.set("before", earliestTs);
+			if (targetYear) sp.set("taxYear", targetYear);
+			return {
+				href: `/transactions?${sp.toString()}`,
+				label:
+					unresolvedCount > 1 && totalUnresolvedQty.gt("0")
+						? `Add missing buy (${formatQty(totalUnresolvedQty.toFixed())} ${onlyAsset})`
+						: "Add missing buy",
+			};
+		})();
+
+		const visibleItems =
+			view === "collapsed"
+				? []
+				: view === "preview"
+					? group.items.slice(0, EXPANDED_PREVIEW_LIMIT)
+					: group.items;
+		const visibleReportItems =
+			view === "collapsed"
+				? []
+				: view === "preview"
+					? group.reportItems.slice(
+							0,
+							Math.max(0, EXPANDED_PREVIEW_LIMIT - visibleItems.length),
+						)
+					: group.reportItems;
+
 		return (
 			<section
 				key={group.code}
@@ -453,11 +571,48 @@ export function ReviewClient() {
 								{pluralise(group.count, "item")}
 							</Badge>
 						</div>
-						<div className="flex items-center gap-3">
+						<div className="flex flex-wrap items-center gap-2.5">
 							<code className="font-mono-code text-xs text-[var(--text-muted)]">
 								{group.code}
 							</code>
-							{neutral ? null : (
+							{startsCollapsed ? (
+								<button
+									type="button"
+									aria-expanded={view !== "collapsed"}
+									onClick={() =>
+										setGroupView((prev) => ({
+											...prev,
+											[group.code]:
+												(prev[group.code] ?? defaultView) === "collapsed"
+													? "all"
+													: "collapsed",
+										}))
+									}
+									className="inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:bg-[var(--bg-hover)]"
+								>
+									{view === "collapsed" ? (
+										<>
+											Show all {totalRows} {pluralise(totalRows, "item")}
+											<ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+										</>
+									) : (
+										<>
+											Hide items
+											<ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+										</>
+									)}
+								</button>
+							) : null}
+							{missingHistoryHeaderAction ? (
+								<Link
+									href={missingHistoryHeaderAction.href}
+									className="inline-flex items-center gap-1 rounded bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white hover:bg-[var(--accent-hover)]"
+								>
+									{missingHistoryHeaderAction.label}
+									<ArrowRight className="h-3 w-3" aria-hidden="true" />
+								</Link>
+							) : null}
+							{showMarkAll ? (
 								<button
 									type="button"
 									disabled={resolving}
@@ -468,7 +623,7 @@ export function ReviewClient() {
 									Mark all as checked
 									<span className="sr-only"> in {info.title}</span>
 								</button>
-							)}
+							) : null}
 						</div>
 					</div>
 					<p className="mt-1.5 text-xs leading-relaxed text-[var(--text-secondary)]">
@@ -476,213 +631,263 @@ export function ReviewClient() {
 					</p>
 				</div>
 
-				<div className="overflow-x-auto">
-					<table className="w-full border-collapse text-left text-xs">
-						<thead className="border-b border-[var(--border)] text-[var(--text-muted)]">
-							<tr>
-								<th className="px-4 py-2 font-medium">Date (IST)</th>
-								<th className="px-4 py-2 font-medium">Type</th>
-								<th className="px-4 py-2 font-medium">Source</th>
-								<th className="px-4 py-2 font-medium">Amounts</th>
-								<th className="num-right px-4 py-2 font-medium">INR Value</th>
-								<th className="px-4 py-2 font-medium">Details</th>
-								<th className="px-4 py-2 text-right font-medium">Fix Action</th>
-							</tr>
-						</thead>
-						<tbody>
-							{group.items.map((tx) => {
-								const matchingMessages =
-									groupReviewFlags(
-										tx.reviewFlags.filter((f) => f.code === group.code),
-									)[0]?.messages ?? [];
-								return (
-									<tr
-										key={`${group.code}-${tx.id}`}
-										className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
-									>
-										<td className="px-4 py-2.5 whitespace-nowrap">
-											{formatIstDateTime(tx.timestamp)}
-										</td>
-										<td className="px-4 py-2.5 whitespace-nowrap">
-											<Badge tone="neutral">{formatTxType(tx.type)}</Badge>
-										</td>
-										<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
-											{sourceLabel(tx.source)}
-										</td>
-										<td className="num px-4 py-2.5 whitespace-nowrap">
-											{tx.assetIn
-												? `+${formatQty(tx.amountIn)} ${tx.assetIn}`
-												: ""}
-											{tx.assetIn && tx.assetOut ? " / " : ""}
-											{tx.assetOut
-												? `-${formatQty(tx.amountOut)} ${tx.assetOut}`
-												: ""}
-										</td>
-										<td className="num-right px-4 py-2.5 whitespace-nowrap">
-											{formatInrNullable(tx.inrValue)}
-										</td>
-										<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
-											{matchingMessages.length === 0 ? (
-												"—"
-											) : matchingMessages.length === 1 ? (
-												<span>{matchingMessages[0]}</span>
-											) : (
-												<ul className="list-disc space-y-1 pl-4">
-													{matchingMessages.map((msg) => (
-														<li key={msg}>{msg}</li>
-													))}
-												</ul>
-											)}
-										</td>
-										<td className="px-4 py-2.5">
-											<div className="flex min-w-48 flex-wrap items-center justify-end gap-2">
-												<button
-													type="button"
-													onClick={() => setSelectedTx(tx)}
-													className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium hover:bg-[var(--bg-hover)]"
-												>
-													<Edit3 className="h-3 w-3" aria-hidden="true" />
-													Inspect
-												</button>
-												{neutral ? null : (
-													<button
-														type="button"
-														disabled={resolving}
-														onClick={() => resolveItems(group, { tx })}
-														className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
-													>
-														<Check className="h-3 w-3" aria-hidden="true" />
-														Mark checked
-													</button>
-												)}
-												<Link
-													href={info.fixHref(tx, taxYear || undefined)}
-													className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
-												>
-													{info.fixLabel}
-													<ArrowRight className="h-3 w-3" aria-hidden="true" />
-												</Link>
-											</div>
-										</td>
+				{view !== "collapsed" ? (
+					<>
+						<div className="overflow-x-auto">
+							<table className="w-full border-collapse text-left text-xs">
+								<thead className="border-b border-[var(--border)] text-[var(--text-muted)]">
+									<tr>
+										<th className="px-3 py-2 font-medium whitespace-nowrap">
+											Date (IST)
+										</th>
+										<th className="px-3 py-2 font-medium whitespace-nowrap">
+											Type
+										</th>
+										<th className="px-3 py-2 font-medium whitespace-nowrap">
+											Source
+										</th>
+										<th className="px-3 py-2 font-medium whitespace-nowrap">
+											Amounts
+										</th>
+										<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
+											INR Value
+										</th>
+										<th className="min-w-[240px] px-3 py-2 font-medium">
+											Details
+										</th>
+										<th className="px-3 py-2 text-right font-medium whitespace-nowrap">
+											Fix Action
+										</th>
 									</tr>
-								);
-							})}
-							{group.reportItems.map((ri, idx) => {
-								const key =
-									ri.kind === "balance"
-										? `${group.code}-bal-${ri.taxYear}-${ri.balance.asset}-${ri.balance.source ?? "global"}-${idx}`
-										: ri.kind === "unresolved"
-											? `${group.code}-unres-${ri.taxYear}-${ri.unresolved.txId}-${ri.unresolved.asset}-${ri.unresolved.reason}-${idx}`
-											: `${group.code}-warn-${ri.taxYear}-${ri.warning.asset ?? ""}-${ri.warning.source ?? ""}-${idx}`;
-								const actions = reportItemActions(group.code, ri, {
-									note: neutral && !REPORT_NOTICE_CODES.has(group.code),
-									saleTimestamp:
-										ri.kind === "unresolved"
-											? saleTimestamps.get(ri.unresolved.txId)
-											: undefined,
-								});
-								const isNegativeBalance =
-									ri.kind === "balance" &&
-									isNegativeDecimal(ri.balance.computed) &&
-									group.code === "missing_history";
-								return (
-									<tr
-										key={key}
-										className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
-									>
-										<td className="px-4 py-2.5 whitespace-nowrap">
-											Tax year {ri.taxYear}
-										</td>
-										<td className="px-4 py-2.5 whitespace-nowrap">
-											{ri.kind === "balance" ? (
-												<Badge tone={isNegativeBalance ? "loss" : "neutral"}>
-													{isNegativeBalance
-														? "Negative holding"
-														: "Year-end balance"}
-												</Badge>
-											) : ri.kind === "unresolved" ? (
-												<Badge tone="loss">Unresolved slice</Badge>
-											) : (
-												<Badge
-													tone={
-														group.code === "ca_verification_pending"
-															? "accent"
-															: "neutral"
-													}
-												>
-													{group.code === "ca_verification_pending"
-														? "Report notice"
-														: "Report warning"}
-												</Badge>
-											)}
-										</td>
-										<td className="px-4 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
-											{ri.kind === "balance"
-												? ri.balance.source
-													? sourceLabel(ri.balance.source)
-													: "Global"
-												: ri.kind === "warning" && ri.warning.source
-													? sourceLabel(ri.warning.source)
-													: "Computed report"}
-										</td>
-										<td className="num px-4 py-2.5 whitespace-nowrap">
-											{ri.kind === "balance"
-												? `${ri.balance.asset}: computed ${formatQty(ri.balance.computed)}${
-														ri.balance.actual !== undefined
-															? `, actual ${formatQty(ri.balance.actual)}`
-															: ""
-													}`
+								</thead>
+								<tbody>
+									{visibleItems.map((tx) => {
+										const matchingMessages =
+											groupReviewFlags(
+												tx.reviewFlags.filter((f) => f.code === group.code),
+											)[0]?.messages ?? [];
+										const showFixLink =
+											info.fixLabel !== "Inspect in Transactions";
+										return (
+											<tr
+												key={`${group.code}-${tx.id}`}
+												className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
+											>
+												<td className="px-3 py-2.5 whitespace-nowrap">
+													{formatIstDateTime(tx.timestamp)}
+												</td>
+												<td className="px-3 py-2.5 whitespace-nowrap">
+													<Badge tone="neutral">{formatTxType(tx.type)}</Badge>
+												</td>
+												<td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
+													{sourceLabel(tx.source)}
+												</td>
+												<td className="num px-3 py-2.5 whitespace-nowrap">
+													{tx.assetIn
+														? `+${formatAssetAmount(tx.amountIn, tx.assetIn)}`
+														: ""}
+													{tx.assetIn && tx.assetOut ? " / " : ""}
+													{tx.assetOut
+														? `-${formatAssetAmount(tx.amountOut, tx.assetOut)}`
+														: ""}
+												</td>
+												<td className="num-right px-3 py-2.5 whitespace-nowrap">
+													{formatInrNullable(tx.inrValue)}
+												</td>
+												<td className="min-w-[240px] max-w-md px-3 py-2.5 text-[var(--text-secondary)]">
+													{matchingMessages.length === 0 ? (
+														"—"
+													) : matchingMessages.length === 1 ? (
+														<span>{matchingMessages[0]}</span>
+													) : (
+														<ul className="list-disc space-y-1 pl-4">
+															{matchingMessages.map((msg) => (
+																<li key={msg}>{msg}</li>
+															))}
+														</ul>
+													)}
+												</td>
+												<td className="px-3 py-2.5 text-right whitespace-nowrap">
+													<div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+														<button
+															type="button"
+															onClick={() => setSelectedTx(tx)}
+															className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium hover:bg-[var(--bg-hover)]"
+														>
+															<Edit3 className="h-3 w-3" aria-hidden="true" />
+															Inspect
+														</button>
+														{neutral ? null : (
+															<button
+																type="button"
+																disabled={resolving}
+																onClick={() => resolveItems(group, { tx })}
+																className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium hover:bg-[var(--bg-hover)] disabled:opacity-50"
+															>
+																<Check className="h-3 w-3" aria-hidden="true" />
+																Mark checked
+															</button>
+														)}
+														{showFixLink ? (
+															<Link
+																href={info.fixHref(tx, taxYear || undefined)}
+																className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
+															>
+																{info.fixLabel}
+																<ArrowRight
+																	className="h-3 w-3"
+																	aria-hidden="true"
+																/>
+															</Link>
+														) : null}
+													</div>
+												</td>
+											</tr>
+										);
+									})}
+									{visibleReportItems.map((ri, idx) => {
+										const key =
+											ri.kind === "balance"
+												? `${group.code}-bal-${ri.taxYear}-${ri.balance.asset}-${ri.balance.source ?? "global"}-${idx}`
 												: ri.kind === "unresolved"
-													? `${formatQty(ri.unresolved.quantity)} ${ri.unresolved.asset}`
-													: (ri.warning.asset ?? "—")}
-										</td>
-										<td className="num-right px-4 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
-											—
-										</td>
-										<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
-											{ri.kind === "unresolved" ? (
-												<div className="space-y-0.5">
-													<p>{ri.message}</p>
-													<p className="text-[11px] text-[var(--text-muted)]">
-														Reason:{" "}
-														{REVIEW_CODE_INFO[ri.unresolved.reason]?.title ??
-															ri.unresolved.reason}
-													</p>
-												</div>
-											) : (
-												ri.message
-											)}
-										</td>
-										<td className="px-4 py-2.5 text-right whitespace-nowrap">
-											<div className="inline-flex items-center gap-2">
-												{actions.txHref && actions.txLabel ? (
-													<Link
-														href={actions.txHref}
-														className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-													>
-														{actions.txLabel}
-													</Link>
-												) : null}
-												{actions.fixHref && actions.fixLabel ? (
-													<Link
-														href={actions.fixHref}
-														className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
-													>
-														{actions.fixLabel}
-														<ArrowRight
-															className="h-3 w-3"
-															aria-hidden="true"
-														/>
-													</Link>
-												) : null}
-											</div>
-										</td>
-									</tr>
-								);
-							})}
-						</tbody>
-					</table>
-				</div>
+													? `${group.code}-unres-${ri.taxYear}-${ri.unresolved.txId}-${ri.unresolved.asset}-${ri.unresolved.reason}-${idx}`
+													: `${group.code}-warn-${ri.taxYear}-${ri.warning.asset ?? ""}-${ri.warning.source ?? ""}-${idx}`;
+										const actions = reportItemActions(group.code, ri, {
+											note: neutral && !REPORT_NOTICE_CODES.has(group.code),
+											saleTimestamp:
+												ri.kind === "unresolved"
+													? saleTimestamps.get(ri.unresolved.txId)
+													: undefined,
+										});
+										const isNegativeBalance =
+											ri.kind === "balance" &&
+											isNegativeDecimal(ri.balance.computed) &&
+											group.code === "missing_history";
+										return (
+											<tr
+												key={key}
+												className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
+											>
+												<td className="px-3 py-2.5 whitespace-nowrap">
+													Tax year {ri.taxYear}
+												</td>
+												<td className="px-3 py-2.5 whitespace-nowrap">
+													{ri.kind === "balance" ? (
+														<Badge
+															tone={isNegativeBalance ? "loss" : "neutral"}
+														>
+															{isNegativeBalance
+																? "Negative holding"
+																: "Year-end balance"}
+														</Badge>
+													) : ri.kind === "unresolved" ? (
+														<Badge tone="loss">Unresolved slice</Badge>
+													) : (
+														<Badge
+															tone={
+																group.code === "ca_verification_pending"
+																	? "accent"
+																	: "neutral"
+															}
+														>
+															{group.code === "ca_verification_pending"
+																? "Report notice"
+																: "Report warning"}
+														</Badge>
+													)}
+												</td>
+												<td className="px-3 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
+													{ri.kind === "balance"
+														? ri.balance.source
+															? sourceLabel(ri.balance.source)
+															: "Global"
+														: ri.kind === "warning" && ri.warning.source
+															? sourceLabel(ri.warning.source)
+															: "Computed report"}
+												</td>
+												<td className="num px-3 py-2.5 whitespace-nowrap">
+													{ri.kind === "balance"
+														? `${ri.balance.asset}: computed ${formatQty(ri.balance.computed)}${
+																ri.balance.actual !== undefined
+																	? `, actual ${formatQty(ri.balance.actual)}`
+																	: ""
+															}`
+														: ri.kind === "unresolved"
+															? `${formatQty(ri.unresolved.quantity)} ${ri.unresolved.asset}`
+															: (ri.warning.asset ?? "—")}
+												</td>
+												<td className="num-right px-3 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
+													—
+												</td>
+												<td className="min-w-[240px] max-w-md px-3 py-2.5 text-[var(--text-secondary)]">
+													{ri.kind === "unresolved" ? (
+														<div className="space-y-0.5">
+															<p>{ri.message}</p>
+															<p className="text-[11px] text-[var(--text-muted)]">
+																Reason:{" "}
+																{REVIEW_CODE_INFO[ri.unresolved.reason]
+																	?.title ?? ri.unresolved.reason}
+															</p>
+														</div>
+													) : (
+														ri.message
+													)}
+												</td>
+												<td className="px-3 py-2.5 text-right whitespace-nowrap">
+													<div className="inline-flex items-center gap-2">
+														{actions.txHref && actions.txLabel ? (
+															<Link
+																href={actions.txHref}
+																className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+															>
+																{actions.txLabel}
+															</Link>
+														) : null}
+														{actions.fixHref && actions.fixLabel ? (
+															<Link
+																href={actions.fixHref}
+																className="inline-flex items-center gap-1 rounded bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
+															>
+																{actions.fixLabel}
+																<ArrowRight
+																	className="h-3 w-3"
+																	aria-hidden="true"
+																/>
+															</Link>
+														) : null}
+													</div>
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+						{totalRows > EXPANDED_PREVIEW_LIMIT ? (
+							<div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-2 text-xs">
+								<span className="num text-[var(--text-secondary)]">
+									{view === "preview"
+										? `Showing ${visibleItems.length + visibleReportItems.length} of ${totalRows} items`
+										: `Showing all ${totalRows} items`}
+								</span>
+								<button
+									type="button"
+									onClick={() =>
+										setGroupView((prev) => ({
+											...prev,
+											[group.code]: view === "preview" ? "all" : "preview",
+										}))
+									}
+									className="font-medium text-[var(--accent-text)] hover:underline"
+								>
+									{view === "preview"
+										? `Show all ${totalRows} items`
+										: `Show first ${EXPANDED_PREVIEW_LIMIT}`}
+								</button>
+							</div>
+						) : null}
+					</>
+				) : null}
 			</section>
 		);
 	}

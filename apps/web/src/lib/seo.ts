@@ -133,7 +133,7 @@ export function pageMetadata(page: PageSeoKey): Metadata {
 	const entry = PAGE_SEO[page];
 	const fullTitle = `${entry.title} — ${SITE_CONFIG.name}`;
 	return {
-		title: entry.title,
+		title: page === "overview" ? { absolute: fullTitle } : entry.title,
 		description: entry.description,
 		openGraph: {
 			title: fullTitle,

@@ -219,11 +219,10 @@ it("loads one sample import per source, labels reports and every export, and rem
 		totals: { taxableIncome: "30000.00", tdsCredit: "450.00" },
 		unresolved: [],
 		tds: {
-			checklist: expect.arrayContaining([
+			checklist: [
 				expect.stringMatching(/^Binance: /),
 				expect.stringMatching(/^CoinDCX: /),
-				expect.stringMatching(/^Ethereum wallet: /),
-			]),
+			],
 		},
 	});
 	expect(await (await call("getReport")).json()).toMatchObject({

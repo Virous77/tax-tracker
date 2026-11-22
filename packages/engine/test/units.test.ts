@@ -107,6 +107,57 @@ describe("valuation", () => {
 			).valueInr,
 		).toBe("16400");
 	});
+	test.each(["trade quote", "cached price"])(
+		"uses only fresh ledger USDT rates for a %s",
+		(path) => {
+			const sale = tx(2, {
+				type: "sell",
+				assetOut: "ETH",
+				amountOut: "2",
+				timestamp: "2026-06-23T00:00:00.000Z",
+				...(path === "trade quote"
+					? { priceQuote: { asset: "USDT", price: "100" } }
+					: {}),
+			});
+			for (const [timestamp, fresh] of [
+				["2026-06-18T00:00:00.000Z", true],
+				["2026-06-09T00:00:00.000Z", true],
+				["2026-06-08T23:59:59.999Z", false],
+				["2025-10-11T00:00:00.000Z", false],
+				["2026-06-23T00:00:00.001Z", false],
+			] as const) {
+				const result = valueTransaction(
+					sale,
+					settings,
+					(currency, date) =>
+						currency === "USD"
+							? { rate: "93", rateDate: date, source: "SBI TT buying" }
+							: null,
+					{ rate: "95.90", txId: buy.id, timestamp },
+					(_asset, date, kind) => ({
+						price: "100",
+						quote: "USDT",
+						source: "binance_klines",
+						sourceId: "ETHUSDT",
+						date,
+						kind,
+					}),
+				);
+				expect(result, timestamp).toMatchObject({
+					valueInr: fresh ? "19180" : "18600",
+					inrRateSource:
+						path === "trade quote"
+							? "trade_usdt_x_usd_inr"
+							: "market_price_cache",
+					fx: {
+						rate: fresh ? "95.90" : "93",
+						source: fresh ? "ledger stablecoin/INR" : "SBI TT buying",
+						...(!fresh ? { rateDate: "2026-06-23" } : {}),
+					},
+				});
+			}
+		},
+	);
 	test("missing disposal value is excluded", () => {
 		const report = compute([
 			buy,
@@ -428,6 +479,32 @@ test("aggregate TDS threshold uses gross transfers across all sources", () => {
 	expect(
 		report.tds.bySource.find((r) => r.source === "binance")?.possiblyDueInr,
 	).toBe("50.00");
+});
+
+test("TDS includes manual disposals and credits but skips an ordinary manual buy", () => {
+	const manualBuy = { ...buy, source: "manual" };
+	const sale = tx(2, {
+		type: "sell",
+		source: "manual",
+		assetOut: "ETH",
+		amountOut: "1",
+		inrValue: "120",
+	});
+	expect(compute([manualBuy]).tds).toEqual({ bySource: [], checklist: [] });
+
+	const withSale = compute([manualBuy, sale]).tds;
+	expect(withSale.bySource).toMatchObject([
+		{ source: "manual", transferValueInr: "120.00", txIds: [sale.id] },
+	]);
+	expect(withSale.checklist).toEqual([expect.stringContaining("manual:")]);
+
+	const withCredit = compute([{ ...manualBuy, tdsInr: "2" }]).tds;
+	expect(withCredit.bySource).toMatchObject([
+		{ source: "manual", tdsInr: "2.00", txIds: [manualBuy.id] },
+	]);
+	expect(withCredit.checklist).toEqual([
+		expect.stringContaining("manual: match ledger TDS 2.00"),
+	]);
 });
 
 test("unmatched later deposits do not leapfrog a known older FIFO lot", () => {

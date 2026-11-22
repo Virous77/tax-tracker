@@ -299,7 +299,7 @@ test.describe("Phase 3: US Stocks, Vested & Tax Isolation E2E", () => {
 			),
 		).toBeVisible();
 		await expect(
-			page.getByRole("link", { name: "View US Stocks" }),
+			page.getByRole("link", { name: "Open US Stocks report" }),
 		).toBeVisible();
 	});
 
@@ -333,7 +333,7 @@ test.describe("Phase 3: US Stocks, Vested & Tax Isolation E2E", () => {
 			),
 		).toBeVisible();
 		await expect(
-			page.getByRole("link", { name: "View US Stocks" }),
+			page.getByRole("link", { name: "Open US Stocks report" }),
 		).toBeVisible();
 
 		// Re-upload identical Vested XLSX -> 0 new rows, 5 duplicates, 5 skipped, 0 errors.

@@ -49,7 +49,7 @@ export async function computeUsEquity(db: TaxDatabase, taxYear: string) {
 				cyPrices: db.equityCyPrices.list(rules.scheduleFaCalendarYear),
 				fx,
 			});
-			const importIssues = importWarnings(db, "us_equity");
+			const importIssues = importWarnings(db, "us_equity", transactions);
 			const demoImports = new Set(db.imports.demoIds());
 			const report = UsEquityReportSchema.parse({
 				...computed,

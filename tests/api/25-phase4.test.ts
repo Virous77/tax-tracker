@@ -1806,19 +1806,16 @@ describe("final: TDS venue names", () => {
 	it("the checklist names each venue for people, while bySource keeps the ids", async () => {
 		const report = await compute(DEMO_YEAR);
 		const sources = report.tds.bySource.map((s) => s.source).sort();
-		expect(sources).toEqual(
-			expect.arrayContaining(["binance", "coindcx", "evm:1"]),
-		);
+		expect(sources).toEqual(["binance", "coindcx"]);
 		const prefixes = report.tds.checklist.map((line) => line.split(":")[0]);
-		expect(prefixes).toEqual(
-			expect.arrayContaining(["Binance", "CoinDCX", "Ethereum wallet"]),
-		);
+		expect(prefixes).toEqual(["Binance", "CoinDCX"]);
 		for (const line of report.tds.checklist)
 			expect(line, line).not.toMatch(/^(binance|coindcx|evm:\d+|manual):/);
 		for (const format of FORMATS) {
 			const text = await exportText(format, "tds");
-			expect(text).toContain("Ethereum wallet: match ledger TDS");
-			expect(text).not.toMatch(/^evm:1: /m);
+			expect(text).toContain("Binance: match ledger TDS");
+			expect(text).toContain("CoinDCX: match ledger TDS");
+			expect(text).not.toMatch(/^(binance|coindcx|evm:\d+|manual): /m);
 		}
 	});
 });

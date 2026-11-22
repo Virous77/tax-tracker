@@ -174,6 +174,7 @@ export function ReportClient() {
 	const [priceFillJob, setPriceFillJob] = useState<JobStatus | null>(null);
 	const [priceFillResult, setPriceFillResult] =
 		useState<PriceFillSummary | null>(null);
+	const [priceFillAutoRecomputed, setPriceFillAutoRecomputed] = useState(false);
 	const [priceFillError, setPriceFillError] = useState<string | null>(null);
 	const [missingExpanded, setMissingExpanded] = useState(false);
 	const [ledgerEmpty, setLedgerEmpty] = useState(false);
@@ -182,7 +183,12 @@ export function ReportClient() {
 	useScrollToHash(!loading && report !== null);
 
 	const mountedRef = useRef(true);
+	const activeTaxYearRef = useRef(taxYear);
 	const pricePollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		activeTaxYearRef.current = taxYear;
+	}, [taxYear]);
 
 	useEffect(() => {
 		mountedRef.current = true;
@@ -207,6 +213,7 @@ export function ReportClient() {
 		setPriceFillRunning(false);
 		setPriceFillJob(null);
 		setPriceFillResult(null);
+		setPriceFillAutoRecomputed(false);
 		setPriceFillError(null);
 		setMissingExpanded(false);
 		try {
@@ -282,10 +289,10 @@ export function ReportClient() {
 		if (pricePollRef.current) clearTimeout(pricePollRef.current);
 
 		const tick = async () => {
-			if (!mountedRef.current) return;
+			if (!mountedRef.current || activeTaxYearRef.current !== year) return;
 			try {
 				const job = await api.getJob(jobId);
-				if (!mountedRef.current) return;
+				if (!mountedRef.current || activeTaxYearRef.current !== year) return;
 
 				if (job.status === "pending" || job.status === "running") {
 					setPriceFillJob(job);
@@ -294,20 +301,59 @@ export function ReportClient() {
 				}
 
 				pricePollRef.current = null;
-				setPriceFillRunning(false);
 				setPriceFillJob(null);
 
 				if (job.status === "completed") {
-					if (job.result && "fromCache" in job.result) {
-						setPriceFillResult(job.result);
+					const fillResult =
+						job.result && "fromCache" in job.result ? job.result : null;
+					if (fillResult && fillResult.fetched > 0) {
+						try {
+							const [rep, pStatus] = await Promise.all([
+								api.computeReport(year),
+								api.getPricesStatus(year).catch(() => null),
+							]);
+							if (!mountedRef.current || activeTaxYearRef.current !== year)
+								return;
+							setReport(rep);
+							setReportStale(false);
+							setReportMissing(null);
+							if (pStatus) setPricesStatus(pStatus);
+							setPriceFillResult(fillResult);
+							setPriceFillAutoRecomputed(true);
+						} catch (refreshErr) {
+							if (!mountedRef.current || activeTaxYearRef.current !== year)
+								return;
+							const pStatus = await api.getPricesStatus(year).catch(() => null);
+							if (mountedRef.current && activeTaxYearRef.current === year) {
+								if (pStatus) setPricesStatus(pStatus);
+								setPriceFillResult(fillResult);
+								setPriceFillAutoRecomputed(false);
+								setPriceFillError(getErrorMessage(refreshErr));
+							}
+						} finally {
+							if (mountedRef.current && activeTaxYearRef.current === year) {
+								setPriceFillRunning(false);
+							}
+						}
+					} else {
+						setPriceFillRunning(false);
+						if (fillResult) setPriceFillResult(fillResult);
+						setPriceFillAutoRecomputed(false);
+						const pStatus = await api.getPricesStatus(year).catch(() => null);
+						if (
+							mountedRef.current &&
+							activeTaxYearRef.current === year &&
+							pStatus
+						) {
+							setPricesStatus(pStatus);
+						}
 					}
-					const pStatus = await api.getPricesStatus(year).catch(() => null);
-					if (mountedRef.current && pStatus) setPricesStatus(pStatus);
 				} else if (job.status === "failed") {
+					setPriceFillRunning(false);
 					setPriceFillError(job.error ?? "Failed to fetch missing prices.");
 				}
 			} catch (err) {
-				if (!mountedRef.current) return;
+				if (!mountedRef.current || activeTaxYearRef.current !== year) return;
 				pricePollRef.current = null;
 				setPriceFillRunning(false);
 				setPriceFillJob(null);
@@ -322,6 +368,7 @@ export function ReportClient() {
 		setPriceFillRunning(true);
 		setPriceFillError(null);
 		setPriceFillResult(null);
+		setPriceFillAutoRecomputed(false);
 		setPriceFillJob(null);
 		try {
 			const { jobId } = await api.fillPrices(taxYear);
@@ -742,7 +789,9 @@ export function ReportClient() {
 								{priceFillResult.missing.length > 0
 									? `, ${priceFillResult.missing.length} still missing`
 									: ""}
-								. Recompute the report to apply updated valuations.
+								{priceFillAutoRecomputed
+									? " — report updated."
+									: ". Recompute the report to apply updated valuations."}
 							</span>
 						</p>
 					) : null}
@@ -1067,10 +1116,24 @@ export function ReportClient() {
 						</div>
 
 						{report.scheduleVdaRows.length === 0 ? (
-							<EmptyState
-								title="No VDA disposals in this tax year"
-								description="No taxable sells or crypto-to-crypto swaps occurred between 1 April and 31 March."
-							/>
+							report.unresolved.length > 0 ? (
+								(() => {
+									const excludedSales = new Set(
+										report.unresolved.map((u) => u.txId),
+									).size;
+									return (
+										<EmptyState
+											title="No resolved Schedule VDA rows yet"
+											description={`No resolved Schedule VDA rows yet — ${excludedSales} ${pluralise(excludedSales, "sale is", "sales are")} excluded above until acquisition cost is added.`}
+										/>
+									);
+								})()
+							) : (
+								<EmptyState
+									title="No VDA disposals in this tax year"
+									description="No taxable sells or crypto-to-crypto swaps occurred between 1 April and 31 March."
+								/>
+							)
 						) : (
 							<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
 								<div className="overflow-x-auto">
@@ -1625,16 +1688,22 @@ export function ReportClient() {
 													</code>
 													: {w.message}
 													{w.asset || w.source ? (
-														<span className="ml-1.5 inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]">
-															{w.asset ?? ""}
-															{w.asset && w.source ? " · " : ""}
-															{w.source ? sourceLabel(w.source) : ""}
-														</span>
+														<>
+															{" "}
+															<span className="ml-1 inline-flex items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--text-secondary)]">
+																{w.asset ?? ""}
+																{w.asset && w.source ? " · " : ""}
+																{w.source ? sourceLabel(w.source) : ""}
+															</span>
+														</>
 													) : null}
 													{w.count > 1 ? (
-														<span className="ml-1.5 font-medium text-[var(--text-primary)]">
-															(×{w.count})
-														</span>
+														<>
+															{" "}
+															<span className="ml-1 font-medium text-[var(--text-primary)]">
+																(×{w.count})
+															</span>
+														</>
 													) : null}
 													{href ? (
 														<>

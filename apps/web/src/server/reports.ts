@@ -4,6 +4,7 @@ import {
 	type AssetClass,
 	type EngineSettings,
 	EngineSettingsSchema,
+	type LedgerTx,
 	type ReportWarning,
 	taxYearBounds,
 	VdaReportSchema,
@@ -157,10 +158,18 @@ export async function loadSbiFx() {
 	}
 }
 
-export function importWarnings(db: TaxDatabase, assetClass: AssetClass) {
+export function importWarnings(
+	db: TaxDatabase,
+	assetClass: AssetClass,
+	evaluatedTransactions: readonly Pick<LedgerTx, "importId">[],
+) {
+	const relevantImportIds = new Set(
+		evaluatedTransactions.map(({ importId }) => importId),
+	);
 	const warnings: ReportWarning[] = [];
 	for (const item of db.imports.list(assetClass)) {
-		if (item.status !== "imported" || item.rowsError > 0)
+		const incomplete = item.status !== "imported" || item.rowsError > 0;
+		if (incomplete)
 			warnings.push({
 				code: "import_incomplete",
 				importId: item.id,
@@ -171,6 +180,8 @@ export function importWarnings(db: TaxDatabase, assetClass: AssetClass) {
 							? `${item.fileName} has not finished importing. Review it in Imports before relying on this report.`
 							: `${item.fileName} has ${item.rowsError} excluded rows. Review them in Imports before relying on this report.`,
 			});
+		if (!incomplete && item.rowsInserted > 0 && !relevantImportIds.has(item.id))
+			continue;
 		for (const flag of item.warnings) {
 			if (
 				flag.code === "parse_warning" &&
@@ -189,8 +200,6 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 	return runJob(db, "compute", { taxYear }, async () => {
 		const { fx, warning } = await loadSbiFx();
 		return db.atomic(() => {
-			const warnings = importWarnings(db, "vda");
-			if (warning) warnings.unshift(warning);
 			const settings = EngineSettingsSchema.parse(getSettings(db));
 			const actualBalances = db.actualBalances.get(taxYear);
 			checkActualBalancePool(actualBalances, settings.lotPool);
@@ -198,6 +207,8 @@ export async function computeReport(db: TaxDatabase, taxYear: string) {
 			const transactions = db.transactions
 				.active("vda")
 				.filter((tx) => tx.timestamp < bound);
+			const warnings = importWarnings(db, "vda", transactions);
+			if (warning) warnings.unshift(warning);
 			const demoImports = new Set(db.imports.demoIds());
 			const report = VdaReportSchema.parse({
 				...computeVdaReport({

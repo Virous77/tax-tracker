@@ -37,6 +37,7 @@ import { EVM_CHAINS } from "@/lib/client/chains";
 import { unresolvedSales, venueForSource } from "@/lib/client/disposals";
 import {
 	defaultMissingBuyDateTime,
+	formatAssetAmount,
 	formatAssetClass,
 	formatInrNullable,
 	formatIstDateTime,
@@ -85,6 +86,7 @@ export function TransactionsClient() {
 		"assetClass",
 	) as AssetClass | null;
 	const venueParam = searchParams.get("venue");
+	const qtyParam = searchParams.get("qty");
 	const beforeParam = searchParams.get("before");
 	const saleParam = searchParams.get("sale");
 
@@ -208,6 +210,7 @@ export function TransactionsClient() {
 		const params = new URLSearchParams(searchParams.toString());
 		params.delete("add");
 		params.delete("venue");
+		params.delete("qty");
 		params.delete("before");
 		params.delete("sale");
 		for (const [k, v] of Object.entries(updates)) {
@@ -239,15 +242,24 @@ export function TransactionsClient() {
 		addAssetClassParam === "us_equity" || assetClass === "us_equity"
 			? "us_equity"
 			: "vda";
-	const initialVenue: ManualVenue = saleContext
-		? venueForSource(saleContext.tx)
-		: venueParam === "binance" ||
-				venueParam === "coindcx" ||
-				venueParam === "us_broker"
+	const explicitVenue: ManualVenue | null =
+		venueParam === "binance" ||
+		venueParam === "coindcx" ||
+		venueParam === "us_broker" ||
+		venueParam === "manual"
 			? venueParam
-			: initialAssetClass === "us_equity"
-				? "us_broker"
-				: "manual";
+			: null;
+	const saleVenue: ManualVenue | null = saleContext
+		? saleContext.tx.assetClass === "us_equity" ||
+			saleContext.tx.source === "vested"
+			? "us_broker"
+			: venueForSource(saleContext.tx)
+		: null;
+	const initialVenue: ManualVenue =
+		explicitVenue ??
+		saleVenue ??
+		(initialAssetClass === "us_equity" ? "us_broker" : "manual");
+	const initialAmount = qtyParam ?? saleContext?.quantity ?? "";
 	const saleTimestamp = saleContext?.tx.timestamp ?? beforeParam;
 
 	const initialDateTime =
@@ -609,24 +621,60 @@ export function TransactionsClient() {
 											</td>
 											<td className="num-right px-4 py-2.5 whitespace-nowrap">
 												{tx.assetIn ? (
-													<span>
-														{formatQty(tx.amountIn)}{" "}
-														<span className="text-xs text-[var(--text-secondary)]">
-															{tx.assetIn}
+													tx.assetIn.toUpperCase() === "INR" ? (
+														<span
+															title={
+																tx.amountIn
+																	? `${tx.amountIn} ${tx.assetIn}`
+																	: tx.assetIn
+															}
+														>
+															{formatAssetAmount(tx.amountIn, tx.assetIn)}
 														</span>
-													</span>
+													) : (
+														<span
+															title={
+																tx.amountIn
+																	? `${tx.amountIn} ${tx.assetIn}`
+																	: tx.assetIn
+															}
+														>
+															{formatQty(tx.amountIn)}{" "}
+															<span className="text-xs text-[var(--text-secondary)]">
+																{tx.assetIn}
+															</span>
+														</span>
+													)
 												) : (
 													<span className="text-[var(--text-muted)]">—</span>
 												)}
 											</td>
 											<td className="num-right px-4 py-2.5 whitespace-nowrap">
 												{tx.assetOut ? (
-													<span>
-														{formatQty(tx.amountOut)}{" "}
-														<span className="text-xs text-[var(--text-secondary)]">
-															{tx.assetOut}
+													tx.assetOut.toUpperCase() === "INR" ? (
+														<span
+															title={
+																tx.amountOut
+																	? `${tx.amountOut} ${tx.assetOut}`
+																	: tx.assetOut
+															}
+														>
+															{formatAssetAmount(tx.amountOut, tx.assetOut)}
 														</span>
-													</span>
+													) : (
+														<span
+															title={
+																tx.amountOut
+																	? `${tx.amountOut} ${tx.assetOut}`
+																	: tx.assetOut
+															}
+														>
+															{formatQty(tx.amountOut)}{" "}
+															<span className="text-xs text-[var(--text-secondary)]">
+																{tx.assetOut}
+															</span>
+														</span>
+													)
 												) : (
 													<span className="text-[var(--text-muted)]">—</span>
 												)}
@@ -699,17 +747,16 @@ export function TransactionsClient() {
 				initialAsset={asset}
 				initialVenue={initialVenue}
 				{...(initialDateTime ? { initialDateTime } : {})}
-				{...(saleContext
-					? { saleContext, initialAmount: saleContext.quantity }
-					: {})}
+				{...(saleContext ? { saleContext } : {})}
+				{...(initialAmount ? { initialAmount } : {})}
 				{...(saleTimestamp && manualPreset === "buy"
 					? { notAfter: saleTimestamp }
 					: {})}
 				onClose={() => {
 					setAddOpen(false);
 					setSaleContext(null);
-					if (addParam || venueParam) {
-						updateParams({ add: null, venue: null }, false);
+					if (addParam || venueParam || qtyParam) {
+						updateParams({ add: null, venue: null, qty: null }, false);
 					}
 				}}
 				onCreated={(created) => {
@@ -722,8 +769,8 @@ export function TransactionsClient() {
 							null,
 					);
 					setRecompute({ running: false, message: null, error: null });
-					if (addParam || venueParam) {
-						updateParams({ add: null, venue: null }, false);
+					if (addParam || venueParam || qtyParam) {
+						updateParams({ add: null, venue: null, qty: null }, false);
 					}
 					loadTransactions();
 				}}

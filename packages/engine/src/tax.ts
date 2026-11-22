@@ -97,6 +97,12 @@ export class TdsBook {
 			D("0"),
 		);
 		const bySource = [...this.sources.entries()]
+			.filter(
+				([, row]) =>
+					row.txIds.length > 0 ||
+					!row.credit.isZero() ||
+					!row.transfers.isZero(),
+			)
 			.sort(([a], [b]) => compareText(a, b))
 			.map(([source, row]) => ({
 				source,

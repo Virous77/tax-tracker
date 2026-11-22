@@ -3,16 +3,18 @@
 import { D, type VdaReport } from "@tax/core";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import type { ManualVenue } from "@/lib/client/api";
 import {
-	describeDisposal,
 	missingExportHints,
 	saleSourceLabel,
 	transactionHref,
 	type UnresolvedSale,
 	unresolvedSaleCount,
 	unresolvedSales,
+	venueForSource,
 } from "@/lib/client/disposals";
 import {
+	formatDisposalSummary,
 	formatIncompleteSummary,
 	formatIstDateTime,
 	formatQty,
@@ -29,6 +31,34 @@ import { useSourceLabel } from "@/lib/client/useSourceLabel";
 /** Above this many rows, sales are grouped by coin with a subtotal each. */
 const GROUP_BY_ASSET_FROM = 8;
 
+function combinedMissingBuyHref(params: {
+	asset: string;
+	qty: string;
+	before?: string;
+	taxYear: string;
+	venue?: ManualVenue;
+}): string {
+	const sp = new URLSearchParams({
+		add: "buy",
+		asset: params.asset,
+		qty: params.qty,
+	});
+	if (params.before) sp.set("before", params.before);
+	sp.set("taxYear", params.taxYear);
+	if (params.venue && params.venue !== "manual") {
+		sp.set("venue", params.venue);
+	}
+	return `/transactions?${sp.toString()}`;
+}
+
+function saleVenue(sale: UnresolvedSale): ManualVenue | null {
+	if (!sale.tx) return null;
+	if (sale.tx.assetClass === "us_equity" || sale.tx.source === "vested") {
+		return "us_broker";
+	}
+	return venueForSource(sale.tx);
+}
+
 function SaleRow({ sale, taxYear }: { sale: UnresolvedSale; taxYear: string }) {
 	const sourceLabel = useSourceLabel();
 	const { tx } = sale;
@@ -41,7 +71,7 @@ function SaleRow({ sale, taxYear }: { sale: UnresolvedSale; taxYear: string }) {
 		<li className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
 			<div className="min-w-0 space-y-0.5">
 				<p className="font-medium text-[var(--text-primary)]">
-					{tx ? describeDisposal(tx, sale.asset) : `Sale of ${sale.asset}`}
+					{tx ? formatDisposalSummary(tx, sale.asset) : `Sale of ${sale.asset}`}
 				</p>
 				<p className="text-[11px] text-[var(--text-secondary)]">
 					{tx
@@ -133,11 +163,37 @@ function groupByAsset(sales: UnresolvedSale[]) {
 		groups.set(sale.asset, list);
 	}
 	return [...groups]
-		.map(([asset, list]) => ({
-			asset,
-			sales: list,
-			total: list.reduce((sum, s) => sum.plus(s.quantity), D("0")).toString(),
-		}))
+		.map(([asset, list]) => {
+			const missingHistorySales = list.filter((s) =>
+				s.reasons.includes("missing_history"),
+			);
+			const missingHistoryTotal = missingHistorySales
+				.reduce((sum, s) => sum.plus(s.quantity), D("0"))
+				.toFixed();
+			let earliestTimestamp: string | undefined;
+			for (const s of missingHistorySales) {
+				const ts = s.tx?.timestamp;
+				if (ts && (!earliestTimestamp || ts < earliestTimestamp)) {
+					earliestTimestamp = ts;
+				}
+			}
+			const venues = new Set(
+				missingHistorySales
+					.map((s) => saleVenue(s))
+					.filter((v): v is ManualVenue => v !== null),
+			);
+			const singleVenue = venues.size === 1 ? [...venues][0] : undefined;
+			return {
+				asset,
+				sales: list,
+				total: list.reduce((sum, s) => sum.plus(s.quantity), D("0")).toFixed(),
+				missingHistoryCount: missingHistorySales.length,
+				missingHistoryTotal,
+				earliestTimestamp,
+				venue:
+					singleVenue && singleVenue !== "manual" ? singleVenue : undefined,
+			};
+		})
 		.sort((a, b) => b.sales.length - a.sales.length);
 }
 
@@ -154,8 +210,10 @@ export function UnresolvedSalesSection({
 		sales.flatMap((s) => (s.tx ? [s.tx.source] : [])),
 	);
 	const anyNoHistory = sales.some((s) => s.reasons.includes("missing_history"));
-	const grouped =
-		sales.length >= GROUP_BY_ASSET_FROM ? groupByAsset(sales) : null;
+	const assetGroups = groupByAsset(sales);
+	const showAssetHeaders =
+		sales.length >= GROUP_BY_ASSET_FROM ||
+		assetGroups.some((g) => g.missingHistoryCount > 1);
 
 	return (
 		<section
@@ -229,7 +287,13 @@ export function UnresolvedSalesSection({
 								) : null}
 								<span className="mt-1 block text-[var(--text-secondary)]">
 									Coins moved in from another exchange or wallet? Import that
-									one too. The user guide, section 2, lists every export.
+									one too.{" "}
+									<Link
+										href="/docs#crypto"
+										className="font-medium text-[var(--accent-text)] underline"
+									>
+										The user guide, section 2, lists every export.
+									</Link>
 								</span>
 							</li>
 							<li>
@@ -256,19 +320,42 @@ export function UnresolvedSalesSection({
 			</div>
 
 			<div className="overflow-hidden rounded border border-[var(--loss)]/25 bg-[var(--bg-surface)] text-xs">
-				{grouped ? (
-					grouped.map((group) => (
+				{showAssetHeaders ? (
+					assetGroups.map((group) => (
 						<div
 							key={group.asset}
 							className="border-b border-[var(--border)] last:border-b-0"
 						>
-							<h3 className="flex flex-wrap justify-between gap-2 bg-[var(--bg-subtle)] px-3 py-2 font-semibold">
-								<span>{group.asset}</span>
-								<span className="num font-normal text-[var(--text-secondary)]">
-									{group.sales.length} {pluralise(group.sales.length, "sale")} ·{" "}
-									{formatQty(group.total)} {group.asset} left out
-								</span>
-							</h3>
+							<div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--bg-subtle)] px-3 py-2">
+								<h3 className="flex flex-wrap items-center gap-2 font-semibold">
+									<span>{group.asset}</span>
+									<span className="num font-normal text-[var(--text-secondary)]">
+										{group.sales.length} {pluralise(group.sales.length, "sale")}{" "}
+										· {formatQty(group.total)} {group.asset} left out
+									</span>
+								</h3>
+								{group.missingHistoryCount > 1 ? (
+									<Link
+										href={combinedMissingBuyHref({
+											asset: group.asset,
+											qty: group.missingHistoryTotal,
+											...(group.earliestTimestamp
+												? { before: group.earliestTimestamp }
+												: {}),
+											taxYear,
+											...(group.venue ? { venue: group.venue } : {}),
+										})}
+										className="inline-flex items-center gap-1 rounded bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white hover:bg-[var(--accent-hover)]"
+									>
+										Add combined missing buy (
+										<span className="num">
+											{formatQty(group.missingHistoryTotal)}
+										</span>{" "}
+										{group.asset})
+										<ArrowRight className="h-3 w-3" aria-hidden="true" />
+									</Link>
+								) : null}
+							</div>
 							<SaleList sales={group.sales} taxYear={taxYear} />
 						</div>
 					))

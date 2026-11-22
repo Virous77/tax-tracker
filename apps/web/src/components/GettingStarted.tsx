@@ -36,7 +36,7 @@ function buildSteps(facts: GettingStartedFacts): Step[] {
 		},
 		{
 			title: "Import a file or connect an exchange",
-			hint: "Binance, CoinDCX or any CSV, or a read-only API key or wallet address.",
+			hint: "Crypto (Binance, CoinDCX, EVM wallets/APIs) or US Stocks (Vested, Schwab, IBKR, or any CSV/XLSX/PDF).",
 			href: "/import",
 			done: facts.hasOwnImport,
 		},
@@ -49,13 +49,13 @@ function buildSteps(facts: GettingStartedFacts): Step[] {
 		},
 		{
 			title: "Open the report",
-			hint: "Schedule VDA rows, tax and TDS credit for the year.",
+			hint: "Schedule VDA rows, tax and TDS credit in Report, or Capital Gains, Form 67 and Schedule FA in US Stocks.",
 			href: `/report?taxYear=${year}`,
 			done: facts.reportReady,
 		},
 		{
 			title: "Export",
-			hint: "Download CSV or XLSX from the report. Downloads are not tracked, so dismiss this list when you are done.",
+			hint: "Download CSV or XLSX from Report or US Stocks. Downloads are not tracked, so dismiss this list when you are done.",
 			href: `/report?taxYear=${year}`,
 			done: false,
 		},

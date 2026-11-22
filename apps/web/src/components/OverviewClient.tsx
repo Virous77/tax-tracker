@@ -162,6 +162,32 @@ export function OverviewClient() {
 	const hasLosses = report
 		? isPositiveDecimal(report.totals.lossesNotSetOff)
 		: false;
+	const hasComputedReport = report !== null || usEquityReport !== null;
+
+	const alertsNode = (
+		<OverviewAlerts
+			report={report}
+			review={review}
+			reviewCount={reviewCount}
+			taxYear={taxYear}
+		/>
+	);
+
+	const gettingStartedNode =
+		!loading && !error ? (
+			<GettingStarted
+				facts={{
+					taxYear,
+					settingsSaved: Boolean(settings?.settingsSavedAt),
+					hasOwnImport,
+					reportReady:
+						(report !== null && reportHasActivity(report)) ||
+						usEquityReport !== null,
+					openReviewItems: reviewCount,
+					reviewCurrent,
+				}}
+			/>
+		) : null;
 
 	return (
 		<div className="space-y-6">
@@ -169,7 +195,8 @@ export function OverviewClient() {
 				<div>
 					<h1 className="text-xl font-semibold tracking-tight">Tax Overview</h1>
 					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						India Schedule VDA summary, tax liability, and TDS credit.
+						India Crypto / VDA (Schedule VDA &amp; TDS) and US Stocks (Capital
+						Gains, Form 67 &amp; Schedule FA) summary.
 					</p>
 				</div>
 
@@ -191,16 +218,17 @@ export function OverviewClient() {
 				</div>
 			</div>
 
-			<div aria-live="polite" className="sr-only">
-				{statusMessage ?? ""}
+			<div aria-live="polite">
+				{statusMessage ? (
+					<div
+						role="status"
+						className="flex items-center gap-2 rounded-lg border border-[var(--positive)]/40 bg-[var(--positive-soft)] px-4 py-2.5 text-sm text-[var(--positive)]"
+					>
+						<CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+						<span>{statusMessage}</span>
+					</div>
+				) : null}
 			</div>
-
-			{statusMessage ? (
-				<div className="flex items-center gap-2 rounded-lg border border-[var(--positive)]/40 bg-[var(--positive-soft)] px-4 py-2.5 text-sm text-[var(--positive)]">
-					<CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
-					<span>{statusMessage}</span>
-				</div>
-			) : null}
 
 			{error ? (
 				<ErrorBanner message={error} onRetry={() => loadData(taxYear)} />
@@ -210,24 +238,11 @@ export function OverviewClient() {
 				<StaleReportBanner computing={computing} onRecompute={handleCompute} />
 			) : null}
 
-			<OverviewAlerts
-				report={report}
-				review={review}
-				reviewCount={reviewCount}
-				taxYear={taxYear}
-			/>
-
-			{!loading && !error ? (
-				<GettingStarted
-					facts={{
-						taxYear,
-						settingsSaved: Boolean(settings?.settingsSavedAt),
-						hasOwnImport,
-						reportReady: report !== null && reportHasActivity(report),
-						openReviewItems: reviewCount,
-						reviewCurrent,
-					}}
-				/>
+			{!hasComputedReport ? (
+				<>
+					{alertsNode}
+					{gettingStartedNode}
+				</>
 			) : null}
 
 			{loading ? (
@@ -245,8 +260,8 @@ export function OverviewClient() {
 					title="No transactions yet — import an export file"
 					description={
 						reportMissing && reportMissing.cause !== "never_computed"
-							? `${formatReportMissingState(reportMissing, taxYear, "overview").description} Upload your Binance, CoinDCX, or generic CSV/XLSX trade history to build your ledger.`
-							: "Upload your Binance, CoinDCX, or generic CSV/XLSX trade history to build your ledger and compute Schedule VDA. Just looking around? Load sample data to see a full report in one click."
+							? `${formatReportMissingState(reportMissing, taxYear, "overview").description} Upload your crypto (Binance, CoinDCX, EVM) or US stock (Vested, Schwab, IBKR) CSV/XLSX/PDF history to build your ledger.`
+							: "Upload your crypto (Binance, CoinDCX, EVM) or US stock (Vested, Schwab, IBKR) export history to build your ledger and compute Schedule VDA, Form 67, and Schedule FA. Just looking around? Load sample data to see a full report in one click."
 					}
 					action={
 						<div className="flex flex-wrap justify-center gap-3">
@@ -595,6 +610,13 @@ export function OverviewClient() {
 						</p>
 					)}
 				</section>
+			) : null}
+
+			{hasComputedReport ? (
+				<>
+					{alertsNode}
+					{gettingStartedNode}
+				</>
 			) : null}
 		</div>
 	);

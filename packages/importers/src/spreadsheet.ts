@@ -68,6 +68,17 @@ function sheetTable(
 				].includes(normaliseHeader(v)),
 			) && row.length > 2,
 	);
+	if (
+		index === -1 &&
+		excelDate1904 !== undefined &&
+		grid.some((row) =>
+			row.some((cell) => /^account statement$/i.test(cell.trim())),
+		) &&
+		grid.some((row) =>
+			row.some((cell) => /^drivewealth account number\b/i.test(cell.trim())),
+		)
+	)
+		return { name, headers: [], rows: [], excelDate1904 };
 	const headerIndex = Math.max(index, 0);
 	const originalHeaders = grid[headerIndex] ?? [];
 	const used = new Set<string>();

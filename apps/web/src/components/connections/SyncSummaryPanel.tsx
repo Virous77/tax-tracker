@@ -223,6 +223,30 @@ export function SyncSummaryPanel({
 				</>
 			) : null}
 
+			{connectionKind === "coindcx" ? (
+				<div className="flex items-start gap-2 rounded border border-[var(--warning)]/40 bg-[var(--bg-surface)] px-3 py-2 text-[var(--text-secondary)]">
+					<Info
+						className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--warning)]"
+						aria-hidden="true"
+					/>
+					<p>
+						CoinDCX API sync only includes{" "}
+						<strong className="font-medium text-[var(--text-primary)]">
+							Spot Orderbook trades
+						</strong>{" "}
+						— not Instant Buy/Sell orders, deposits/withdrawals, Earn/SIP, or
+						TDS / Form 16A.{" "}
+						<Link
+							href="/import"
+							className="font-medium text-[var(--accent-text)] underline"
+						>
+							Import CoinDCX XLSX &amp; Form 16A files
+						</Link>{" "}
+						for a complete ledger.
+					</p>
+				</div>
+			) : null}
+
 			{/* Balance check */}
 			<div className="space-y-2">
 				<div className="flex flex-wrap items-center justify-between gap-2">

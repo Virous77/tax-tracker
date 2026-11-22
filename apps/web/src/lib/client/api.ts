@@ -1,9 +1,12 @@
 import type {
 	ActualBalance,
+	EquityCyPrice,
+	EquityMetadata,
 	LedgerTx,
 	Recipe,
 	ReviewCode,
 	TxType,
+	UsEquityReport,
 	VdaReport,
 } from "@tax/core";
 import {
@@ -14,6 +17,7 @@ import {
 	BalanceSnapshotsResponseSchema,
 	ChangePassphraseRequestSchema,
 	ComputeReportResponseSchema,
+	ComputeUsEquityReportResponseSchema,
 	ConfirmImportRequestSchema,
 	ConfirmImportResponseSchema,
 	type Connection,
@@ -22,13 +26,23 @@ import {
 	ConnectionSchema,
 	CreateConnectionRequestSchema,
 	CreateImportResponseSchema,
+	type CreateManualTransactionRequestSchema,
 	CreateTransactionRequestSchema,
 	CreateTransactionResponseSchema,
 	DemoLoadResponseSchema,
 	DemoStatusSchema,
+	type EquityPriceFillSummarySchema,
+	type EquityPricesStatus,
+	EquityPricesStatusResponseSchema,
 	ErrorEnvelopeSchema,
+	FillEquityPricesRequestSchema,
+	FillEquityPricesResponseSchema,
+	GetEquityMetadataResponseSchema,
+	GetEquityPricesResponseSchema,
 	GetImportResponseSchema,
 	GetReportResponseSchema,
+	GetUsEquityActualBalancesResponseSchema,
+	GetUsEquityReportResponseSchema,
 	HealthResponseSchema,
 	type ImportDetail,
 	type ImportSummary,
@@ -50,9 +64,15 @@ import {
 	PricesStatusSchema,
 	ProvidersResponseSchema,
 	PutActualBalancesResponseSchema,
+	PutEquityMetadataRequestSchema,
+	PutEquityMetadataResponseSchema,
+	PutEquityPricesRequestSchema,
+	PutEquityPricesResponseSchema,
 	PutProviderRequestSchema,
 	PutSettingsRequestSchema,
 	PutSettingsResponseSchema,
+	PutUsEquityActualBalancesRequestSchema,
+	PutUsEquityActualBalancesResponseSchema,
 	type ReportMissingDetails,
 	ReportMissingDetailsSchema,
 	ResetVaultRequestSchema,
@@ -68,6 +88,7 @@ import {
 	TaxYearsResponseSchema,
 	type TransactionsQuery,
 	UnlockVaultRequestSchema,
+	type UsEquityExportKind,
 	VaultStatusSchema,
 } from "@tax/core/api";
 import { z } from "zod";
@@ -107,6 +128,12 @@ const FIELD_LABELS: Record<string, string> = {
 	amountIn: "Quantity received",
 	assetOut: "Asset sold / paid",
 	amountOut: "Quantity sold / paid",
+	feeAmount: "Fee amount",
+	feeAsset: "Fee currency",
+	dividendAsset: "Stock ticker",
+	withholdingTaxAmount: "Tax withheld",
+	withholdingTaxAsset: "Tax withheld currency",
+	entityName: "Company / entity name",
 	inrValue: "INR value",
 	tdsInr: "TDS deducted",
 	incomeKind: "Income kind",
@@ -128,14 +155,21 @@ const FIELD_LABELS: Record<string, string> = {
 	apiSecret: "API secret",
 	label: "Connection label",
 	address: "EVM address",
+	peakPriceUsd: "Peak price (USD)",
+	peakDate: "Peak date",
+	closingPriceUsd: "Closing price (USD)",
 };
 
 const DECIMAL_FIELDS = new Set([
 	"amountIn",
 	"amountOut",
+	"feeAmount",
+	"withholdingTaxAmount",
 	"inrValue",
 	"tdsInr",
 	"transferAmountTolerance",
+	"peakPriceUsd",
+	"closingPriceUsd",
 ]);
 
 function humanizeIssue(issue: z.core.$ZodIssue): {
@@ -490,7 +524,7 @@ export const api = {
 
 	createImport(input: {
 		file: File;
-		source: "auto" | "binance" | "coindcx" | "generic";
+		source: "auto" | "binance" | "coindcx" | "vested" | "generic";
 		timezone: ImportSummary["timezone"];
 		pdfPassword?: string;
 	}): Promise<ImportSummary> {
@@ -584,6 +618,7 @@ export const api = {
 		query: Partial<TransactionsQuery>,
 	): Promise<TransactionsPage> {
 		const params = new URLSearchParams();
+		if (query.assetClass) params.set("assetClass", query.assetClass);
 		if (query.taxYear) params.set("taxYear", query.taxYear);
 		if (query.asset) params.set("asset", query.asset);
 		if (query.type) params.set("type", query.type);
@@ -601,7 +636,7 @@ export const api = {
 	},
 
 	createTransaction(
-		input: z.input<typeof CreateTransactionRequestSchema>,
+		input: z.input<typeof CreateManualTransactionRequestSchema>,
 	): Promise<LedgerTx> {
 		const body = parseRequest(CreateTransactionRequestSchema, input);
 		return requestJson("/api/transactions", {
@@ -609,6 +644,12 @@ export const api = {
 			body: JSON.stringify(body),
 			schema: CreateTransactionResponseSchema,
 		});
+	},
+
+	createManualTransaction(
+		input: z.input<typeof CreateManualTransactionRequestSchema>,
+	): Promise<LedgerTx> {
+		return this.createTransaction(input);
 	},
 
 	patchTransaction(
@@ -924,6 +965,139 @@ export const api = {
 			schema: JobStartedSchema,
 		});
 	},
+
+	// Phase 3: US Stocks
+	computeUsEquityReport(taxYear: string): Promise<UsEquityReport> {
+		return requestJson(
+			`/api/us-equity/reports/${encodeURIComponent(taxYear)}/compute`,
+			{
+				method: "POST",
+				body: JSON.stringify({}),
+				schema: ComputeUsEquityReportResponseSchema,
+			},
+		);
+	},
+
+	getUsEquityReport(
+		taxYear: string,
+		allowStale = true,
+	): Promise<UsEquityReport> {
+		const params = new URLSearchParams({ allowStale: String(allowStale) });
+		return requestJson(
+			`/api/us-equity/reports/${encodeURIComponent(taxYear)}?${params.toString()}`,
+			{
+				schema: GetUsEquityReportResponseSchema,
+			},
+		);
+	},
+
+	async getUsEquityReportOrNull(
+		taxYear: string,
+		allowStale = true,
+	): Promise<UsEquityReport | null> {
+		try {
+			const params = new URLSearchParams({
+				allowStale: String(allowStale),
+				allowMissing: "true",
+			});
+			const body = await requestJson<unknown>(
+				`/api/us-equity/reports/${encodeURIComponent(taxYear)}?${params.toString()}`,
+			);
+			if (parseMissingReportBody(body)) return null;
+			return parseInDev(GetUsEquityReportResponseSchema, body);
+		} catch (err) {
+			if (err instanceof ApiError && err.status === 404) {
+				return null;
+			}
+			throw err;
+		}
+	},
+
+	usEquityExportUrl(
+		taxYear: string,
+		format: "csv" | "xlsx",
+		kind: UsEquityExportKind,
+	): string {
+		const params = new URLSearchParams({ format, kind });
+		return `/api/us-equity/reports/${encodeURIComponent(taxYear)}/export?${params.toString()}`;
+	},
+
+	getEquityMetadata(): Promise<EquityMetadata[]> {
+		return requestJson("/api/us-equity/metadata", {
+			schema: GetEquityMetadataResponseSchema,
+		});
+	},
+
+	putEquityMetadata(rows: EquityMetadata[]): Promise<EquityMetadata[]> {
+		const body = parseRequest(PutEquityMetadataRequestSchema, rows);
+		return requestJson("/api/us-equity/metadata", {
+			method: "PUT",
+			body: JSON.stringify(body),
+			schema: PutEquityMetadataResponseSchema,
+		});
+	},
+
+	getEquityPrices(calendarYear: number): Promise<EquityCyPrice[]> {
+		const params = new URLSearchParams({ calendarYear: String(calendarYear) });
+		return requestJson(`/api/us-equity/prices?${params.toString()}`, {
+			schema: GetEquityPricesResponseSchema,
+		});
+	},
+
+	putEquityPrices(
+		calendarYear: number,
+		prices: EquityCyPrice[],
+	): Promise<EquityCyPrice[]> {
+		const body = parseRequest(PutEquityPricesRequestSchema, {
+			calendarYear,
+			prices,
+		});
+		return requestJson("/api/us-equity/prices", {
+			method: "PUT",
+			body: JSON.stringify(body),
+			schema: PutEquityPricesResponseSchema,
+		});
+	},
+
+	getUsEquityActualBalances(taxYear: string): Promise<ActualBalance[]> {
+		const params = new URLSearchParams({ taxYear });
+		return requestJson(`/api/us-equity/balances/actual?${params.toString()}`, {
+			schema: GetUsEquityActualBalancesResponseSchema,
+		});
+	},
+
+	putUsEquityActualBalances(
+		taxYear: string,
+		balances: ActualBalance[],
+	): Promise<ActualBalance[]> {
+		const body = parseRequest(PutUsEquityActualBalancesRequestSchema, balances);
+		const params = new URLSearchParams({ taxYear });
+		return requestJson(`/api/us-equity/balances/actual?${params.toString()}`, {
+			method: "PUT",
+			body: JSON.stringify(body),
+			schema: PutUsEquityActualBalancesResponseSchema,
+		});
+	},
+
+	getEquityPricesStatus(taxYear: string): Promise<EquityPricesStatus> {
+		const params = new URLSearchParams({ taxYear });
+		return requestJson(`/api/us-equity/prices/status?${params.toString()}`, {
+			schema: EquityPricesStatusResponseSchema,
+		});
+	},
+
+	fillEquityPrices(input: {
+		taxYear: string;
+		provider?: "auto" | "polygon" | "finnhub";
+		overwrite?: boolean;
+	}): Promise<{ jobId: string }> {
+		const body = parseRequest(FillEquityPricesRequestSchema, input);
+		return requestJson("/api/us-equity/prices/fill", {
+			method: "POST",
+			body: JSON.stringify(body),
+			schema: FillEquityPricesResponseSchema,
+		});
+	},
 };
 
 const ProvidersMapSchema = ProvidersResponseSchema.catchall(
@@ -945,6 +1119,9 @@ export type KeyCheck = z.infer<typeof KeyCheckSchema>;
 export type ConnectionBalances = z.infer<typeof ConnectionBalancesSchema>;
 export type JobStatus = z.infer<typeof JobSchema>;
 export type PricesStatus = z.infer<typeof PricesStatusSchema>;
+export type EquityPriceFillSummary = z.infer<
+	typeof EquityPriceFillSummarySchema
+>;
 export type ManualVenue = z.infer<typeof ManualVenueSchema>;
 
 export type {
@@ -952,6 +1129,7 @@ export type {
 	BalanceCheckRow,
 	Connection,
 	ConnectionOptions,
+	EquityPricesStatus,
 	ImportDetail,
 	ImportSummary,
 	PriceFillSummary,

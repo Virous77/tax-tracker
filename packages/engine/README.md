@@ -44,6 +44,28 @@ These are implementation interpretations of gaps in the supplied spec, not indep
 6. The latest already-recorded stablecoin/INR trade supplies the ledger stablecoin rate; there is no lookahead. The rate's ledger id/date is printed. With `sbi_usd_tt`, the injected USD rate is used. USD-denominated price quotes always use USD FX. Supported USD stablecoins follow the selected USD/INR convention; depeg and market-value treatment still need CA approval.
 7. TDS thresholds use aggregate gross yearly VDA transfers across sources; once exceeded, the indicative amount uses the full gross transfer value on sources other than CoinDCX. It is not subtracted from recorded TDS or added to tax payable. Missing transfer values make this estimate incomplete and are flagged. CoinDCX is true, Binance false, other sources unknown with a warning; payer-specific obligations and thresholds need CA review.
 8. Missing-history and missing-value slices contribute neither consideration nor cost, gains, losses, or tax to resolved totals. They remain visible in Schedule VDA and `unresolved`. Recorded yearly TDS credit is retained even when the related disposal is unresolved. Unpriced receipt FMV is null, while an explicit zero income basis remains a user-selected assumption.
-9. Standalone `transfer` rows lack a destination source in the ledger schema; they are flagged and never create a guessed acquired lot. Dividend rows are flagged as outside Phase 0. Full US-equity tax computation remains Phase 3; its rule data exists now.
+9. Standalone `transfer` rows lack a destination source in the ledger schema; they are flagged and never create a guessed acquired lot. Legacy dividend rows classified as VDA are flagged as outside the VDA calculation.
 
 The 20 golden folders contain hand arithmetic, input, and expected values. Fee treatment, income basis, lot pool, specified-person status, Acts, and FX settlement have multiple variants. The additional settlement variant in case 05 was hand-written to exercise the USDT disposal leg explicitly, expanding coverage rather than changing an expectation to accommodate engine output. Rule sources and all cases remain pending CA sign-off; Phase 0's CA approval gate is not claimed complete.
+
+## US equity engine
+
+Call `computeUsEquityReport` with a complete ledger, `loadRules("india-us-equity", taxYear)`, parsed settings, and an injected SBI USD/INR TT buying rate lookup. Optional `metadata`, `cyPrices`, and `actualBalances` provide Schedule FA and reconciliation inputs. Legacy rows without `assetClass` are VDA. US equity and VDA reports use independent ledgers and holding pools.
+
+The CLI accepts JSON arrays for `--metadata` and `--prices`. This example writes the report and a Schedule FA CSV. Omit `--csv-kind` to include capital gains, dividends, Form 67, and Schedule FA in one CSV.
+
+```sh
+pnpm --filter @tax/cli exec node dist/index.js compute --regime us-equity \
+  --ledger ledger.json --year 2026-27 --metadata metadata.json --prices prices.json \
+  --out equity.json --csv schedule-fa.csv --csv-kind schedule-fa
+```
+
+### US equity interpretations for CA review
+
+- FIFO uses the IST acquisition and transfer dates. A sale on the clamped anniversary stays short-term. The report shows short-term gains and dividends for slab assessment and computes tax on resolved long-term gains. Carry-forward figures are current-year residual losses subject to filing eligibility.
+- Broker trade legs contain gross USD amounts. The recipe importer restores gross where the cash total matches the price, quantity, and fee within two cents. With fees included, USD brokerage increases purchase basis or reduces sale consideration. Other fee currencies require review. FX uses the chosen basis for each trade, dividend, and withholding event and accepts the last available SBI publication on or before that date.
+- Same-date withholding is assigned only when the ticker and candidate dividend are unambiguous, with source agreement preferred. Exact inline duplicates are counted once. Unmatched recorded tax stays visible in the Form 67 worksheet. Potential overlaps leave the combined amount and credit ceiling unresolved. The worksheet ceiling reflects foreign tax paid and requires review against the Indian tax attributable to that income and the treaty.
+- Schedule FA groups holdings by ticker across sources. Opening lots contribute their remaining cost after earlier sales. Buys during the calendar year contribute their acquisition cost. Initial INR values use each acquisition date’s rate, with per-lot FX details where rates differ. Peak value uses the recorded price and shares held at the close of the supplied date. Year-end value uses December 31 holdings and exchange rate. Confirm whether the supplied peak observation captures the highest reportable holding value. The report uses gross sale and dividend cash flows and flags absent market prices. Ask a CA whether foreign crypto exchange accounts need separate disclosure.
+- Exact, unambiguous share transfers carry cost and dates across venues. Schedule FA treats those shares as continuously owned. Unmatched deposits have unknown basis. Corporate actions flagged in the ledger require review before entering adjusted lots.
+
+Both rule years carry `sectionsVerified: false`. The US equity golden fixtures document the arithmetic behind their expectations.

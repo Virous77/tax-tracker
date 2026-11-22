@@ -1,0 +1,7 @@
+Date,Action,Symbol,Company,Quantity,Price,Fee,Total,Tax Withheld,Currency,ID
+2023-05-15,Buy,AAPL,APPLE INC,10,172.07,1.00,-1721.70,,USD,sample-buy-long
+2024-06-10,Buy,MSFT,MICROSOFT CORP,5,420.00,1.00,-2101.00,,USD,sample-buy-short
+2025-06-20,Sell,AAPL,APPLE INC,4,210.00,1.50,838.50,,USD,sample-sell-long
+2025-09-12,Sell,MSFT,MICROSOFT CORP,2,480.00,1.00,959.00,,USD,sample-sell-short
+2025-08-01,Dividend,AAPL,APPLE INC,,,,24.00,6.00,USD,sample-dividend
+2025-04-05,Cash Deposit,,,,,,5000.00,,USD,sample-deposit

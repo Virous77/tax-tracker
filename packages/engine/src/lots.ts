@@ -3,6 +3,7 @@ export interface Lot {
 	asset: string;
 	qty: ReturnType<typeof D>;
 	costInr: ReturnType<typeof D> | null;
+	costUsd?: ReturnType<typeof D> | null;
 	acquiredAt: string | null;
 	txId: string | null;
 	pool: string;
@@ -18,9 +19,16 @@ export class LotBook {
 			...lot,
 			qty: D(lot.qty),
 			costInr: lot.costInr === null ? null : D(lot.costInr),
+			...(lot.costUsd != null ? { costUsd: D(lot.costUsd) } : {}),
 			trailTxIds: [...lot.trailTxIds],
 		});
 		this.lots.sort((a, b) => a.order - b.order);
+	}
+	snapshot(): readonly Lot[] {
+		return this.lots.map((lot) => ({
+			...lot,
+			trailTxIds: [...lot.trailTxIds],
+		}));
 	}
 	consume(asset: string, pool: string, quantity: DecimalValue): LotSlice[] {
 		let remaining = D(quantity);
@@ -35,10 +43,19 @@ export class LotBook {
 				continue;
 			const qty = lot.qty.lte(remaining) ? D(lot.qty) : D(remaining);
 			const costInr = lot.costInr?.mul(qty).div(lot.qty) ?? null;
-			result.push({ ...lot, qty, costInr, trailTxIds: [...lot.trailTxIds] });
+			const costUsd = lot.costUsd?.mul(qty).div(lot.qty) ?? null;
+			result.push({
+				...lot,
+				qty,
+				costInr,
+				...(lot.costUsd !== undefined ? { costUsd } : {}),
+				trailTxIds: [...lot.trailTxIds],
+			});
 			lot.qty = lot.qty.minus(qty);
 			if (lot.costInr !== null && costInr !== null)
 				lot.costInr = lot.costInr.minus(costInr);
+			if (lot.costUsd != null && costUsd !== null)
+				lot.costUsd = lot.costUsd.minus(costUsd);
 			remaining = remaining.minus(qty);
 		}
 		if (remaining.gt("0"))

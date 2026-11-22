@@ -1,0 +1,31 @@
+{
+	"id": "us-stocks-schwab-v1",
+	"name": "US stocks (Schwab transactions CSV)",
+	"version": 1,
+	"fingerprint": "152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+	"sheet": "CSV",
+	"assetClass": "us_equity",
+	"defaultQuoteAsset": "USD",
+	"defaultFeeAsset": "USD",
+	"dateAsOf": "as_of",
+	"columns": {
+		"timestamp": "Date",
+		"side": "Action",
+		"baseAsset": "Symbol",
+		"description": "Description",
+		"amount": "Quantity",
+		"price": "Price",
+		"total": "Amount",
+		"feeAmount": "Fees & Comm"
+	},
+	"dateFormat": "MM/dd/yyyy",
+	"sideMap": {
+		"Buy": "buy",
+		"Sell": "sell",
+		"Qualified Dividend": "dividend",
+		"Cash Dividend": "dividend",
+		"NRA Tax Adj": "foreign_tax",
+		"Wire Funds Received": "deposit"
+	},
+	"signStyle": "side_column"
+}

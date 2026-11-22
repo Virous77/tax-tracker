@@ -1,0 +1,57 @@
+{
+	"cases": [
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2024-04-01T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "VTI",
+					"amountIn": "1",
+					"assetOut": "USD",
+					"amountOut": "100"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "VTI",
+					"amountOut": "3",
+					"assetIn": "USD",
+					"amountIn": "450"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2023-01-01",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				}
+			],
+			"actualBalances": [
+				{
+					"asset": "VTI",
+					"amount": "0"
+				}
+			]
+		}
+	]
+}

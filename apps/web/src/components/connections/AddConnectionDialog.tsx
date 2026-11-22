@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, ExternalLink, X } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { KeyCheckBanner } from "@/components/connections/KeyCheckBanner";
 import { SymbolTagInput } from "@/components/connections/SymbolTagInput";
@@ -314,19 +315,35 @@ export function AddConnectionDialog({
 					) : null}
 
 					{kind === "coindcx" ? (
-						<div className="space-y-1.5 rounded-md border border-[var(--warning)]/40 bg-[var(--warning-soft)] p-3 text-xs">
+						<div className="space-y-2 rounded-md border border-[var(--warning)]/40 bg-[var(--warning-soft)] p-3 text-xs">
 							<p className="flex items-center gap-1.5 font-semibold text-[var(--warning)]">
 								<AlertTriangle
 									className="h-3.5 w-3.5 shrink-0"
 									aria-hidden="true"
 								/>
-								Create a read-only key (important CoinDCX limits)
+								Create a read-only key (Spot Orderbook only — CoinDCX API
+								limits)
 							</p>
 							<p className="text-[var(--text-primary)]">
 								CoinDCX keys cannot be limited to read-only. Turn on IP binding
-								if you can, and use a sub-account. The CoinDCX API has no
-								deposit/withdrawal history or TDS, so keep importing the CoinDCX
-								export file for those.
+								if you can, and use a sub-account.
+							</p>
+							<p className="text-[var(--text-primary)]">
+								<strong>API sync imports Spot Orderbook trades only.</strong> It
+								does not sync <strong>Instant Buy/Sell orders</strong>,{" "}
+								<strong>crypto deposits/withdrawals</strong>,{" "}
+								<strong>Earn/SIP</strong>, or <strong>TDS / Form 16A</strong>,
+								and CoinDCX fees are reported without fee currency or GST split.
+								Pair API sync with CoinDCX file exports (Instant/Spot XLSX +
+								Form 16A PDF) on{" "}
+								<Link
+									href="/import"
+									onClick={handleClose}
+									className="font-medium text-[var(--accent-text)] underline"
+								>
+									Import
+								</Link>
+								.
 							</p>
 							<a
 								href="https://coindcx.com/api-dashboard"

@@ -21,6 +21,9 @@ export const REPORT_KIND_LABELS: Readonly<Record<string, string>> = {
 	"coindcx:options": "CoinDCX Options",
 	"coindcx:form16a-pdf": "CoinDCX Form 16A",
 	"coindcx:mixed": "CoinDCX Trade Report",
+	"vested:account-statement-pdf": "Vested Account Statement (PDF)",
+	"vested:account-statement-xlsx": "Vested Account Statement (XLSX)",
+	"vested:account-statement-csv": "Vested Account Statement (CSV)",
 };
 
 export const AWAITING_HEADER_SAMPLES = [

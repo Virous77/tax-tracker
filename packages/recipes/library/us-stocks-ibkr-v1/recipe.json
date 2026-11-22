@@ -1,0 +1,28 @@
+{
+	"id": "us-stocks-ibkr-v1",
+	"name": "US stocks (IBKR trades CSV)",
+	"version": 1,
+	"fingerprint": "f0153b21bc66e53dc4f176522c554518822748baa9200710a0cfbaed35033d3e",
+	"sheet": "CSV",
+	"assetClass": "us_equity",
+	"defaultQuoteAsset": "USD",
+	"defaultFeeAsset": "USD",
+	"columns": {
+		"timestamp": "DateTime",
+		"side": "Buy/Sell",
+		"baseAsset": "Symbol",
+		"description": "Description",
+		"amount": "Quantity",
+		"price": "TradePrice",
+		"total": "NetCash",
+		"feeAmount": "IBCommission",
+		"currency": "Currency",
+		"id": "TradeID"
+	},
+	"dateFormat": "yyyy-MM-dd HH:mm:ss",
+	"sideMap": {
+		"BUY": "buy",
+		"SELL": "sell"
+	},
+	"signStyle": "side_column"
+}

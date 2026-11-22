@@ -6,13 +6,34 @@
 		"end": "2027-03-31",
 		"timezone": "Asia/Kolkata"
 	},
+	"scheduleFaCalendarYear": 2026,
 	"longTermHoldingMonths": 24,
 	"longTermRate": "0.125",
+	"cess": "0.04",
+	"surchargeCapLtcg": "0.15",
 	"indexation": false,
 	"shortTermRate": "slab",
 	"dividendRate": "slab",
 	"usWithholdingDefault": "0.25",
 	"fxRule": "sbi_tt_buying_last_day_of_previous_month",
+	"lossSetOff": {
+		"stclAgainst": ["stcg", "ltcg"],
+		"ltclAgainst": ["ltcg"],
+		"carryForwardYears": 8
+	},
+	"dtaa": {
+		"countryName": "United States of America",
+		"countryCode": "2",
+		"dividendArticle": "Article 10(2)(b)"
+	},
+	"sections": {
+		"ltcgTax": "Section 197 (foreign equity LTCG 12.5%)",
+		"stcgTax": "Normal slab rates (≤ 24 months)",
+		"dividendIncome": "Income from Other Sources (2025 Act)",
+		"foreignTaxCredit": "Double taxation relief & Form 67 (2026 Rules)",
+		"foreignAssets": "Schedule FA (Table A3)",
+		"currencyConversionRule": "Rule 206"
+	},
 	"sectionsVerified": false,
 	"sources": ["https://incometax.gov.in/"]
 }

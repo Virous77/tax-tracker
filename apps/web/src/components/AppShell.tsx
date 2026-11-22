@@ -3,6 +3,7 @@
 import {
 	AlertTriangle,
 	ArrowLeftRight,
+	BookOpen,
 	FileSpreadsheet,
 	FolderClock,
 	LayoutDashboard,
@@ -13,6 +14,7 @@ import {
 	Settings,
 	ShieldCheck,
 	Sun,
+	TrendingUp,
 	Upload,
 	X,
 } from "lucide-react";
@@ -39,6 +41,8 @@ const NAV_ITEMS = [
 	{ href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
 	{ href: "/review", label: "Review", icon: AlertTriangle },
 	{ href: "/report", label: "Report", icon: FileSpreadsheet },
+	{ href: "/us-stocks", label: "US Stocks", icon: TrendingUp },
+	{ href: "/docs", label: "Docs", icon: BookOpen },
 	{ href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
@@ -52,7 +56,7 @@ function applyTheme(pref: ThemePref) {
 }
 
 /** Table-heavy pages that benefit from the full content width. */
-const WIDE_ROUTES = new Set(["/imports"]);
+const WIDE_ROUTES = new Set(["/imports", "/us-stocks", "/docs"]);
 
 export function AppShell({ children }: { children: ReactNode }) {
 	const pathname = usePathname();

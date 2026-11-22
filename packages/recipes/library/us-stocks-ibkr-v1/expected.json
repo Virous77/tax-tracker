@@ -1,0 +1,130 @@
+[
+	{
+		"source": "csv:f0153b21bc66e53dc4f176522c554518822748baa9200710a0cfbaed35033d3e",
+		"sourceRef": "ibkr-buy-1",
+		"importId": null,
+		"timestamp": "2023-05-15T09:30:00.000Z",
+		"type": "buy",
+		"assetIn": "AAPL",
+		"amountIn": "10",
+		"assetOut": "USD",
+		"amountOut": "1720.7",
+		"entityName": "APPLE INC",
+		"feeAsset": "USD",
+		"feeAmount": "1",
+		"priceQuote": {
+			"asset": "USD",
+			"price": "172.07"
+		},
+		"raw": {
+			"DateTime": "2023-05-15 09:30:00",
+			"Symbol": "AAPL",
+			"Description": "APPLE INC",
+			"Buy/Sell": "BUY",
+			"Quantity": "10",
+			"TradePrice": "172.07",
+			"IBCommission": "-1.00",
+			"NetCash": "-1721.70",
+			"Currency": "USD",
+			"TradeID": "ibkr-buy-1"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:f0153b21bc66e53dc4f176522c554518822748baa9200710a0cfbaed35033d3e",
+		"sourceRef": "ibkr-buy-2",
+		"importId": null,
+		"timestamp": "2024-06-10T09:31:00.000Z",
+		"type": "buy",
+		"assetIn": "MSFT",
+		"amountIn": "5",
+		"assetOut": "USD",
+		"amountOut": "2100",
+		"entityName": "MICROSOFT CORP",
+		"feeAsset": "USD",
+		"feeAmount": "1",
+		"priceQuote": {
+			"asset": "USD",
+			"price": "420"
+		},
+		"raw": {
+			"DateTime": "2024-06-10 09:31:00",
+			"Symbol": "MSFT",
+			"Description": "MICROSOFT CORP",
+			"Buy/Sell": "BUY",
+			"Quantity": "5",
+			"TradePrice": "420.00",
+			"IBCommission": "-1.00",
+			"NetCash": "-2101.00",
+			"Currency": "USD",
+			"TradeID": "ibkr-buy-2"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:f0153b21bc66e53dc4f176522c554518822748baa9200710a0cfbaed35033d3e",
+		"sourceRef": "ibkr-sell-1",
+		"importId": null,
+		"timestamp": "2025-06-20T09:32:00.000Z",
+		"type": "sell",
+		"assetIn": "USD",
+		"amountIn": "840",
+		"assetOut": "AAPL",
+		"amountOut": "4",
+		"entityName": "APPLE INC",
+		"feeAsset": "USD",
+		"feeAmount": "1",
+		"priceQuote": {
+			"asset": "USD",
+			"price": "210"
+		},
+		"raw": {
+			"DateTime": "2025-06-20 09:32:00",
+			"Symbol": "AAPL",
+			"Description": "APPLE INC",
+			"Buy/Sell": "SELL",
+			"Quantity": "4",
+			"TradePrice": "210.00",
+			"IBCommission": "-1.00",
+			"NetCash": "839.00",
+			"Currency": "USD",
+			"TradeID": "ibkr-sell-1"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:f0153b21bc66e53dc4f176522c554518822748baa9200710a0cfbaed35033d3e",
+		"sourceRef": "ibkr-sell-2",
+		"importId": null,
+		"timestamp": "2025-09-12T09:33:00.000Z",
+		"type": "sell",
+		"assetIn": "USD",
+		"amountIn": "960",
+		"assetOut": "MSFT",
+		"amountOut": "2",
+		"entityName": "MICROSOFT CORP",
+		"feeAsset": "USD",
+		"feeAmount": "1",
+		"priceQuote": {
+			"asset": "USD",
+			"price": "480"
+		},
+		"raw": {
+			"DateTime": "2025-09-12 09:33:00",
+			"Symbol": "MSFT",
+			"Description": "MICROSOFT CORP",
+			"Buy/Sell": "SELL",
+			"Quantity": "2",
+			"TradePrice": "480.00",
+			"IBCommission": "-1.00",
+			"NetCash": "959.00",
+			"Currency": "USD",
+			"TradeID": "ibkr-sell-2"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	}
+]

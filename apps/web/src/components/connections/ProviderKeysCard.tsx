@@ -50,6 +50,20 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
 		keyUrl: "https://nodereal.io/",
 		keyLinkLabel: "Get free key",
 	},
+	polygon: {
+		label: "Polygon.io (Massive)",
+		purpose:
+			"Free daily US stock prices (2 years history, 5 calls/min) to auto-fill Schedule FA peak and Dec 31 closing values.",
+		keyUrl: "https://polygon.io/dashboard/api-keys",
+		keyLinkLabel: "Get free key",
+	},
+	finnhub: {
+		label: "Finnhub",
+		purpose:
+			"Alternative / fallback daily US stock prices (60 calls/min) for Schedule FA peak and Dec 31 closing values.",
+		keyUrl: "https://finnhub.io/dashboard",
+		keyLinkLabel: "Get free key",
+	},
 };
 
 export function providerDisplayName(name: string): string {
@@ -169,8 +183,8 @@ export function ProviderKeysCard({
 						Provider API Keys
 					</h2>
 					<p className="text-xs text-[var(--text-secondary)]">
-						Used only when you sync an EVM wallet or run a CoinGecko price
-						lookup.
+						Used only when you sync an EVM wallet, run a CoinGecko crypto price
+						lookup, or auto-fill US stock Schedule FA prices.
 					</p>
 				</div>
 				{!vaultUnlocked ? (

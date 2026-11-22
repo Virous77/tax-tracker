@@ -16,9 +16,11 @@ import {
 	type ImportResult,
 	importFileAsync,
 	isCoinDcx,
+	isVested,
 	PdfImportError,
 	parseBinance,
 	parseCoinDcx,
+	parseVested,
 	REPORT_KIND_LABELS,
 	readSheets,
 	recipeChecks,
@@ -125,7 +127,11 @@ function saveResult(
 							? { ...sheet, recipeName: recipe.name }
 							: sheet,
 					)
-				: imported.sheets,
+				: imported.source === "vested"
+					? imported.sheets?.filter((sheet) =>
+							result.sheets?.some(({ name }) => name === sheet.name),
+						)
+					: imported.sheets,
 			rowErrors: result.rowErrors,
 			warnings: result.warnings,
 			reportKind: result.reportKind ?? null,
@@ -151,7 +157,11 @@ function saveResult(
 				"row_count_mismatch",
 				"Importer did not account for every row.",
 			);
-		db.imports.save(updated);
+		db.imports.save(
+			updated,
+			recipe?.assetClass ??
+				(imported.source === "vested" ? "us_equity" : "vda"),
+		);
 		return required(db.imports.get(imported.id));
 	});
 }
@@ -197,7 +207,7 @@ export async function createImport(
 	db: TaxDatabase,
 	input: z.infer<typeof CreateImportRequestSchema>,
 ) {
-	if (isPdf(input.file)) {
+	if (isPdf(input.file) || /\.pdf$/i.test(input.fileName)) {
 		let result: ImportResult;
 		try {
 			result = await importFileAsync(
@@ -209,7 +219,15 @@ export async function createImport(
 				},
 			);
 		} catch (error) {
-			if (error instanceof PdfImportError) throw pdfApiError(error);
+			if (error instanceof PdfImportError) {
+				if (input.source === "vested" && error.code === "pdf_unknown_layout")
+					throw new ApiError(
+						422,
+						"unprocessable_file",
+						"File does not match the Vested Account Statement PDF layout.",
+					);
+				throw pdfApiError(error);
+			}
 			throw new ApiError(
 				422,
 				"pdf_unsupported",
@@ -224,13 +242,26 @@ export async function createImport(
 				"This PDF does not match the selected venue.",
 			);
 		const imported = pendingImport(input, source, result.rowsRead, []);
+		imported.sheets =
+			result.sheets?.map(({ name, rowsRead }) => ({
+				name,
+				rowsRead,
+				headers: [],
+				sampleRows: [],
+			})) ?? [];
 		return runJob(db, "import", { importId: imported.id }, async () =>
 			db.atomic(() => {
-				db.imports.save(imported);
-				const originals =
-					result.balanceSnapshot?.rows ??
-					result.tdsSummary ??
-					result.transactions.map((tx) => ({ raw: tx.raw }));
+				db.imports.save(
+					imported,
+					source === "vested" ? "us_equity" : undefined,
+				);
+				const originals = [
+					...result.transactions.map((tx) => ({ raw: tx.raw })),
+					...(result.balanceSnapshot?.rows ?? []),
+					...(result.tdsSummary ?? []),
+					...result.rowErrors,
+					...(result.skippedRows ?? []),
+				].filter((row) => row.raw !== undefined);
 				db.rawRows.insert(
 					originals.map((row, rowIndex) => ({
 						id: randomUUID(),
@@ -282,6 +313,12 @@ export async function createImport(
 			"unprocessable_file",
 			"File does not match CoinDCX. Expected headers: Trade Completion time (or Transaction time), Side (Buy/Sell), and Gross Amount Paid/Received by the user(in INR) (or in base currency).",
 		);
+	if (source === "vested" && !isVested(sheets))
+		throw new ApiError(
+			422,
+			"unprocessable_file",
+			"File does not match the Vested Account Statement layout. Expected an All Transactions, Trades or Income table with a Time (in UTC) column.",
+		);
 	const imported = pendingImport(
 		input,
 		source,
@@ -293,7 +330,7 @@ export async function createImport(
 			const pending = db.imports.findPendingGenericFile(imported.fileSha256);
 			if (pending) return pending;
 		}
-		db.imports.save(imported);
+		db.imports.save(imported, source === "vested" ? "us_equity" : undefined);
 		db.rawRows.insert(
 			sheets.flatMap((sheet) =>
 				sheet.rows.map((data, rowIndex) => ({
@@ -323,6 +360,13 @@ export async function createImport(
 					db,
 					imported,
 					parseCoinDcx(sheets, options, input.fileName),
+					null,
+				);
+			if (source === "vested")
+				return saveResult(
+					db,
+					imported,
+					parseVested(sheets, options, input.fileName),
 					null,
 				);
 			const recipes = [...db.recipes.list(), ...libraryRecipes];
@@ -458,9 +502,12 @@ export function previewRecipe(
 	return {
 		rows: sheet.rows.slice(0, 10).map((original, rowIndex) => {
 			const error = result.rowErrors.find((row) => row.rowIndex === rowIndex);
-			return error
-				? { original, converted: null, error: error.message }
-				: { original, converted: transactions.shift() ?? null };
+			if (error) return { original, converted: null, error: error.message };
+			const skipped = result.skippedRows?.find(
+				(row) => row.rowIndex === rowIndex,
+			);
+			if (skipped) return { original, converted: null };
+			return { original, converted: transactions.shift() ?? null };
 		}),
 		checks: recipeChecks(result),
 	};

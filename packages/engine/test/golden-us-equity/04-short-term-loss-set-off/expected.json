@@ -1,0 +1,27 @@
+{
+	"cases": [
+		{
+			"capitalGains": {
+				"summary": {
+					"shortTerm": {
+						"grossGainInr": "800.00",
+						"grossLossInr": "4000.00",
+						"netGainInr": "-3200.00"
+					},
+					"longTerm": {
+						"grossGainInr": "4800.00"
+					},
+					"setOff": {
+						"stclAgainstLtcgInr": "3200.00",
+						"netTaxableStcgInr": "0.00",
+						"netTaxableLtcgInr": "1600.00",
+						"carryForwardStclInr": "0.00"
+					},
+					"ltcgTax": {
+						"totalLtcgTaxInr": "208.00"
+					}
+				}
+			}
+		}
+	]
+}

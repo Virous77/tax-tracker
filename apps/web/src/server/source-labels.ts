@@ -26,6 +26,8 @@ function sourceLabelFor(recipes: Recipe[]) {
 				return "CoinDCX";
 			case "coindcx-api":
 				return "CoinDCX (API)";
+			case "vested":
+				return "Vested";
 			case "manual":
 				return "Manual";
 			case "generic":

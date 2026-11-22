@@ -24,7 +24,9 @@ function readPicked(): string {
  * last picked this session, else the sample-data year, else the saved default. `taxYear` is
  * empty until every source has answered, so a page never flashes a year it then replaces.
  */
-export function useSelectedTaxYear(path: "/" | "/report" | "/review") {
+export function useSelectedTaxYear(
+	path: "/" | "/report" | "/review" | "/us-stocks",
+) {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const urlTaxYear = searchParams.get("taxYear") ?? "";

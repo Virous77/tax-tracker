@@ -1,5 +1,8 @@
 import { Suspense } from "react";
 import { ReportClient } from "@/components/report/ReportClient";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata("report");
 
 export default function ReportPage() {
 	return (

@@ -31,6 +31,8 @@ export function baseUrls(): ConnectorContext["baseUrls"] {
 			alchemy: process.env.ALCHEMY_API_BASE,
 			nodereal: process.env.NODEREAL_API_BASE,
 			coingecko: process.env.COINGECKO_API_BASE,
+			polygon: process.env.POLYGON_API_BASE || "https://api.polygon.io",
+			finnhub: process.env.FINNHUB_API_BASE || "https://finnhub.io/api/v1",
 		}).filter((entry): entry is [string, string] => Boolean(entry[1]?.trim())),
 	);
 }

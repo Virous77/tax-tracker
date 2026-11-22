@@ -8,6 +8,10 @@ import {
 export const EngineSettingsSchema = z.object({
 	marketPriceBasis: z.enum(["close", "vwap"]).default("close"),
 	feeTreatment: z.enum(["exclude", "include"]).default("exclude"),
+	usEquityFeeTreatment: z.enum(["include", "exclude"]).default("include"),
+	usEquityFxBasis: z
+		.enum(["prev_month_end", "trade_date"])
+		.default("prev_month_end"),
 	lotMethod: z.literal("FIFO").default("FIFO"),
 	lotPool: z.enum(["global", "per_source"]).default("global"),
 	usdtInrRate: z
@@ -27,6 +31,12 @@ export const EngineSettingsPatchSchema = z.object({
 		.removeDefault()
 		.optional(),
 	feeTreatment: EngineSettingsSchema.shape.feeTreatment
+		.removeDefault()
+		.optional(),
+	usEquityFeeTreatment: EngineSettingsSchema.shape.usEquityFeeTreatment
+		.removeDefault()
+		.optional(),
+	usEquityFxBasis: EngineSettingsSchema.shape.usEquityFxBasis
 		.removeDefault()
 		.optional(),
 	lotMethod: EngineSettingsSchema.shape.lotMethod.removeDefault().optional(),

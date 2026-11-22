@@ -37,6 +37,10 @@ import {
 export { computeHoldings } from "./holdings.js";
 export { type Lot, LotBook, type LotSlice } from "./lots.js";
 export { compareTransactions, matchTransfers } from "./matching.js";
+export {
+	type ComputeUsEquityInput,
+	computeUsEquityReport,
+} from "./us-equity/index.js";
 export { valueTransaction } from "./valuation.js";
 export interface ComputeVdaInput {
 	transactions: LedgerTx[];
@@ -59,6 +63,7 @@ export function computeVdaReport(input: ComputeVdaInput): VdaReport {
 	)
 		throw new Error("Rule period does not match requested tax year");
 	const transactions = input.transactions
+		.filter((tx) => (tx.assetClass ?? "vda") === "vda")
 		.map((tx) => LedgerTxSchema.parse(tx))
 		.sort(compareTransactions);
 	const keys = new Set<string>();

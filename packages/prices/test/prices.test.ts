@@ -3,9 +3,10 @@ import {
 	EngineSettingsSchema,
 	type LedgerTx,
 } from "@tax/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	binanceKlines,
+	coingeckoContractId,
 	coingeckoHistory,
 	planPriceFill,
 	priceLookupFromCache,
@@ -189,4 +190,51 @@ describe("offline planning and cache lookup", () => {
 		expect(await history(0)).toBeNull();
 		expect(await history(null)).toBeNull();
 	});
+});
+
+describe("CoinGecko contract lookup", () => {
+	const address = "0123456789ABCDEF0123456789ABCDEF01234567";
+	const apiKey = "contract-test-key";
+
+	it.each([
+		["1", "ethereum"],
+		["8453", "base"],
+		["42161", "arbitrum-one"],
+		["137", "polygon-pos"],
+		["56", "binance-smart-chain"],
+	])("looks up chain %s on the %s platform", async (chainId, platform) => {
+		const request = vi.fn(async () => ({ id: "test-token" }));
+		expect(
+			await coingeckoContractId({
+				request,
+				apiKey,
+				asset: `ERC20:${chainId}:0X${address}`,
+			}),
+		).toBe("test-token");
+		expect(request).toHaveBeenCalledExactlyOnceWith(
+			`https://api.coingecko.com/api/v3/coins/${platform}/contract/0x${address.toLowerCase()}`,
+			{ headers: { "x-cg-demo-api-key": apiKey } },
+		);
+	});
+
+	it.each([
+		`ERC20:10:0X${address}`,
+		`ERC20:11155111:0X${address}`,
+		`ERC20:base:0X${address}`,
+		`ERC20::0X${address}`,
+		`ERC721:1:0X${address}`,
+		`ERC20:1:${address}`,
+		`ERC20:1:0x${address}`,
+		`ERC20:1:0X${address.toLowerCase()}`,
+		`ERC20:1:0X${address.slice(1)}`,
+		`ERC20:1:0X${address}A`,
+		`ERC20:1:0X${address.slice(1)}G`,
+	])(
+		"ignores unsupported or malformed asset %s without a request",
+		async (asset) => {
+			const request = vi.fn();
+			expect(await coingeckoContractId({ request, apiKey, asset })).toBeNull();
+			expect(request).not.toHaveBeenCalled();
+		},
+	);
 });

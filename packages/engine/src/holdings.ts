@@ -1,4 +1,5 @@
 import {
+	type AssetClass,
 	D,
 	type EngineSettings,
 	type LedgerTx,
@@ -6,24 +7,30 @@ import {
 	venueForTransaction,
 } from "@tax/core";
 import { matchTransfers } from "./matching.js";
+import { equityShareLeg } from "./us-equity/values.js";
 import { FIAT } from "./valuation.js";
 
 export function computeHoldings(input: {
 	transactions: LedgerTx[];
 	settings: EngineSettings;
 	asOf: string;
+	assetClass?: AssetClass;
 }): { asset: string; venue: string; quantity: string }[] {
 	const asOf = Date.parse(input.asOf);
 	if (!Number.isFinite(asOf)) throw new Error("Invalid holdings date");
 	const txs = input.transactions
+		.filter((tx) => (tx.assetClass ?? "vda") === (input.assetClass ?? "vda"))
 		.map((tx) => LedgerTxSchema.parse(tx))
 		.filter(
 			(tx) =>
 				Date.parse(tx.timestamp) <= asOf &&
 				!tx.reviewFlags.some((f) => f.code === "suspected_spam"),
 		);
+	const equity = input.assetClass === "us_equity";
 	const matches = new Map(
-		matchTransfers(txs, input.settings).map((m) => [m.withdrawal.id, m]),
+		equity
+			? []
+			: matchTransfers(txs, input.settings).map((m) => [m.withdrawal.id, m]),
 	);
 	const rows = new Map<
 		string,
@@ -42,6 +49,21 @@ export function computeHoldings(input: {
 	};
 	for (const tx of txs) {
 		const venue = venueForTransaction(tx);
+		if (equity) {
+			const share = equityShareLeg(tx);
+			if (
+				share &&
+				!tx.reviewFlags.some(({ code }) => code === "corporate_action")
+			)
+				change(
+					share.asset,
+					venue,
+					share.direction === "in"
+						? share.quantity
+						: D(share.quantity).negated().toFixed(),
+				);
+			continue;
+		}
 		change(tx.assetIn, venue, tx.amountIn);
 		change(
 			tx.assetOut,

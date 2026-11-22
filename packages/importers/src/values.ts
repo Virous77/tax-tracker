@@ -33,12 +33,12 @@ export function headerFingerprint(headers: string[], sheet = "CSV"): string {
 }
 export function numberString(value: string, absolute = false): string {
 	try {
-		const parsed = parseDecimal(
-			value
-				.trim()
-				.replace(/^[₹$£€]\s*/, "")
-				.replaceAll(",", ""),
-		);
+		const trimmed = value.trim();
+		const accounting = trimmed.startsWith("(") && trimmed.endsWith(")");
+		const normalized = (accounting ? trimmed.slice(1, -1).trim() : trimmed)
+			.replace(/^([+-]?)[₹$£€]\s*/, "$1")
+			.replaceAll(",", "");
+		const parsed = parseDecimal(accounting ? `-${normalized}` : normalized);
 		return (absolute ? parsed.abs() : parsed).toFixed();
 	} catch {
 		throw new RowParseError("Invalid numeric cell.", "number");
@@ -121,9 +121,14 @@ export function parseTimestamp(
 	format: string,
 	timezone: ImportTimezone,
 	date1904?: boolean,
+	dateAsOf: "as_of" | "first" = "as_of",
 ): string {
 	const explicitUtc = / UTC$/i.test(value.trim());
-	const input = value.trim().replace(/ UTC$/i, "");
+	const raw = value.trim().replace(/ UTC$/i, "");
+	const asOf = raw.match(
+		/^(\d{1,2}\/\d{1,2}\/\d{4})\s+as of\s+(\d{1,2}\/\d{1,2}\/\d{4})$/i,
+	);
+	const input = asOf?.[dateAsOf === "first" ? 1 : 2] ?? raw;
 	const offsetMinutes = timezoneOffsetMinutes(explicitUtc ? "UTC" : timezone);
 	try {
 		if (

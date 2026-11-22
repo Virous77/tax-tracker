@@ -353,6 +353,9 @@ importers:
       '@tax/core':
         specifier: workspace:*
         version: link:../core
+      '@tax/engine':
+        specifier: workspace:*
+        version: link:../engine
       '@tax/sync':
         specifier: workspace:*
         version: link:../sync

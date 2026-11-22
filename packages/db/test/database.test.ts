@@ -7,6 +7,7 @@ import type { ImportDetail } from "@tax/core/api";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase } from "../src/index.js";
+import { removePhase3Schema } from "./migration-fixtures.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -89,6 +90,7 @@ describe("database", () => {
 		db.transactions.update({ ...edited, userNote: "checked" });
 		db.close();
 		const sqlite = new Database(join(dir, "tax-tracker.db"));
+		removePhase3Schema(sqlite);
 		sqlite.exec(
 			"DELETE FROM __drizzle_migrations WHERE created_at >= (SELECT created_at FROM __drizzle_migrations ORDER BY created_at LIMIT 1 OFFSET 7); ALTER TABLE imports DROP COLUMN demo; DROP TABLE review_resolutions;",
 		);
@@ -99,9 +101,13 @@ describe("database", () => {
 			raw,
 			reviewFlags: [{ code: "parse_warning" }, { code: "unknown_type" }],
 		});
-		expect(upgraded.transactions.get(fee.id)).toEqual(fee);
+		expect(upgraded.transactions.get(fee.id)).toEqual({
+			...fee,
+			assetClass: "vda",
+		});
 		expect(upgraded.transactions.get(edited.id)).toEqual({
 			...edited,
+			assetClass: "vda",
 			userNote: "checked",
 		});
 		upgraded.close();

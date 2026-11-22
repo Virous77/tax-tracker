@@ -4,6 +4,7 @@ export interface FixtureText {
 	text: string;
 	x: number;
 	y: number;
+	fontSize?: number;
 }
 const padding = Buffer.from(
 	"28bf4e5e4e758a4164004e56fffa01082e2e00b6d0683e802f0ca9fe6453697a",
@@ -67,7 +68,7 @@ export function syntheticPdf(
 			rows
 				.map(
 					(row) =>
-						`BT /F1 10 Tf 1 0 0 1 ${row.x} ${792 - row.y} Tm (${row.text.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)")}) Tj ET`,
+						`BT /F1 ${row.fontSize ?? 10} Tf 1 0 0 1 ${row.x} ${792 - row.y} Tm (${row.text.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)")}) Tj ET`,
 				)
 				.join("\n"),
 			"latin1",

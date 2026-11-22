@@ -11,6 +11,7 @@ import {
 } from "./phase2.js";
 
 export * from "./phase2.js";
+export * from "./phase3.js";
 export * from "./phase4.js";
 
 import {
@@ -42,6 +43,8 @@ import {
 	EngineSettingsPatchSchema,
 	EngineSettingsSchema,
 } from "../settings.js";
+import { DownloadResponseSchema } from "./download.js";
+import { Phase3ApiContract } from "./phase3.js";
 import { Phase4ApiContract } from "./phase4.js";
 
 export const EmptyRequestSchema = z.object({}).strict();
@@ -113,6 +116,7 @@ export const ImportSourceSchema = z.enum([
 	"auto",
 	"binance",
 	"coindcx",
+	"vested",
 	"generic",
 ]);
 export const BalanceSnapshotRowSchema = z.object({
@@ -351,6 +355,7 @@ export const TransactionSortSchema = z.enum([
 	"source:desc",
 ]);
 export const TransactionsQuerySchema = PaginationQuerySchema.extend({
+	assetClass: z.enum(["all", "vda", "us_equity"]).optional(),
 	taxYear: TaxYearSchema.optional(),
 	asset: z.string().optional(),
 	type: TxTypeSchema.optional(),
@@ -360,7 +365,8 @@ export const TransactionsQuerySchema = PaginationQuerySchema.extend({
 	q: z.string().optional(),
 	sort: TransactionSortSchema.default("timestamp:desc"),
 });
-export const ListTransactionsRequestSchema = TransactionsQuerySchema;
+export const ListTransactionsQuerySchema = TransactionsQuerySchema;
+export const ListTransactionsRequestSchema = ListTransactionsQuerySchema;
 export const PaginationResponseSchema = z.object({
 	total: z.number().int().nonnegative(),
 	page: z.number().int().positive(),
@@ -393,6 +399,8 @@ export const CreateTransactionRequestSchema = LedgerTxFieldsSchema.omit({
 			for (const issue of parsed.error.issues)
 				ctx.addIssue({ ...issue, path: issue.path });
 	});
+export const CreateManualTransactionRequestSchema =
+	CreateTransactionRequestSchema;
 export const CreateTransactionResponseSchema = LedgerTxSchema;
 export const PatchTransactionRequestSchema = z
 	.object({
@@ -507,14 +515,7 @@ export const ExportReportQuerySchema = z.object({
 	kind: z.enum(["schedule-vda", "tds", "income", "full"]),
 });
 export const ExportReportRequestSchema = ExportReportQuerySchema;
-export const ExportReportResponseSchema = z.object({
-	fileName: z.string(),
-	contentType: z.enum([
-		"text/csv; charset=utf-8",
-		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-	]),
-	bytes: z.instanceof(Uint8Array),
-});
+export const ExportReportResponseSchema = DownloadResponseSchema;
 export const LoginRequestSchema = z.object({ password: z.string().min(1) });
 export const LoginResponseSchema = z.object({ ok: z.literal(true) });
 export const LogoutRequestSchema = EmptyRequestSchema;
@@ -526,6 +527,7 @@ export type ImportDetail = z.infer<typeof GetImportResponseSchema>;
 
 export const ApiContract = {
 	...Phase2ApiContract,
+	...Phase3ApiContract,
 	...Phase4ApiContract,
 	health: {
 		method: "GET",

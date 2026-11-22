@@ -16,6 +16,7 @@ import {
 	Trash2,
 	Wallet,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AddConnectionDialog } from "@/components/connections/AddConnectionDialog";
 import { KeyCheckBanner } from "@/components/connections/KeyCheckBanner";
@@ -704,6 +705,9 @@ export function ConnectionsClient() {
 														<Badge tone="neutral">
 															{connectionKindLabel(conn)}
 														</Badge>
+														{conn.kind === "coindcx" ? (
+															<Badge tone="warning">Spot orderbook only</Badge>
+														) : null}
 														<Badge tone={conn.keySet ? "positive" : "warning"}>
 															{conn.kind === "evm"
 																? conn.keySet
@@ -773,6 +777,15 @@ export function ConnectionsClient() {
 																	{conn.options.extraSymbols.join(", ")}
 																</span>
 															</span>
+														) : null}
+
+														{conn.kind === "coindcx" ? (
+															<Link
+																href="/import"
+																className="font-medium text-[var(--accent-text)] hover:underline"
+															>
+																Import Instant &amp; Form 16A files
+															</Link>
 														) : null}
 													</div>
 

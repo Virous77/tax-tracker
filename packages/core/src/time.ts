@@ -31,6 +31,20 @@ export function taxYearBounds(id: string): {
 	};
 }
 
+export function addCalendarMonths(date: string, months: number): string {
+	const day = Number(date.slice(8, 10));
+	const result = new Date(`${date.slice(0, 7)}-01T00:00:00.000Z`);
+	result.setUTCMonth(result.getUTCMonth() + months + 1, 0);
+	result.setUTCDate(Math.min(day, result.getUTCDate()));
+	return result.toISOString().slice(0, 10);
+}
+
+export function lastDayOfPreviousMonth(date: string): string {
+	const result = new Date(`${date.slice(0, 7)}-01T00:00:00.000Z`);
+	result.setUTCDate(0);
+	return result.toISOString().slice(0, 10);
+}
+
 export function timezoneOffsetMinutes(timezone: string): number {
 	if (timezone === "IST") return 330;
 	if (timezone === "UTC") return 0;

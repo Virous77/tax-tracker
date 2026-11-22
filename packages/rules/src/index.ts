@@ -1,3 +1,6 @@
+import equity2025 from "../data/india-us-equity/2025-26.json" with {
+	type: "json",
+};
 import equity2026 from "../data/india-us-equity/2026-27.json" with {
 	type: "json",
 };
@@ -15,9 +18,12 @@ export * from "./schema.js";
 const vda = new Map<string, VdaRules>(
 	[vda2025, vda2026].map((v) => [v.taxYear, VdaRulesSchema.parse(v)]),
 );
-const equity = new Map<string, UsEquityRules>([
-	[equity2026.taxYear, UsEquityRulesSchema.parse(equity2026)],
-]);
+const equity = new Map<string, UsEquityRules>(
+	[equity2025, equity2026].map((v) => [
+		v.taxYear,
+		UsEquityRulesSchema.parse(v),
+	]),
+);
 export function loadRules(regime: "india-vda", taxYear: string): VdaRules;
 export function loadRules(
 	regime: "india-us-equity",

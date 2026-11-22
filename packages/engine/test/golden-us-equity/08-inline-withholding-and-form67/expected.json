@@ -1,0 +1,35 @@
+{
+	"cases": [
+		{
+			"dividends": {
+				"rows": [
+					{
+						"asset": "VTI",
+						"grossUsd": "9.24",
+						"taxWithheldUsd": "2.31",
+						"netUsd": "6.93",
+						"grossInr": "739.20",
+						"taxWithheldInr": "184.80",
+						"netInr": "554.40",
+						"withholdingRate": "0.25"
+					}
+				]
+			},
+			"form67": {
+				"countryCode": "2",
+				"dtaaArticle": "Article 10(2)(b)",
+				"rows": [
+					{
+						"asset": "VTI",
+						"effectiveForeignTaxRate": "0.25"
+					}
+				],
+				"totals": {
+					"foreignIncomeInr": "739.20",
+					"foreignTaxPaidInr": "184.80",
+					"maxCreditEligibleInr": "184.80"
+				}
+			}
+		}
+	]
+}

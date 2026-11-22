@@ -1,0 +1,138 @@
+{
+	"cases": [
+		{
+			"taxYear": "2025-26",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2023-01-10T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "VTI",
+					"amountIn": "2",
+					"assetOut": "USD",
+					"amountOut": "200"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-03-01T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "VTI",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "200"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "csv:golden-us",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 3
+					},
+					"reviewFlags": [],
+					"assetOut": "VTI",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "200"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2022-12-31",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				}
+			],
+			"settings": {
+				"surchargeRate": "0.37"
+			}
+		},
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2023-01-10T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "VTI",
+					"amountIn": "2",
+					"assetOut": "USD",
+					"amountOut": "200"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-03-01T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "VTI",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "200"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "csv:golden-us",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 3
+					},
+					"reviewFlags": [],
+					"assetOut": "VTI",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "200"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2022-12-31",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				}
+			],
+			"settings": {
+				"surchargeRate": "0.37"
+			}
+		}
+	]
+}

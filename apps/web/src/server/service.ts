@@ -31,6 +31,19 @@ import {
 	resolveReview,
 	review,
 } from "./transactions";
+import {
+	computeUsEquity,
+	getEquityMetadata,
+	getEquityPrices,
+	getUsEquityBalances,
+	getUsEquityReport,
+	getUsEquityReportState,
+	putEquityMetadata,
+	putEquityPrices,
+	putUsEquityBalances,
+} from "./us-equity";
+import { exportUsEquityReport } from "./us-equity-exports";
+import { equityPricesStatus, startEquityPriceFill } from "./us-equity-prices";
 import { vaultSession } from "./vault";
 export async function execute(
 	name: Endpoint,
@@ -192,6 +205,68 @@ export async function execute(
 			value = await exportReport(
 				getReport(db, year),
 				api.ExportReportRequestSchema.parse(input),
+			);
+			break;
+		case "computeUsEquityReport":
+			value = await computeUsEquity(db, year);
+			break;
+		case "getUsEquityReport": {
+			const parsed = api.GetUsEquityReportQuerySchema.parse(input);
+			value = parsed.allowMissing
+				? getUsEquityReportState(db, year, parsed.allowStale ?? true)
+				: getUsEquityReport(db, year, parsed.allowStale);
+			break;
+		}
+		case "exportUsEquityReport":
+			value = exportUsEquityReport(
+				getUsEquityReport(db, year),
+				api.ExportUsEquityReportQuerySchema.parse(input),
+			);
+			break;
+		case "getEquityMetadata":
+			value = getEquityMetadata(db);
+			break;
+		case "putEquityMetadata":
+			value = putEquityMetadata(
+				db,
+				api.PutEquityMetadataRequestSchema.parse(input),
+			);
+			break;
+		case "getEquityPrices":
+			value = getEquityPrices(
+				db,
+				api.GetEquityPricesQuerySchema.parse(input).calendarYear,
+			);
+			break;
+		case "putEquityPrices": {
+			const { calendarYear, prices } =
+				api.PutEquityPricesRequestSchema.parse(input);
+			value = putEquityPrices(db, calendarYear, prices);
+			break;
+		}
+		case "equityPricesStatus":
+			value = await equityPricesStatus(
+				db,
+				api.EquityPricesStatusQuerySchema.parse(input).taxYear,
+			);
+			break;
+		case "fillEquityPrices":
+			value = await startEquityPriceFill(
+				db,
+				api.FillEquityPricesRequestSchema.parse(input),
+			);
+			break;
+		case "getUsEquityActualBalances":
+			value = getUsEquityBalances(
+				db,
+				api.UsEquityActualBalancesQuerySchema.parse(input).taxYear,
+			);
+			break;
+		case "putUsEquityActualBalances":
+			value = putUsEquityBalances(
+				db,
+				api.UsEquityActualBalancesQuerySchema.parse(query).taxYear,
+				api.PutUsEquityActualBalancesRequestSchema.parse(input),
 			);
 			break;
 		case "login": {

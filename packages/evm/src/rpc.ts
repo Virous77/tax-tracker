@@ -37,9 +37,11 @@ export class RpcClient {
 		private opts: EvmOptions,
 		private url: URL,
 	) {
+		const isLocal = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
 		this.http = new HttpClient({
 			fetch: opts.fetch,
 			now: opts.now,
+			minIntervalMs: isLocal ? 0 : 200,
 			maxRetries: opts.providers.length > 1 ? 0 : 4,
 		});
 	}

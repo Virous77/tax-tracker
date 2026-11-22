@@ -1,0 +1,36 @@
+{
+	"cases": [
+		{
+			"balances": [
+				{
+					"asset": "MSFT",
+					"computed": "1"
+				}
+			],
+			"capitalGains": {
+				"rows": [
+					{
+						"term": "long",
+						"quantity": "2",
+						"costInr": "16000.00",
+						"considerationInr": "24000.00",
+						"gainInr": "8000.00",
+						"trail": {
+							"lotTxIds": ["00000000-0000-4000-8000-000000000001"]
+						}
+					},
+					{
+						"term": "short",
+						"quantity": "2",
+						"costInr": "19200.00",
+						"considerationInr": "24000.00",
+						"gainInr": "4800.00",
+						"trail": {
+							"lotTxIds": ["00000000-0000-4000-8000-000000000002"]
+						}
+					}
+				]
+			}
+		}
+	]
+}

@@ -36,10 +36,17 @@ import {
 	pluralise,
 } from "@/lib/client/format";
 
-type SourceChoice = "auto" | "binance" | "coindcx" | "generic";
+type SourceChoice = "auto" | "binance" | "coindcx" | "vested" | "generic";
 type TzMode = "IST" | "UTC" | "custom";
 
 const MAX_BYTES = 25 * 1024 * 1024;
+
+function isKnownUsEquityImport(result: ImportSummary | ImportDetail): boolean {
+	return (
+		result.source === "vested" ||
+		Boolean(result.recipeId?.startsWith("us-stocks-"))
+	);
+}
 
 function friendlyImportError(err: unknown): {
 	message: string;
@@ -124,6 +131,7 @@ export function ImportClient() {
 	const [result, setResult] = useState<ImportSummary | ImportDetail | null>(
 		null,
 	);
+	const [detectedUsEquityRecipe, setDetectedUsEquityRecipe] = useState(false);
 
 	const fileInputId = useId();
 	const customOffsetId = useId();
@@ -156,6 +164,54 @@ export function ImportClient() {
 		};
 	}, [resumeImportId]);
 
+	useEffect(() => {
+		setDetectedUsEquityRecipe(false);
+		if (result?.status !== "imported") {
+			return;
+		}
+		if (isKnownUsEquityImport(result)) {
+			return;
+		}
+		if (
+			!result.recipeId &&
+			!result.source.startsWith("csv:") &&
+			result.source !== "generic"
+		) {
+			return;
+		}
+		let cancelled = false;
+		Promise.all([
+			result.recipeId
+				? api
+						.listRecipes()
+						.then((recipes) =>
+							recipes.some(
+								(r) => r.id === result.recipeId && r.assetClass === "us_equity",
+							),
+						)
+						.catch(() => false)
+				: Promise.resolve(false),
+			result.rowsInserted > 0 || result.rowsDuplicate > 0
+				? api
+						.listTransactions({
+							source: result.source,
+							assetClass: "us_equity",
+							page: 1,
+							pageSize: 1,
+						})
+						.then((page) => page.total > 0)
+						.catch(() => false)
+				: Promise.resolve(false),
+		]).then(([fromRecipe, fromTx]) => {
+			if (!cancelled && (fromRecipe || fromTx)) {
+				setDetectedUsEquityRecipe(true);
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [result]);
+
 	function resolveTimezone(): ImportSummary["timezone"] | null {
 		if (tzMode === "IST" || tzMode === "UTC") return tzMode;
 		const trimmed = customOffset.trim();
@@ -186,7 +242,7 @@ export function ImportClient() {
 		setFile(picked);
 		const name = picked.name.toLowerCase();
 		if (source === "auto" && tzMode !== "custom") {
-			if (name.includes("binance")) setTzMode("UTC");
+			if (name.includes("binance") || name.includes("vested")) setTzMode("UTC");
 			else if (name.includes("coindcx")) setTzMode("IST");
 		}
 	}
@@ -304,6 +360,10 @@ export function ImportClient() {
 	const hasSnapshotWallet = Boolean(
 		balanceSnapshot?.rows.some((r) => Boolean(r.wallet)),
 	);
+	const isUsEquityImport =
+		result !== null &&
+		result.status === "imported" &&
+		(isKnownUsEquityImport(result) || detectedUsEquityRecipe);
 
 	return (
 		<div className="space-y-6">
@@ -311,8 +371,10 @@ export function ImportClient() {
 				<div>
 					<h1 className="text-xl font-semibold tracking-tight">Import</h1>
 					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						Upload Binance, CoinDCX, or other CSV/XLSX exports, or Binance PDF
-						account statements. Duplicate rows are safely skipped.
+						Upload CSV or XLSX exports (Binance, CoinDCX, Vested, and other
+						exchanges or US stock brokers like Schwab and IBKR via recipes) or
+						Binance and Vested PDF account statements. Duplicate rows are safely
+						skipped.
 					</p>
 				</div>
 				<Link
@@ -700,7 +762,29 @@ export function ImportClient() {
 					) : null}
 
 					<div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-3">
-						{balanceSnapshot ? (
+						{isUsEquityImport ? (
+							<>
+								<Link
+									href="/us-stocks"
+									className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+								>
+									View US Stocks
+									<ArrowRight className="h-4 w-4" aria-hidden="true" />
+								</Link>
+								<Link
+									href="/transactions"
+									className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--bg-hover)]"
+								>
+									View transactions
+								</Link>
+								<Link
+									href={balanceSnapshot ? "/report#statements" : "/report"}
+									className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-2 text-sm font-medium hover:bg-[var(--bg-hover)]"
+								>
+									{balanceSnapshot ? "View balance comparison" : "Tax report"}
+								</Link>
+							</>
+						) : balanceSnapshot ? (
 							<Link
 								href="/report#statements"
 								className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
@@ -782,14 +866,15 @@ export function ImportClient() {
 										aria-hidden="true"
 									/>
 									<p className="text-sm font-medium">
-										Drop your exchange export here, or{" "}
+										Drop your exchange or broker export here, or{" "}
 										<span className="text-[var(--accent-text)] underline">
 											browse files
 										</span>
 									</p>
 									<p className="text-xs text-[var(--text-muted)]">
-										Supports Binance CSV/XLSX &amp; PDF account statements,
-										CoinDCX multi-tab XLSX, and any other CSV
+										CSV / XLSX: Binance, CoinDCX, Vested, and other exchanges or
+										US stock brokers (Schwab, IBKR, generic CSV via recipes) ·
+										PDF: Binance &amp; Vested Account Statements
 									</p>
 								</div>
 							)}
@@ -799,13 +884,13 @@ export function ImportClient() {
 					{/* Source picker */}
 					<fieldset className="space-y-2">
 						<legend className="text-sm font-medium">2. File source</legend>
-						<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+						<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
 							{(
 								[
 									{
 										id: "auto",
 										title: "Auto-detect",
-										desc: "Detect Binance, CoinDCX, or saved CSV recipe",
+										desc: "Detect Binance, CoinDCX, Vested, or saved CSV recipe",
 									},
 									{
 										id: "binance",
@@ -816,6 +901,11 @@ export function ImportClient() {
 										id: "coindcx",
 										title: "CoinDCX",
 										desc: "Multi-sheet Excel report (includes TDS)",
+									},
+									{
+										id: "vested",
+										title: "Vested",
+										desc: "PDF or XLSX account statement — US stocks",
 									},
 									{
 										id: "generic",

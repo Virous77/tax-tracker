@@ -1,6 +1,7 @@
 "use client";
 
 import { DISCLAIMER } from "@tax/core";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { type AppHealth, api } from "@/lib/client/api";
 
@@ -28,6 +29,13 @@ export function AppFooter({ className = "" }: { className?: string }) {
 				{health ? <span className="num">v{health.version}</span> : null}
 				{health ? <span aria-hidden="true">·</span> : null}
 				<span>AGPL-3.0</span>
+				<span aria-hidden="true">·</span>
+				<Link
+					href="/docs"
+					className="font-medium text-[var(--accent-text)] hover:underline"
+				>
+					Docs
+				</Link>
 				{health?.sourceUrl ? (
 					<>
 						<span aria-hidden="true">·</span>

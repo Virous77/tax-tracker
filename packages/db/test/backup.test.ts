@@ -10,6 +10,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { openDatabase } from "../src/index.js";
+import { removePhase3Schema } from "./migration-fixtures.js";
 
 let directory: string;
 let dbPath: string;
@@ -27,6 +28,7 @@ afterEach(() => rmSync(directory, { recursive: true, force: true }));
 function makeReviewMigrationPending() {
 	const db = new Database(dbPath);
 	try {
+		removePhase3Schema(db);
 		db.exec(`DROP TABLE review_resolutions;
 			DELETE FROM __drizzle_migrations WHERE created_at =
 				(SELECT MAX(created_at) FROM __drizzle_migrations);`);

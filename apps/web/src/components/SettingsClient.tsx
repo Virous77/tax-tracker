@@ -60,6 +60,8 @@ export function SettingsClient({
 
 	const defaultYearId = useId();
 	const feeId = useId();
+	const usEquityFeeId = useId();
+	const usEquityFxId = useId();
 	const lotMethodId = useId();
 	const lotPoolId = useId();
 	const usdtRateId = useId();
@@ -136,6 +138,8 @@ export function SettingsClient({
 				defaultTaxYear: settings.defaultTaxYear,
 				marketPriceBasis: settings.marketPriceBasis,
 				feeTreatment: settings.feeTreatment,
+				usEquityFeeTreatment: settings.usEquityFeeTreatment,
+				usEquityFxBasis: settings.usEquityFxBasis,
 				lotMethod: settings.lotMethod,
 				lotPool: settings.lotPool,
 				usdtInrRate: settings.usdtInrRate,
@@ -534,6 +538,85 @@ export function SettingsClient({
 					</div>
 				</section>
 
+				{/* US Stocks */}
+				<section className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-5">
+					<div>
+						<h2 className="text-base font-semibold tracking-tight">
+							US Stocks
+						</h2>
+						<p className="text-xs text-[var(--text-secondary)]">
+							Assumptions for US equity capital gains, dividends, Form 67, and
+							Schedule FA (isolated from VDA crypto calculations).
+						</p>
+					</div>
+
+					<div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+						<div>
+							<label
+								htmlFor={usEquityFeeId}
+								className="block text-sm font-medium"
+							>
+								Brokerage &amp; commission treatment
+							</label>
+							<Select
+								id={usEquityFeeId}
+								value={settings.usEquityFeeTreatment}
+								onValueChange={(value) =>
+									setSettings({
+										...settings,
+										usEquityFeeTreatment:
+											value as AppSettings["usEquityFeeTreatment"],
+									})
+								}
+								className="mt-1 w-full"
+							>
+								<SelectItem value="include">
+									Include fees (add to buy cost / deduct from sell proceeds)
+								</SelectItem>
+								<SelectItem value="exclude">
+									Exclude fees (ignore brokerage &amp; commission)
+								</SelectItem>
+							</Select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Unlike VDA crypto, Indian capital gains rules generally allow
+								deducting transfer expenses and brokerage.
+							</p>
+						</div>
+
+						<div>
+							<label
+								htmlFor={usEquityFxId}
+								className="block text-sm font-medium"
+							>
+								USD to INR exchange rate basis
+							</label>
+							<Select
+								id={usEquityFxId}
+								value={settings.usEquityFxBasis}
+								onValueChange={(value) =>
+									setSettings({
+										...settings,
+										usEquityFxBasis: value as AppSettings["usEquityFxBasis"],
+									})
+								}
+								className="mt-1 w-full"
+							>
+								<SelectItem value="prev_month_end">
+									Previous month-end SBI TT buying rate (Rule 115 / Rule 206)
+								</SelectItem>
+								<SelectItem value="trade_date">
+									Trade-date SBI TT buying rate
+								</SelectItem>
+							</Select>
+							<p className="mt-1 text-xs text-[var(--text-muted)]">
+								Rule 115 (1961 Act) / Rule 206 (2025 Act) converts foreign
+								capital gains and dividends at the last day of the preceding
+								month.
+							</p>
+						</div>
+					</div>
+				</section>
+
 				{/* Price Lookups */}
 				<section className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-5">
 					<div className="flex flex-wrap items-center justify-between gap-2">
@@ -542,8 +625,10 @@ export function SettingsClient({
 								Price lookups
 							</h2>
 							<p className="text-xs text-[var(--text-secondary)]">
-								Optional historical daily prices for valuing swaps, gas fees, or
-								on-chain transfers without an exchange INR leg.
+								Optional historical daily prices for crypto (Binance/CoinGecko)
+								when valuing swaps, gas fees, or on-chain transfers, and for US
+								stock Schedule FA peak and Dec 31 closing prices
+								(Polygon.io/Finnhub).
 							</p>
 						</div>
 						<Badge tone={settings.prices.enabled ? "accent" : "neutral"}>
@@ -576,7 +661,8 @@ export function SettingsClient({
 									Enable historical market price lookups
 									<span className="mt-0.5 block text-xs font-normal text-[var(--text-muted)]">
 										Used only when you click &ldquo;Fetch missing prices&rdquo;
-										on a report or after an API sync finishes, so missing INR
+										on a crypto report, &ldquo;Auto-fill&rdquo; on US Stocks
+										Schedule FA, or after an API sync finishes, so historical
 										valuations can be cached locally.
 									</span>
 								</span>
@@ -646,10 +732,14 @@ export function SettingsClient({
 							<strong className="text-[var(--text-primary)]">
 								Hosts contacted when enabled:
 							</strong>{" "}
+							Crypto:{" "}
 							<code className="font-mono-code">data-api.binance.vision</code>{" "}
 							(daily prices, no key) and{" "}
 							<code className="font-mono-code">api.coingecko.com</code> (only if
-							the fallback is on and a key is set).
+							the fallback is on and a key is set). US Stocks Schedule FA:{" "}
+							<code className="font-mono-code">api.polygon.io</code> and{" "}
+							<code className="font-mono-code">finnhub.io</code> (only when you
+							click Auto-fill on Schedule FA and a key is set).
 						</p>
 						<p>
 							Computing a report never goes online — it reads only from your

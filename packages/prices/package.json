@@ -16,6 +16,7 @@
 	},
 	"dependencies": {
 		"@tax/core": "workspace:*",
+		"@tax/engine": "workspace:*",
 		"@tax/sync": "workspace:*"
 	},
 	"devDependencies": {

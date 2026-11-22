@@ -39,6 +39,8 @@ export const ProviderNameSchema = z.enum([
 	"alchemy",
 	"nodereal",
 	"coingecko",
+	"polygon",
+	"finnhub",
 ]);
 export const ProvidersResponseSchema = z.object({
 	etherscan: z.object({ keySet: z.boolean(), tier: z.enum(["free", "paid"]) }),
@@ -46,6 +48,8 @@ export const ProvidersResponseSchema = z.object({
 	nodereal: z.object({ keySet: z.boolean() }),
 	blockscout: z.object({ keySet: z.boolean() }),
 	coingecko: z.object({ keySet: z.boolean() }),
+	polygon: z.object({ keySet: z.boolean() }),
+	finnhub: z.object({ keySet: z.boolean() }),
 });
 export const PutProviderRequestSchema = z
 	.object({
@@ -160,6 +164,14 @@ export const PriceFillSummarySchema = z.object({
 	fromCache: count,
 	missing: z.array(MissingPriceSchema),
 });
+export const EquityPriceFillSummarySchema = z.object({
+	calendarYear: z.number().int(),
+	requested: count,
+	filled: count,
+	skipped: count,
+	providerUsed: z.enum(["polygon", "finnhub", "mixed"]).nullable(),
+	failed: z.array(z.object({ symbol: AssetSchema, reason: z.string() })),
+});
 export const JobStartedSchema = z.object({ jobId: z.string() });
 export const JobProgressSchema = z.object({
 	stream: z.string(),
@@ -171,11 +183,15 @@ export const JobProgressSchema = z.object({
 });
 export const JobSchema = z.object({
 	id: z.string(),
-	kind: z.enum(["sync", "price_fill"]),
+	kind: z.enum(["sync", "price_fill", "equity_price_fill"]),
 	status: z.enum(["pending", "running", "completed", "failed"]),
 	progress: JobProgressSchema.nullable().optional(),
 	result: z
-		.union([SyncSummarySchema, PriceFillSummarySchema])
+		.union([
+			SyncSummarySchema,
+			PriceFillSummarySchema,
+			EquityPriceFillSummarySchema,
+		])
 		.nullable()
 		.optional(),
 	error: z.string().nullable().optional(),

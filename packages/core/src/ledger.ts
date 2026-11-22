@@ -47,6 +47,9 @@ export const ReviewCodeSchema = z.enum([
 	"fee_review_required",
 	"suspected_spam",
 	"possible_duplicate",
+	"missing_market_price",
+	"unmatched_foreign_tax",
+	"corporate_action",
 ]);
 export const ReviewSeveritySchema = z.enum(["action", "info"]);
 export type ReviewSeverity = z.infer<typeof ReviewSeveritySchema>;
@@ -83,7 +86,14 @@ export function mergeReviewFlags(flags: ReviewFlag[]): ReviewFlag[] {
 				: [...reasons.keys()].join("\n"),
 	}));
 }
-export const ManualVenueSchema = z.enum(["manual", "binance", "coindcx"]);
+export const AssetClassSchema = z.enum(["vda", "us_equity"]);
+export type AssetClass = z.infer<typeof AssetClassSchema>;
+export const ManualVenueSchema = z.enum([
+	"manual",
+	"binance",
+	"coindcx",
+	"us_broker",
+]);
 export const TxTypeSchema = z.enum([
 	"buy",
 	"sell",
@@ -94,6 +104,7 @@ export const TxTypeSchema = z.enum([
 	"income",
 	"gift",
 	"dividend",
+	"foreign_tax",
 	"fee",
 ]);
 export const IncomeKindSchema = z.enum([
@@ -119,11 +130,16 @@ export const LedgerTxFieldsSchema = z.object({
 	importId: z.string().nullable(),
 	timestamp: z.iso.datetime(),
 	type: TxTypeSchema,
+	assetClass: AssetClassSchema.default("vda").optional(),
 	incomeKind: IncomeKindSchema.optional(),
 	assetIn: AssetSchema.optional(),
 	amountIn: PositiveDecimalSchema.optional(),
 	assetOut: AssetSchema.optional(),
 	amountOut: PositiveDecimalSchema.optional(),
+	dividendAsset: AssetSchema.optional(),
+	withholdingTaxAmount: NonNegativeDecimalSchema.optional(),
+	withholdingTaxAsset: AssetSchema.optional(),
+	entityName: z.string().optional(),
 	feeAsset: AssetSchema.optional(),
 	feeAmount: NonNegativeDecimalSchema.optional(),
 	gstInr: NonNegativeDecimalSchema.optional(),
@@ -148,11 +164,13 @@ export const LedgerTxSchema = LedgerTxFieldsSchema.superRefine((tx, ctx) => {
 				message: `${tx.type} requires ${field}`,
 			});
 	};
-	if (["buy", "swap", "deposit", "income", "gift"].includes(tx.type)) {
+	if (
+		["buy", "swap", "deposit", "income", "gift", "dividend"].includes(tx.type)
+	) {
 		need("assetIn");
 		need("amountIn");
 	}
-	if (["sell", "swap", "withdrawal"].includes(tx.type)) {
+	if (["sell", "swap", "withdrawal", "foreign_tax"].includes(tx.type)) {
 		need("assetOut");
 		need("amountOut");
 	}
@@ -164,6 +182,7 @@ export const LedgerTxSchema = LedgerTxFieldsSchema.superRefine((tx, ctx) => {
 		["assetIn", "amountIn"],
 		["assetOut", "amountOut"],
 		["feeAsset", "feeAmount"],
+		["withholdingTaxAsset", "withholdingTaxAmount"],
 	] as const)
 		if ((tx[asset] === undefined) !== (tx[amount] === undefined)) {
 			need(asset);
@@ -185,6 +204,11 @@ export function transactionTaxInputs(tx: LedgerTx) {
 		tx.importId,
 		tx.timestamp,
 		tx.type,
+		tx.assetClass ?? "vda",
+		tx.dividendAsset,
+		tx.withholdingTaxAmount,
+		tx.withholdingTaxAsset,
+		tx.entityName,
 		tx.venue,
 		tx.incomeKind,
 		tx.assetIn,
@@ -201,6 +225,7 @@ export function transactionTaxInputs(tx: LedgerTx) {
 		tx.txHash,
 		tx.chain,
 		tx.reviewFlags.some(({ code }) => code === "suspected_spam"),
+		tx.reviewFlags.some(({ code }) => code === "corporate_action"),
 	];
 }
 export type TxType = z.infer<typeof TxTypeSchema>;

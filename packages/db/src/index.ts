@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
-	type ActualBalance,
-	ActualBalanceSchema,
+	type AssetClass,
 	D,
 	EngineSettingsSchema,
 	eventFingerprint,
@@ -25,11 +24,15 @@ import {
 import type { Database as SQLiteDatabase } from "better-sqlite3";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { actualBalanceRepository } from "./actual-balances.js";
 import { backupDatabase, openMigratedDatabase } from "./backup.js";
 import { phase2Repositories } from "./phase2.js";
+import { phase3Repositories } from "./phase3.js";
 import * as schema from "./schema.js";
 
 export * as schema from "./schema.js";
+
+type AssetClassFilter = AssetClass | "all";
 export async function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 	const { sqlite, directory } = await openMigratedDatabase(dataDir);
 	try {
@@ -41,7 +44,8 @@ export async function openDatabase(dataDir = process.env.DATA_DIR ?? "./data") {
 }
 
 function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
-	const orm = drizzle(sqlite, { schema });
+	const orm = drizzle(sqlite);
+	const equity = phase3Repositories(orm);
 	sqlite.transaction(() => {
 		const rows = sqlite
 			.prepare("SELECT * FROM transactions WHERE fingerprint IS NULL")
@@ -111,6 +115,53 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 				}
 			: { report: undefined, status: "missing" as const };
 	};
+	const invalidateLedger = (classes: Iterable<AssetClass>) => {
+		const affected = new Set(classes);
+		if (affected.has("vda")) invalidateReports("ledger_changed");
+		if (affected.has("us_equity")) equity.usEquityReports.invalidate();
+	};
+	const importAssetClasses = (id: string) =>
+		(
+			sqlite
+				.prepare(`
+			SELECT DISTINCT asset_class AS assetClass FROM transactions
+			WHERE import_id = ? OR superseded_by = ? OR raw_row_id IN (
+				SELECT id FROM raw_rows WHERE import_id = ?
+			)
+		`)
+				.all(id, id, id) as { assetClass: AssetClass }[]
+		).map(({ assetClass }) => assetClass);
+	const readTransaction = (row: typeof schema.transactions.$inferSelect) =>
+		LedgerTxSchema.parse(
+			Object.fromEntries(
+				Object.entries(row).filter(
+					([key, value]) =>
+						value !== null || key === "importId" || key === "raw",
+				),
+			),
+		);
+	const listTransactions = (
+		assetClass: AssetClassFilter = "all",
+		active = false,
+	) =>
+		orm
+			.select()
+			.from(schema.transactions)
+			.where(
+				and(
+					assetClass === "all"
+						? undefined
+						: eq(schema.transactions.assetClass, assetClass),
+					active ? isNull(schema.transactions.supersededBy) : undefined,
+				),
+			)
+			.orderBy(
+				schema.transactions.timestamp,
+				schema.transactions.source,
+				schema.transactions.sourceRef,
+			)
+			.all()
+			.map(readTransaction);
 	const txValues = (tx: LedgerTx) => ({
 		...tx,
 		fingerprint: eventFingerprint(tx),
@@ -119,6 +170,11 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 				.filter((key) => key in tx && tx[key as keyof LedgerTx] === undefined)
 				.map((key) => [key, null]),
 		),
+		assetClass: tx.assetClass ?? "vda",
+		dividendAsset: tx.dividendAsset ?? null,
+		withholdingTaxAmount: tx.withholdingTaxAmount ?? null,
+		withholdingTaxAsset: tx.withholdingTaxAsset ?? null,
+		entityName: tx.entityName ?? null,
 	});
 
 	const duplicateTransaction = (
@@ -140,9 +196,15 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 		if (skipCrossChannel || !sibling || !fingerprint) return undefined;
 		const candidates = sqlite
 			.prepare(
-				"SELECT t.id FROM transactions t WHERE t.superseded_by IS NULL AND NOT EXISTS (SELECT 1 FROM imports i WHERE i.id=t.import_id AND i.demo=1) AND t.source=? AND t.type=? AND t.fingerprint=? AND NOT EXISTS (SELECT 1 FROM raw_rows r WHERE r.tx_id=t.id AND r.source=?) ORDER BY t.id",
+				"SELECT t.id FROM transactions t WHERE t.superseded_by IS NULL AND NOT EXISTS (SELECT 1 FROM imports i WHERE i.id=t.import_id AND i.demo=1) AND t.source=? AND t.type=? AND t.asset_class=? AND t.fingerprint=? AND NOT EXISTS (SELECT 1 FROM raw_rows r WHERE r.tx_id=t.id AND r.source=?) ORDER BY t.id",
 			)
-			.all(sibling, tx.type, fingerprint, tx.source) as { id: string }[];
+			.all(
+				sibling,
+				tx.type,
+				tx.assetClass ?? "vda",
+				fingerprint,
+				tx.source,
+			) as { id: string }[];
 		const exact = candidates.find((row) => !absorbed.has(row.id));
 		if (exact) absorbed.add(exact.id);
 		return exact?.id;
@@ -197,10 +259,18 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 					.all(id, id) as { connectionId: string }[];
 				return related.map((row) => row.connectionId);
 			},
-			list: () =>
+			list: (assetClass?: AssetClass) =>
 				orm
 					.select()
 					.from(schema.imports)
+					.where(
+						assetClass
+							? eq(
+									sql`coalesce(${schema.imports.assetClass}, 'vda')`,
+									assetClass,
+								)
+							: undefined,
+					)
 					.orderBy(desc(schema.imports.createdAt))
 					.all()
 					.map((v) =>
@@ -243,7 +313,7 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 						})
 					: undefined;
 			},
-			save: (value: ImportDetail) =>
+			save: (value: ImportDetail, assetClass?: AssetClass) =>
 				orm.transaction(() => {
 					const row = GetImportResponseSchema.parse(value);
 					const previous = orm
@@ -251,19 +321,27 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 						.from(schema.imports)
 						.where(eq(schema.imports.id, row.id))
 						.get();
+					const classified =
+						assetClass ??
+						previous?.assetClass ??
+						(row.source === "generic" ? null : "vda");
+					const stored = { ...row, assetClass: classified };
 					orm
 						.insert(schema.imports)
-						.values(row)
-						.onConflictDoUpdate({ target: schema.imports.id, set: row })
+						.values(stored)
+						.onConflictDoUpdate({ target: schema.imports.id, set: stored })
 						.run();
 					if (
 						!previous ||
+						classified !== previous.assetClass ||
 						previous.status !== row.status ||
 						previous.fileName !== row.fileName ||
 						previous.rowsError !== row.rowsError ||
 						!isDeepStrictEqual(previous.warnings, row.warnings)
 					)
-						invalidateReports("ledger_changed");
+						invalidateLedger(
+							classified ? [classified] : importAssetClasses(row.id),
+						);
 					return row;
 				}),
 			delete: (id: string) =>
@@ -287,11 +365,14 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 							"UPDATE raw_rows SET tx_id=NULL WHERE tx_id IN (SELECT id FROM transactions WHERE import_id=?)",
 						)
 						.run(id);
+					const affected = importAssetClasses(id);
+					if (imported?.assetClass) affected.push(imported.assetClass);
 					const result = orm
 						.delete(schema.imports)
 						.where(eq(schema.imports.id, id))
 						.run();
-					if (result.changes) invalidateReports("ledger_changed");
+					if (result.changes)
+						invalidateLedger(affected.length ? affected : ["vda"]);
 					return result.changes > 0;
 				}),
 		},
@@ -338,60 +419,35 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 					return existingId ? [{ incomingId: tx.id, existingId }] : [];
 				});
 			},
-			active: (): LedgerTx[] => {
-				const excluded = new Set(
-					repositories.transactions.superseded().map((row) => row.txId),
-				);
-				return repositories.transactions
-					.all()
-					.filter((tx) => !excluded.has(tx.id));
-			},
+			active: (assetClass?: AssetClassFilter) =>
+				listTransactions(assetClass, true),
 			superseded: (): { txId: string; importId: string }[] =>
 				sqlite
 					.prepare(
 						"SELECT id AS txId, superseded_by AS importId FROM transactions WHERE superseded_by IS NOT NULL ORDER BY id",
 					)
 					.all() as { txId: string; importId: string }[],
-			supersede: (id: string, importId: string) => {
-				sqlite
-					.prepare("UPDATE transactions SET superseded_by=? WHERE id=?")
-					.run(importId, id);
-				invalidateReports("ledger_changed");
-			},
-			all: () =>
-				orm
-					.select()
-					.from(schema.transactions)
-					.orderBy(
-						schema.transactions.timestamp,
-						schema.transactions.source,
-						schema.transactions.sourceRef,
-					)
-					.all()
-					.map((v) =>
-						LedgerTxSchema.parse(
-							Object.fromEntries(
-								Object.entries(v).filter(
-									([k, x]) => x !== null || k === "importId" || k === "raw",
-								),
-							),
-						),
-					),
+			supersede: (id: string, importId: string) =>
+				orm.transaction(() => {
+					const result = sqlite
+						.prepare(
+							"UPDATE transactions SET superseded_by=? WHERE id=? AND superseded_by IS NOT ? RETURNING asset_class AS assetClass",
+						)
+						.get(importId, id, importId) as
+						| { assetClass: AssetClass }
+						| undefined;
+					if (result) invalidateLedger([result.assetClass]);
+				}),
+			all: () => listTransactions(),
+			list: ({ assetClass }: { assetClass?: AssetClassFilter } = {}) =>
+				listTransactions(assetClass),
 			get: (id: string) => {
 				const row = orm
 					.select()
 					.from(schema.transactions)
 					.where(eq(schema.transactions.id, id))
 					.get();
-				return row
-					? LedgerTxSchema.parse(
-							Object.fromEntries(
-								Object.entries(row).filter(
-									([k, x]) => x !== null || k === "importId" || k === "raw",
-								),
-							),
-						)
-					: undefined;
+				return row ? readTransaction(row) : undefined;
 			},
 			insert: (
 				rows: {
@@ -403,6 +459,7 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 			) =>
 				orm.transaction(() => {
 					let inserted = 0;
+					const affected = new Set<AssetClass>();
 					const absorbed = new Set<string>();
 					for (const { tx, rawRowId, duplicateOf, skipCrossChannel } of rows) {
 						let value = LedgerTxSchema.parse(tx);
@@ -420,6 +477,8 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 								.get();
 							if (
 								stored?.source !== "coindcx-api" ||
+								stored.assetClass !== "vda" ||
+								value.assetClass !== "vda" ||
 								stored.userEdited ||
 								stored.tdsInr !== null
 							)
@@ -438,7 +497,7 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 								})
 								.where(eq(schema.transactions.id, txId))
 								.run();
-							invalidateReports("ledger_changed");
+							affected.add(stored.assetClass);
 						};
 						const link = (txId: string) => {
 							if (rawRowId)
@@ -462,11 +521,12 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 						if (sibling && !skipCrossChannel) {
 							const others = sqlite
 								.prepare(
-									"SELECT id,timestamp,amount_in,amount_out FROM transactions t WHERE t.superseded_by IS NULL AND NOT EXISTS (SELECT 1 FROM imports i WHERE i.id=t.import_id AND i.demo=1) AND t.source=? AND t.type=? AND t.asset_in IS ? AND t.asset_out IS ?",
+									"SELECT id,timestamp,amount_in,amount_out FROM transactions t WHERE t.superseded_by IS NULL AND NOT EXISTS (SELECT 1 FROM imports i WHERE i.id=t.import_id AND i.demo=1) AND t.source=? AND t.type=? AND t.asset_class=? AND t.asset_in IS ? AND t.asset_out IS ?",
 								)
 								.all(
 									sibling,
 									value.type,
+									value.assetClass ?? "vda",
 									value.assetIn ?? null,
 									value.assetOut ?? null,
 								) as {
@@ -507,7 +567,7 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 									],
 								};
 						}
-						inserted += orm
+						const changed = orm
 							.insert(schema.transactions)
 							.values({ ...txValues(value), rawRowId })
 							.onConflictDoNothing({
@@ -517,9 +577,13 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 								],
 							})
 							.run().changes;
-						link(value.id);
+						if (changed) {
+							inserted += changed;
+							affected.add(value.assetClass ?? "vda");
+							link(value.id);
+						}
 					}
-					if (inserted) invalidateReports("ledger_changed");
+					invalidateLedger(affected);
 					return { inserted, duplicate: rows.length - inserted };
 				}),
 			update: (tx: LedgerTx) =>
@@ -542,12 +606,15 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 							transactionTaxInputs(value),
 						)
 					)
-						invalidateReports("ledger_changed");
+						invalidateLedger([
+							previous.assetClass ?? "vda",
+							value.assetClass ?? "vda",
+						]);
 					return result.changes > 0;
 				}),
 			deleteManual: (id: string) =>
 				orm.transaction(() => {
-					const result = orm
+					const removed = orm
 						.delete(schema.transactions)
 						.where(
 							and(
@@ -555,9 +622,10 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 								eq(schema.transactions.source, "manual"),
 							),
 						)
-						.run();
-					if (result.changes) invalidateReports("ledger_changed");
-					return result.changes > 0;
+						.returning({ assetClass: schema.transactions.assetClass })
+						.get();
+					if (removed) invalidateLedger([removed.assetClass]);
+					return removed !== undefined;
 				}),
 		},
 		recipes: {
@@ -617,66 +685,39 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 						.onConflictDoUpdate({ target: schema.settings.key, set: { value } })
 						.run();
 					if (key === "engine") {
-						const normalize = (input: unknown) => {
-							const engine = EngineSettingsSchema.parse(input ?? {});
+						const taxSettings = (input: unknown) => {
+							const { usEquityFeeTreatment, usEquityFxBasis, ...vda } =
+								EngineSettingsSchema.parse(input ?? {});
 							return {
-								...engine,
-								transferAmountTolerance: D(
-									engine.transferAmountTolerance,
-								).toFixed(),
+								vda: {
+									...vda,
+									transferAmountTolerance: D(
+										vda.transferAmountTolerance,
+									).toFixed(),
+								},
+								equity: {
+									usEquityFeeTreatment,
+									usEquityFxBasis,
+									lotPool: vda.lotPool,
+									surchargeRate: vda.surchargeRate,
+									transferMatchWindowHours: vda.transferMatchWindowHours,
+								},
 							};
 						};
-						if (!isDeepStrictEqual(normalize(previous), normalize(value)))
+						const before = taxSettings(previous);
+						const after = taxSettings(value);
+						if (!isDeepStrictEqual(before.vda, after.vda))
 							invalidateReports("settings_changed");
+						if (!isDeepStrictEqual(before.equity, after.equity))
+							equity.usEquityReports.invalidate("settings_changed");
 					}
 				}),
 		},
-		actualBalances: {
-			get: (taxYear: string): ActualBalance[] =>
-				orm
-					.select()
-					.from(schema.actualBalances)
-					.where(eq(schema.actualBalances.taxYear, taxYear))
-					.all()
-					.map((v) =>
-						ActualBalanceSchema.parse({
-							asset: v.asset,
-							amount: v.amount,
-							...(v.source ? { source: v.source } : {}),
-						}),
-					),
-			replace: (taxYear: string, values: ActualBalance[]) =>
-				orm.transaction(() => {
-					const rows = ActualBalanceSchema.array().parse(values);
-					const stored = repositories.actualBalances.get(taxYear);
-					const previous = new Map(
-						stored.map((row) => [
-							JSON.stringify([row.asset, row.source]),
-							row.amount,
-						]),
-					);
-					const changed =
-						rows.length !== stored.length ||
-						rows.some((row) => {
-							const key = JSON.stringify([row.asset, row.source]);
-							const amount = previous.get(key);
-							previous.delete(key);
-							return amount === undefined || !D(row.amount).eq(amount);
-						});
-					if (!changed) return stored;
-					orm
-						.delete(schema.actualBalances)
-						.where(eq(schema.actualBalances.taxYear, taxYear))
-						.run();
-					for (const row of rows)
-						orm
-							.insert(schema.actualBalances)
-							.values({ ...row, taxYear, source: row.source ?? "" })
-							.run();
-					invalidateReports("balances_changed", taxYear);
-					return rows;
-				}),
-		},
+		actualBalances: actualBalanceRepository(
+			orm,
+			schema.actualBalances,
+			(taxYear) => invalidateReports("balances_changed", taxYear),
+		),
 		reports: {
 			invalidate: () => invalidateReports("ledger_changed"),
 			snapshot: reportSnapshot,
@@ -844,6 +885,7 @@ function repositoriesFor(sqlite: SQLiteDatabase, directory: string) {
 	};
 	return {
 		...repositories,
+		...equity,
 		...phase2Repositories(sqlite, () => invalidateReports("ledger_changed")),
 		dataDir: directory,
 		backup: (target: string) => backupDatabase(sqlite, target),

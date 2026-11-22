@@ -1,8 +1,11 @@
 import type {
 	ActualBalance,
+	AssetClass,
+	EngineSettings,
 	LedgerTx,
 	Recipe,
 	ReviewCode,
+	UsEquityReport,
 	VdaReport,
 } from "@tax/core";
 import type {
@@ -27,6 +30,7 @@ export const imports = sqliteTable("imports", {
 		.default("file"),
 	connectionId: text("connection_id"),
 	source: text("source").notNull(),
+	assetClass: text("asset_class").$type<AssetClass>(),
 	fileName: text("file_name").notNull(),
 	fileSha256: text("file_sha256").notNull(),
 	timezone: text("timezone").$type<ImportSummary["timezone"]>().notNull(),
@@ -103,11 +107,19 @@ export const transactions = sqliteTable(
 		}),
 		timestamp: text("timestamp").notNull(),
 		type: text("type").$type<LedgerTx["type"]>().notNull(),
+		assetClass: text("asset_class")
+			.$type<AssetClass>()
+			.notNull()
+			.default("vda"),
 		incomeKind: text("income_kind").$type<LedgerTx["incomeKind"]>(),
 		assetIn: text("asset_in"),
 		amountIn: text("amount_in"),
 		assetOut: text("asset_out"),
 		amountOut: text("amount_out"),
+		dividendAsset: text("dividend_asset"),
+		withholdingTaxAmount: text("withholding_tax_amount"),
+		withholdingTaxAsset: text("withholding_tax_asset"),
+		entityName: text("entity_name"),
 		feeAsset: text("fee_asset"),
 		feeAmount: text("fee_amount"),
 		gstInr: text("gst_inr"),
@@ -132,6 +144,7 @@ export const transactions = sqliteTable(
 		uniqueIndex("transactions_source_ref").on(t.source, t.sourceRef),
 		index("transactions_fingerprint").on(t.fingerprint),
 		index("transactions_superseded_by").on(t.supersededBy),
+		index("transactions_asset_class").on(t.assetClass),
 	],
 );
 export const recipes = sqliteTable("recipes", {
@@ -280,6 +293,69 @@ export const reportInvalidations = sqliteTable("report_invalidations", {
 		enum: ["ledger_changed", "settings_changed", "balances_changed"],
 	}).notNull(),
 });
+
+export const usEquityReports = sqliteTable("us_equity_reports", {
+	id: text("id").primaryKey(),
+	taxYear: text("tax_year").notNull(),
+	computedAt: text("computed_at").notNull(),
+	settingsJson: text("settings_json", { mode: "json" })
+		.$type<EngineSettings>()
+		.notNull(),
+	reportJson: text("report_json", { mode: "json" })
+		.$type<UsEquityReport>()
+		.notNull(),
+});
+
+export const usEquityReportInvalidations = sqliteTable(
+	"us_equity_report_invalidations",
+	{
+		taxYear: text("tax_year").primaryKey(),
+		invalidatedAt: text("invalidated_at").notNull(),
+		cause: text("cause", {
+			enum: [
+				"ledger_changed",
+				"settings_changed",
+				"balances_changed",
+				"metadata_changed",
+				"prices_changed",
+			],
+		}).notNull(),
+	},
+);
+
+export const equityMetadata = sqliteTable("equity_metadata", {
+	symbol: text("symbol").primaryKey(),
+	entityName: text("entity_name").notNull(),
+	entityAddress: text("entity_address"),
+	zipCode: text("zip_code"),
+	natureOfEntity: text("nature_of_entity"),
+	countryName: text("country_name"),
+	countryCode: text("country_code"),
+});
+
+export const equityCyPrices = sqliteTable(
+	"equity_cy_prices",
+	{
+		calendarYear: integer("calendar_year").notNull(),
+		symbol: text("symbol").notNull(),
+		peakPriceUsd: text("peak_price_usd"),
+		peakDate: text("peak_date"),
+		closingPriceUsd: text("closing_price_usd"),
+		source: text("source"),
+	},
+	(t) => [primaryKey({ columns: [t.calendarYear, t.symbol] })],
+);
+
+export const usEquityActualBalances = sqliteTable(
+	"us_equity_actual_balances",
+	{
+		taxYear: text("tax_year").notNull(),
+		asset: text("asset").notNull(),
+		source: text("source").notNull().default(""),
+		amount: text("amount").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.taxYear, t.asset, t.source] })],
+);
 
 export const reviewResolutions = sqliteTable(
 	"review_resolutions",

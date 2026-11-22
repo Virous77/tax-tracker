@@ -1,0 +1,34 @@
+{
+	"cases": [
+		{
+			"capitalGains": {
+				"rows": [
+					{
+						"costUsd": "102.00",
+						"costInr": "8160.00",
+						"feeUsd": "3.00",
+						"feeInr": "240.00",
+						"considerationUsd": "147.00",
+						"considerationInr": "11760.00",
+						"gainInr": "3600.00"
+					}
+				]
+			}
+		},
+		{
+			"capitalGains": {
+				"rows": [
+					{
+						"costUsd": "100.00",
+						"costInr": "8000.00",
+						"feeUsd": "3.00",
+						"feeInr": "240.00",
+						"considerationUsd": "150.00",
+						"considerationInr": "12000.00",
+						"gainInr": "4000.00"
+					}
+				]
+			}
+		}
+	]
+}

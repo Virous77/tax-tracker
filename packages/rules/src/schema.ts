@@ -2,6 +2,8 @@ import {
 	NonNegativeDecimalSchema,
 	PositiveDecimalSchema,
 	TaxYearSchema,
+	UsEquityDtaaSchema,
+	UsEquitySectionsSchema,
 } from "@tax/core";
 import { z } from "zod";
 
@@ -44,6 +46,16 @@ export const VdaRulesSchema = CommonSchema.extend({
 	}),
 });
 export const UsEquityRulesSchema = CommonSchema.extend({
+	scheduleFaCalendarYear: z.number().int().min(2020).max(2100),
+	cess: NonNegativeDecimalSchema,
+	surchargeCapLtcg: NonNegativeDecimalSchema,
+	lossSetOff: z.object({
+		stclAgainst: z.array(z.enum(["stcg", "ltcg"])),
+		ltclAgainst: z.array(z.enum(["ltcg"])),
+		carryForwardYears: z.number().int().positive(),
+	}),
+	dtaa: UsEquityDtaaSchema,
+	sections: UsEquitySectionsSchema,
 	longTermHoldingMonths: z.number().int().positive(),
 	longTermRate: PositiveDecimalSchema,
 	indexation: z.literal(false),

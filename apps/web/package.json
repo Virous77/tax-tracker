@@ -3,7 +3,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "NEXT_TELEMETRY_DISABLED=1 next dev",
+		"dev": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true})\" && NEXT_TELEMETRY_DISABLED=1 next dev",
 		"build": "NEXT_TELEMETRY_DISABLED=1 next build",
 		"start": "NEXT_TELEMETRY_DISABLED=1 next start",
 		"typecheck": "tsc --noEmit",

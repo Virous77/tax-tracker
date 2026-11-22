@@ -25,6 +25,7 @@ import {
 } from "@/lib/client/api";
 import { resolveTxExplorer } from "@/lib/client/chains";
 import {
+	formatAssetClass,
 	formatIncomeKind,
 	formatInrNullable,
 	formatInrRateSource,
@@ -202,6 +203,24 @@ export function TransactionDrawer({
 						) : null}
 
 						<dl className="grid grid-cols-2 gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3 text-xs">
+							<div>
+								<dt className="text-[var(--text-muted)]">Asset Class</dt>
+								<dd className="mt-0.5 font-medium">
+									{formatAssetClass(tx.assetClass)}
+								</dd>
+							</div>
+							{tx.entityName ? (
+								<div>
+									<dt className="text-[var(--text-muted)]">Entity Name</dt>
+									<dd className="mt-0.5 font-medium">{tx.entityName}</dd>
+								</div>
+							) : null}
+							{tx.dividendAsset ? (
+								<div>
+									<dt className="text-[var(--text-muted)]">Stock Ticker</dt>
+									<dd className="mt-0.5 font-semibold">{tx.dividendAsset}</dd>
+								</div>
+							) : null}
 							{tx.assetIn ? (
 								<div>
 									<dt className="text-[var(--text-muted)]">Asset In</dt>
@@ -215,6 +234,15 @@ export function TransactionDrawer({
 									<dt className="text-[var(--text-muted)]">Asset Out</dt>
 									<dd className="num mt-0.5 font-semibold">
 										{formatQty(tx.amountOut)} {tx.assetOut}
+									</dd>
+								</div>
+							) : null}
+							{tx.withholdingTaxAmount ? (
+								<div>
+									<dt className="text-[var(--text-muted)]">Withholding Tax</dt>
+									<dd className="num mt-0.5 font-semibold">
+										{formatQty(tx.withholdingTaxAmount)}{" "}
+										{tx.withholdingTaxAsset ?? "USD"}
 									</dd>
 								</div>
 							) : null}
@@ -375,29 +403,39 @@ export function TransactionDrawer({
 									</div>
 								) : null}
 
-								<InrAmountField
-									id={inrId}
-									totalLabel="Total INR value (₹)"
-									perUnitLabel={`INR value per ${priced?.asset ?? "unit"} (₹)`}
-									perUnitAvailable={priced !== null}
-									mode={inrMode}
-									onModeChange={(next) => {
-										setInrMode(next);
-										setInrError(null);
-									}}
-									text={inrValue}
-									onTextChange={(next) => {
-										setInrValue(next);
-										setInrError(null);
-									}}
-									quantity={priced?.quantity}
-									asset={priced?.asset ?? ""}
-									reference={priceReference}
-									error={inrError}
-									placeholder={
-										inrMode === "total" ? "e.g. 250000.00" : "e.g. 95"
-									}
-								/>
+								{tx.assetClass === "us_equity" ? (
+									<div className="sm:col-span-2">
+										<p className="rounded border border-[var(--border)] bg-[var(--bg-subtle)] px-2.5 py-2 text-[11px] text-[var(--text-secondary)]">
+											INR values for US stock entries are calculated
+											automatically from USD using the SBI TT buying rate per
+											Settings.
+										</p>
+									</div>
+								) : (
+									<InrAmountField
+										id={inrId}
+										totalLabel="Total INR value (₹)"
+										perUnitLabel={`INR value per ${priced?.asset ?? "unit"} (₹)`}
+										perUnitAvailable={priced !== null}
+										mode={inrMode}
+										onModeChange={(next) => {
+											setInrMode(next);
+											setInrError(null);
+										}}
+										text={inrValue}
+										onTextChange={(next) => {
+											setInrValue(next);
+											setInrError(null);
+										}}
+										quantity={priced?.quantity}
+										asset={priced?.asset ?? ""}
+										reference={priceReference}
+										error={inrError}
+										placeholder={
+											inrMode === "total" ? "e.g. 250000.00" : "e.g. 95"
+										}
+									/>
+								)}
 							</div>
 
 							<div>

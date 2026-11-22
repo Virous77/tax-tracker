@@ -1,0 +1,59 @@
+{
+	"cases": [
+		{
+			"dividends": {
+				"totals": {
+					"grossUsd": "20.00"
+				}
+			},
+			"scheduleFa": {
+				"calendarYear": 2026,
+				"rows": [
+					{
+						"asset": "AAPL",
+						"entityName": "Apple Inc.",
+						"zipCode": "95014",
+						"openingQty": "3",
+						"maxQtyHeld": "5",
+						"closingQty": "3",
+						"dateOfAcquiring": "2024-02-10",
+						"lotCount": 2,
+						"initialValueUsd": "520.00",
+						"initialValueInr": "41820.00",
+						"initialFx": null,
+						"peakValueUsd": "750.00",
+						"peakValueInr": "61500.00",
+						"closingValueUsd": "480.00",
+						"closingValueInr": "39840.00",
+						"grossDividendsPaidUsd": "30.00",
+						"grossDividendsPaidInr": "2440.00",
+						"grossSaleProceedsUsd": "300.00",
+						"grossSaleProceedsInr": "24600.00"
+					},
+					{
+						"asset": "EXIT",
+						"entityName": "Exited Company",
+						"openingQty": "0",
+						"maxQtyHeld": "1",
+						"closingQty": "0",
+						"peakValueUsd": "0.00",
+						"peakValueInr": "0.00",
+						"closingValueUsd": "0.00",
+						"closingValueInr": "0.00"
+					},
+					{
+						"asset": "MISS",
+						"entityName": "MISS",
+						"closingQty": "1",
+						"peakValueUsd": null,
+						"peakValueInr": null,
+						"closingValueUsd": null,
+						"closingValueInr": null
+					}
+				]
+			},
+			"warningCodes": ["missing_market_price", "parse_warning"],
+			"incomplete": true
+		}
+	]
+}

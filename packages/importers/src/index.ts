@@ -38,29 +38,40 @@ export {
 	sha256,
 	splitPair,
 } from "./values.js";
+export {
+	isVested,
+	isVestedSheet,
+	parseVested,
+	vested,
+} from "./vested/index.js";
 
 import { binanceKind, parseBinance } from "./binance/index.js";
 import { isCoinDcx, parseCoinDcx } from "./coindcx/index.js";
 import { applyRecipe } from "./generic.js";
 import { readSheets } from "./spreadsheet.js";
 import type { ImportOptions, InputFile, TableSheet } from "./types.js";
+import { isVested, parseVested } from "./vested/index.js";
+
+type FileImportOptions = ImportOptions & {
+	source?: "auto" | "binance" | "coindcx" | "vested" | "generic";
+};
+
 export function detectSource(
 	sheets: TableSheet[],
-): "binance" | "coindcx" | "generic" {
+): "binance" | "coindcx" | "vested" | "generic" {
+	if (isVested(sheets)) return "vested";
 	return sheets.some(isCoinDcx)
 		? "coindcx"
 		: sheets.some((sheet) => binanceKind(sheet))
 			? "binance"
 			: "generic";
 }
-export function importFile(
-	file: InputFile,
-	opts: ImportOptions & { source?: "auto" | "binance" | "coindcx" | "generic" },
-) {
+export function importFile(file: InputFile, opts: FileImportOptions) {
 	if (isPdf(file)) throw pdfError("pdf_requires_async");
 	const sheets = readSheets(file, { allowDuplicateHeaders: true });
 	const source =
 		!opts.source || opts.source === "auto" ? detectSource(sheets) : opts.source;
+	if (source === "vested") return parseVested(sheets, opts, file.name);
 	return source === "binance"
 		? parseBinance(sheets, opts, file.name)
 		: source === "coindcx"

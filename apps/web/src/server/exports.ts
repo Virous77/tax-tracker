@@ -13,10 +13,10 @@ export function safeCell(value: string): string {
 		? `'${value}`
 		: value;
 }
-function csv(rows: string[][]): string {
+export function csv(rows: string[][]): string {
 	return `${rows.map((row) => row.map((value) => `"${safeCell(value).replaceAll('"', '""')}"`).join(",")).join("\r\n")}\r\n`;
 }
-function table(rows: unknown[]): string[][] {
+export function table(rows: unknown[]): string[][] {
 	const objects = rows.map((row) => row as Record<string, unknown>);
 	const keys = [...new Set(objects.flatMap((row) => Object.keys(row)))];
 	return [

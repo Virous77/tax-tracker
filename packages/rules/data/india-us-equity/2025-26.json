@@ -1,0 +1,39 @@
+{
+	"taxYear": "2025-26",
+	"act": "Income-tax Act, 1961",
+	"period": {
+		"start": "2025-04-01",
+		"end": "2026-03-31",
+		"timezone": "Asia/Kolkata"
+	},
+	"scheduleFaCalendarYear": 2025,
+	"longTermHoldingMonths": 24,
+	"longTermRate": "0.125",
+	"cess": "0.04",
+	"surchargeCapLtcg": "0.15",
+	"indexation": false,
+	"shortTermRate": "slab",
+	"dividendRate": "slab",
+	"usWithholdingDefault": "0.25",
+	"fxRule": "sbi_tt_buying_last_day_of_previous_month",
+	"lossSetOff": {
+		"stclAgainst": ["stcg", "ltcg"],
+		"ltclAgainst": ["ltcg"],
+		"carryForwardYears": 8
+	},
+	"dtaa": {
+		"countryName": "United States of America",
+		"countryCode": "2",
+		"dividendArticle": "Article 10(2)(b)"
+	},
+	"sections": {
+		"ltcgTax": "Section 112(1)(a)",
+		"stcgTax": "Normal slab rates (Section 2(42A) ≤ 24 months)",
+		"dividendIncome": "Section 56(2)(i) (Income from Other Sources)",
+		"foreignTaxCredit": "Section 90 & Rule 128 (Form 67)",
+		"foreignAssets": "Schedule FA (Table A3)",
+		"currencyConversionRule": "Rule 115"
+	},
+	"sectionsVerified": false,
+	"sources": ["https://incometax.gov.in/"]
+}

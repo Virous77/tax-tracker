@@ -37,7 +37,15 @@ import {
 } from "@/lib/client/format";
 
 type ImportSheet = z.infer<typeof ImportSheetSchema>;
-type SideTarget = "buy" | "sell" | "deposit" | "withdrawal" | "income";
+type SideTarget =
+	| "buy"
+	| "sell"
+	| "deposit"
+	| "withdrawal"
+	| "income"
+	| "dividend"
+	| "foreign_tax"
+	| "skip";
 
 const SIDE_TARGETS: SideTarget[] = [
 	"buy",
@@ -45,7 +53,14 @@ const SIDE_TARGETS: SideTarget[] = [
 	"deposit",
 	"withdrawal",
 	"income",
+	"dividend",
+	"foreign_tax",
+	"skip",
 ];
+
+function formatSideTarget(target: SideTarget): string {
+	return target === "skip" ? "Skip (ignore)" : formatTxType(target);
+}
 
 const DATE_FORMAT_PRESETS = [
 	"yyyy-MM-dd HH:mm:ss",
@@ -332,6 +347,25 @@ function buildInitialRecipe(
 		"charge coin",
 	]);
 	const tds = guessColumn(h, ["tds", "tds inr", "tds amount"]);
+	const currency = guessColumn(h, ["currency", "ccy"], ["fee", "tax"]);
+	const withholdingTax = guessColumn(h, [
+		"tax withheld",
+		"withholding tax",
+		"withholding",
+		"foreign tax",
+	]);
+	const withholdingTaxAsset = guessColumn(h, [
+		"tax currency",
+		"withholding tax currency",
+		"withholding currency",
+	]);
+	const description = guessColumn(h, [
+		"description",
+		"company",
+		"entity",
+		"entity name",
+		"security name",
+	]);
 	const id = guessColumn(
 		h,
 		[
@@ -391,6 +425,10 @@ function buildInitialRecipe(
 			...(feeAmount ? { feeAmount } : {}),
 			...(feeAsset ? { feeAsset } : {}),
 			...(tds ? { tds } : {}),
+			...(currency ? { currency } : {}),
+			...(withholdingTax ? { withholdingTax } : {}),
+			...(withholdingTaxAsset ? { withholdingTaxAsset } : {}),
+			...(description ? { description } : {}),
 			...(id ? { id } : {}),
 			...(txHash ? { txHash } : {}),
 		},
@@ -456,6 +494,10 @@ export function RecipeWizard({
 
 	const sheetSelectId = useId();
 	const nameInputId = useId();
+	const assetClassId = useId();
+	const defaultQuoteId = useId();
+	const defaultFeeId = useId();
+	const dateAsOfId = useId();
 	const dateFormatId = useId();
 	const signStyleId = useId();
 	const quotesInputId = useId();
@@ -678,7 +720,15 @@ export function RecipeWizard({
 			const low = raw.toLowerCase();
 			let target: SideTarget = "buy";
 			if (low.includes("sell") || low.includes("ask")) target = "sell";
-			else if (low.includes("dep")) target = "deposit";
+			else if (
+				low.includes("nra") ||
+				low.includes("withhold") ||
+				low.includes("tax adj") ||
+				low.includes("foreign tax")
+			)
+				target = "foreign_tax";
+			else if (low.includes("div")) target = "dividend";
+			else if (low.includes("dep") || low.includes("wire")) target = "deposit";
 			else if (low.includes("with")) target = "withdrawal";
 			else if (
 				low.includes("stak") ||
@@ -688,6 +738,7 @@ export function RecipeWizard({
 				low.includes("income")
 			)
 				target = "income";
+			else if (low.includes("journal") || low.includes("skip")) target = "skip";
 			mapped.push({ id: `det-${raw}`, raw, target });
 		}
 		setSideMapEntries(mapped);
@@ -727,9 +778,17 @@ export function RecipeWizard({
 		{ key: "quoteAsset", label: "Quote Asset", hint: "if no pair column" },
 		{ key: "price", label: "Unit Price" },
 		{ key: "total", label: "Total / Consideration" },
+		{ key: "currency", label: "Currency Column", hint: "e.g. USD" },
 		{ key: "feeAmount", label: "Fee Amount" },
 		{ key: "feeAsset", label: "Fee Asset" },
 		{ key: "tds", label: "TDS (INR)" },
+		{ key: "withholdingTax", label: "Withholding Tax" },
+		{ key: "withholdingTaxAsset", label: "Tax Currency" },
+		{
+			key: "description",
+			label: "Description / Entity Name",
+			hint: "company name",
+		},
 		{ key: "id", label: "Trade / Order ID" },
 		{ key: "txHash", label: "Tx Hash" },
 	];
@@ -1015,6 +1074,36 @@ export function RecipeWizard({
 				<div className="grid grid-cols-1 gap-4 border-t border-[var(--border)] pt-3 sm:grid-cols-2 lg:grid-cols-4">
 					<div>
 						<label
+							htmlFor={assetClassId}
+							className="block text-xs font-medium text-[var(--text-secondary)]"
+						>
+							Asset class
+						</label>
+						<Select
+							id={assetClassId}
+							value={recipe.assetClass ?? "vda"}
+							onValueChange={(value) => {
+								const nextAssetClass = value as "vda" | "us_equity";
+								setRecipe((prev) => ({
+									...prev,
+									assetClass: nextAssetClass,
+									...(nextAssetClass === "us_equity" && !prev.defaultQuoteAsset
+										? { defaultQuoteAsset: "USD" }
+										: {}),
+									...(nextAssetClass === "us_equity" && !prev.defaultFeeAsset
+										? { defaultFeeAsset: "USD" }
+										: {}),
+								}));
+							}}
+							className="mt-1 w-full"
+						>
+							<SelectItem value="vda">Crypto (VDA)</SelectItem>
+							<SelectItem value="us_equity">US Stocks</SelectItem>
+						</Select>
+					</div>
+
+					<div>
+						<label
 							htmlFor={tzSelectId}
 							className="block text-xs font-medium text-[var(--text-secondary)]"
 						>
@@ -1061,6 +1150,88 @@ export function RecipeWizard({
 								<p className="mt-1 text-xs text-[var(--loss)]">{tzError}</p>
 							) : null}
 						</div>
+					) : null}
+
+					{recipe.assetClass === "us_equity" ||
+					recipe.defaultQuoteAsset ||
+					recipe.defaultFeeAsset ||
+					recipe.dateAsOf ? (
+						<>
+							<div>
+								<label
+									htmlFor={defaultQuoteId}
+									className="block text-xs font-medium text-[var(--text-secondary)]"
+								>
+									Default quote currency
+								</label>
+								<input
+									id={defaultQuoteId}
+									type="text"
+									value={recipe.defaultQuoteAsset ?? ""}
+									onChange={(e) => {
+										const val = e.target.value.trim().toUpperCase();
+										setRecipe((prev) => {
+											const next = { ...prev };
+											if (val) next.defaultQuoteAsset = val;
+											else delete next.defaultQuoteAsset;
+											return next;
+										});
+									}}
+									placeholder="e.g. USD"
+									className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase placeholder:normal-case"
+								/>
+							</div>
+
+							<div>
+								<label
+									htmlFor={defaultFeeId}
+									className="block text-xs font-medium text-[var(--text-secondary)]"
+								>
+									Default fee currency
+								</label>
+								<input
+									id={defaultFeeId}
+									type="text"
+									value={recipe.defaultFeeAsset ?? ""}
+									onChange={(e) => {
+										const val = e.target.value.trim().toUpperCase();
+										setRecipe((prev) => {
+											const next = { ...prev };
+											if (val) next.defaultFeeAsset = val;
+											else delete next.defaultFeeAsset;
+											return next;
+										});
+									}}
+									placeholder="e.g. USD"
+									className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase placeholder:normal-case"
+								/>
+							</div>
+
+							<div>
+								<label
+									htmlFor={dateAsOfId}
+									className="block text-xs font-medium text-[var(--text-secondary)]"
+								>
+									Date &ldquo;as of&rdquo; handling
+								</label>
+								<Select
+									id={dateAsOfId}
+									value={recipe.dateAsOf ?? "as_of"}
+									onValueChange={(value) =>
+										setRecipe((prev) => ({
+											...prev,
+											dateAsOf: value as "as_of" | "first",
+										}))
+									}
+									className="mt-1 w-full"
+								>
+									<SelectItem value="as_of">
+										Use &ldquo;as of&rdquo; date (effective)
+									</SelectItem>
+									<SelectItem value="first">Use posted date (first)</SelectItem>
+								</Select>
+							</div>
+						</>
 					) : null}
 				</div>
 
@@ -1187,7 +1358,7 @@ export function RecipeWizard({
 									>
 										{SIDE_TARGETS.map((t) => (
 											<SelectItem key={t} value={t}>
-												{formatTxType(t)}
+												{formatSideTarget(t)}
 											</SelectItem>
 										))}
 									</Select>
@@ -1359,6 +1530,22 @@ export function RecipeWizard({
 															<span>
 																TDS: {formatInrNullable(row.converted.tdsInr)}
 															</span>
+														) : null}
+														{row.converted.dividendAsset ? (
+															<span>
+																Ticker:{" "}
+																<strong>{row.converted.dividendAsset}</strong>
+															</span>
+														) : null}
+														{row.converted.withholdingTaxAmount ? (
+															<span>
+																Tax withheld:{" "}
+																{formatQty(row.converted.withholdingTaxAmount)}{" "}
+																{row.converted.withholdingTaxAsset ?? "USD"}
+															</span>
+														) : null}
+														{row.converted.entityName ? (
+															<span>Entity: {row.converted.entityName}</span>
 														) : null}
 													</div>
 													{row.converted.reviewFlags.length > 0 ? (

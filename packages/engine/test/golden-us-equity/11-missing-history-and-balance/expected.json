@@ -1,0 +1,48 @@
+{
+	"cases": [
+		{
+			"balances": [
+				{
+					"asset": "VTI",
+					"computed": "-2",
+					"actual": "0",
+					"difference": "2"
+				}
+			],
+			"unresolved": [
+				{
+					"asset": "VTI",
+					"quantity": "2",
+					"reason": "missing_history"
+				}
+			],
+			"warningCodes": ["missing_history", "balance_mismatch"],
+			"incomplete": true,
+			"capitalGains": {
+				"rows": [
+					{
+						"term": "long",
+						"quantity": "1",
+						"costInr": "8000.00",
+						"considerationInr": "12000.00",
+						"gainInr": "4000.00"
+					},
+					{
+						"term": null,
+						"quantity": "2",
+						"dateOfAcquisition": null,
+						"costUsd": null,
+						"costInr": null,
+						"considerationInr": "24000.00",
+						"gainInr": null
+					}
+				],
+				"summary": {
+					"longTerm": {
+						"netGainInr": "4000.00"
+					}
+				}
+			}
+		}
+	]
+}

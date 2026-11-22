@@ -298,7 +298,7 @@ export function ReportClient() {
 				setPriceFillJob(null);
 
 				if (job.status === "completed") {
-					if (job.result && "requested" in job.result) {
+					if (job.result && "fromCache" in job.result) {
 						setPriceFillResult(job.result);
 					}
 					const pStatus = await api.getPricesStatus(year).catch(() => null);

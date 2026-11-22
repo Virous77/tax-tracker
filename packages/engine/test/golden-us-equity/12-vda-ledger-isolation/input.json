@@ -1,0 +1,85 @@
+{
+	"cases": [
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2024-04-01T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "TSLA",
+					"amountIn": "4",
+					"assetOut": "USD",
+					"amountOut": "400"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "TSLA",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "150"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "csv:golden-us",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2024-04-01T12:00:00.000Z",
+					"type": "buy",
+					"raw": {
+						"fixtureRow": 3
+					},
+					"reviewFlags": [],
+					"assetIn": "TSLA",
+					"amountIn": "2",
+					"assetOut": "INR",
+					"amountOut": "100"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000004",
+					"source": "csv:golden-us",
+					"sourceRef": "4",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "vda",
+					"raw": {
+						"fixtureRow": 4
+					},
+					"reviewFlags": [],
+					"assetOut": "TSLA",
+					"amountOut": "1",
+					"assetIn": "INR",
+					"amountIn": "250"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2023-01-01",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				}
+			],
+			"checkVdaIsolation": true
+		}
+	]
+}

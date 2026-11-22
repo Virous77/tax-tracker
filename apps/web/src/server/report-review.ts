@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+	type AssetClass,
 	D,
 	type LedgerTx,
 	type ReportWarning,
@@ -37,13 +38,18 @@ function reviewSnapshot(
 	db: TaxDatabase,
 	taxYear?: string,
 	includeSuperseded = false,
+	assetClass: AssetClass | "all" = "all",
 ) {
 	const years = taxYear ? [taxYear] : listTaxYears().map(({ id }) => id);
 	const reports = years.map((year) => ({
 		taxYear: year,
 		...db.reports.snapshot(year),
 	}));
-	const transactions = db.transactions.all();
+	const equityReports = years.map((year) => ({
+		taxYear: year,
+		...db.usEquityReports.snapshot(year),
+	}));
+	const transactions = db.transactions.list({ assetClass });
 	const superseded = new Set(
 		includeSuperseded
 			? []
@@ -56,13 +62,19 @@ function reviewSnapshot(
 	);
 	const visible = new Map(ledger.map((tx) => [tx.id, tx]));
 	const existingIds = new Set(transactions.map((tx) => tx.id));
+	const snapshots = [
+		...(assetClass !== "us_equity" ? reports : []),
+		...(assetClass !== "vda" ? equityReports : []),
+	];
 	const staleYears = new Set(
-		reports
-			.filter(({ status }) => status === "stale")
-			.map(({ taxYear }) => taxYear),
+		snapshots.flatMap(({ taxYear, status, report }) =>
+			status === "stale" && report
+				? [`${taxYear}:${"valuations" in report ? "vda" : "us_equity"}`]
+				: [],
+		),
 	);
-	const wasDeleted = (year: string, id: string) =>
-		staleYears.has(year) && !existingIds.has(id);
+	const wasDeleted = (year: string, id: string, regime: AssetClass) =>
+		staleYears.has(`${year}:${regime}`) && !existingIds.has(id);
 	const entries = new Map<string, ReviewEntry>();
 	const add = (entry: ReviewEntry) => {
 		entries.set(resolutionKey(entry), entry);
@@ -75,6 +87,7 @@ function reviewSnapshot(
 		txId: string,
 		tx?: LedgerTx,
 		valuation?: Valuation,
+		regime: AssetClass = tx?.assetClass ?? "vda",
 	) => {
 		const { code, asset, source, importId } = warning;
 		const severity = warningSeverity(warning);
@@ -94,6 +107,7 @@ function reviewSnapshot(
 				tx && transactionTaxInputs(tx),
 				valuation,
 				txId ? undefined : warning.count,
+				...(regime === "us_equity" ? [regime] : []),
 			),
 		};
 		const flag = { code, message, severity, ...(txId ? { txId } : {}) };
@@ -105,7 +119,7 @@ function reviewSnapshot(
 			add({ ...entry, flag });
 		} else {
 			const sourceId = source ?? tx?.source;
-			const rowDeleted = Boolean(txId) && wasDeleted(taxYear, txId);
+			const rowDeleted = Boolean(txId) && wasDeleted(taxYear, txId, regime);
 			add({
 				...entry,
 				item: {
@@ -134,16 +148,21 @@ function reviewSnapshot(
 		for (const flag of tx.reviewFlags)
 			addWarning(taxYearOf(tx.timestamp), flag, tx.id, tx);
 
-	for (const { taxYear, report } of reports) {
+	for (const { taxYear, report } of snapshots) {
 		if (!report) continue;
+		const regime = "valuations" in report ? "vda" : "us_equity";
 		const reportLedger = new Map(report.ledger.map((tx) => [tx.id, tx]));
 		const valuations = new Map(
-			report.valuations.map((value) => [value.txId, value]),
+			"valuations" in report
+				? report.valuations.map((value) => [value.txId, value])
+				: [],
 		);
 		const balanceWarnings = new Set<string>();
 		for (const balance of report.balances) {
 			const sourceLabel = balance.source ? label(balance.source) : undefined;
-			const txIds = balance.txIds.filter((id) => !wasDeleted(taxYear, id));
+			const txIds = balance.txIds.filter(
+				(id) => !wasDeleted(taxYear, id, regime),
+			);
 			const rowDeleted = balance.txIds.length > 0 && txIds.length === 0;
 			const addBalance = (code: ReviewCode, before: string, after: string) => {
 				balanceWarnings.add(
@@ -156,7 +175,11 @@ function reviewSnapshot(
 					taxYear,
 					code,
 					txId: "",
-					itemKey: itemKey("balance", balance),
+					itemKey: itemKey(
+						"balance",
+						balance,
+						...(regime === "us_equity" ? [regime] : []),
+					),
 					item: {
 						kind: "balance",
 						severity: "action",
@@ -185,12 +208,13 @@ function reviewSnapshot(
 		for (const unresolved of report.unresolved) {
 			const { txId, reason: code } = unresolved;
 			const tx = reportLedger.get(txId);
-			const rowDeleted = wasDeleted(taxYear, txId);
+			const rowDeleted = wasDeleted(taxYear, txId, regime);
 			const signature = itemKey(
 				"unresolved",
 				unresolved,
 				tx && transactionTaxInputs(tx),
 				valuations.get(txId),
+				...(regime === "us_equity" ? [regime] : []),
 			);
 			const occurrence = slices.get(signature) ?? 0;
 			slices.set(signature, occurrence + 1);
@@ -217,7 +241,8 @@ function reviewSnapshot(
 				...(warning.txIds ?? []),
 				...(warning.txId ? [warning.txId] : []),
 			]);
-			if (!ids.size) addWarning(taxYear, warning, "");
+			if (!ids.size)
+				addWarning(taxYear, warning, "", undefined, undefined, regime);
 			for (const id of ids) {
 				const tx = reportLedger.get(id);
 				const original = tx?.reviewFlags.some(
@@ -230,6 +255,7 @@ function reviewSnapshot(
 					id,
 					tx,
 					original ? undefined : valuations.get(id),
+					regime,
 				);
 			}
 		}
@@ -245,8 +271,9 @@ export function readReview(
 	db: TaxDatabase,
 	taxYear?: string,
 	includeSuperseded = false,
+	assetClass?: AssetClass | "all",
 ) {
-	const snapshot = reviewSnapshot(db, taxYear, includeSuperseded);
+	const snapshot = reviewSnapshot(db, taxYear, includeSuperseded, assetClass);
 	const resolutions = new Set(
 		db.reviewResolutions
 			.list([...new Set(snapshot.entries.map((entry) => entry.taxYear))])

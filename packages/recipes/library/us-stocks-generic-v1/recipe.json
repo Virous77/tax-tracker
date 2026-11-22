@@ -1,0 +1,31 @@
+{
+	"id": "us-stocks-generic-v1",
+	"name": "US stocks (Date, Action, Symbol, Quantity)",
+	"version": 1,
+	"fingerprint": "5924a98e496701ce33e32be5b9da007eaf51153a4b41ee788f2d6cd9608820b3",
+	"sheet": "CSV",
+	"assetClass": "us_equity",
+	"defaultQuoteAsset": "USD",
+	"defaultFeeAsset": "USD",
+	"columns": {
+		"timestamp": "Date",
+		"side": "Action",
+		"baseAsset": "Symbol",
+		"description": "Company",
+		"amount": "Quantity",
+		"price": "Price",
+		"total": "Total",
+		"feeAmount": "Fee",
+		"withholdingTax": "Tax Withheld",
+		"currency": "Currency",
+		"id": "ID"
+	},
+	"dateFormat": "yyyy-MM-dd",
+	"sideMap": {
+		"Buy": "buy",
+		"Sell": "sell",
+		"Dividend": "dividend",
+		"Cash Deposit": "deposit"
+	},
+	"signStyle": "side_column"
+}

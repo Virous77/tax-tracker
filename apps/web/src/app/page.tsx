@@ -1,5 +1,8 @@
 import { Suspense } from "react";
 import { OverviewClient } from "@/components/OverviewClient";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata("overview");
 
 export default function OverviewPage() {
 	return (

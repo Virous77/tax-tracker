@@ -12,7 +12,7 @@ interface RunningJob {
 const jobs = new Map<TaxDatabase, Set<RunningJob>>();
 export function startBackgroundJob<T>(
 	db: TaxDatabase,
-	kind: "sync" | "price_fill",
+	kind: "sync" | "price_fill" | "equity_price_fill",
 	payload: unknown,
 	operation: (ctx: {
 		signal: AbortSignal;

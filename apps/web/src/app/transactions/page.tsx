@@ -1,5 +1,8 @@
 import { Suspense } from "react";
 import { TransactionsClient } from "@/components/transactions/TransactionsClient";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata = pageMetadata("transactions");
 
 export default function TransactionsPage() {
 	return (

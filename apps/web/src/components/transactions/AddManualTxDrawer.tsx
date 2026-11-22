@@ -1,6 +1,7 @@
 "use client";
 
 import {
+	type AssetClass,
 	type IncomeKind,
 	IncomeKindSchema,
 	type LedgerTx,
@@ -59,7 +60,13 @@ function decimalOrNull(text: string): boolean {
 	return /^\d+(\.\d+)?$/.test(text);
 }
 
-export type ManualPreset = "buy" | "gift" | "income" | "sell";
+export type ManualPreset =
+	| "buy"
+	| "gift"
+	| "income"
+	| "sell"
+	| "dividend"
+	| "foreign_tax";
 
 /** The sale a missing purchase is being added for. */
 export interface SaleContext {
@@ -113,6 +120,7 @@ function SaleContextBox({ sale }: { sale: SaleContext }) {
 export function AddManualTxDrawer({
 	open,
 	initialPreset = "buy",
+	initialAssetClass = "vda",
 	initialAsset = "",
 	initialVenue = "manual",
 	initialDateTime,
@@ -124,6 +132,7 @@ export function AddManualTxDrawer({
 }: {
 	open: boolean;
 	initialPreset?: ManualPreset;
+	initialAssetClass?: AssetClass;
 	initialAsset?: string;
 	initialVenue?: ManualVenue;
 	/** IST `YYYY-MM-DDTHH:mm`; defaults to the start of 2026-27. */
@@ -135,6 +144,7 @@ export function AddManualTxDrawer({
 	onClose: () => void;
 	onCreated: (tx: LedgerTx) => void;
 }) {
+	const [assetClass, setAssetClass] = useState<AssetClass>(initialAssetClass);
 	const [type, setType] = useState<TxType>(initialPreset);
 	const [venue, setVenue] = useState<ManualVenue>(initialVenue);
 	const [istDateTime, setIstDateTime] = useState(
@@ -144,6 +154,10 @@ export function AddManualTxDrawer({
 	const [amountIn, setAmountIn] = useState("");
 	const [assetOut, setAssetOut] = useState("");
 	const [amountOut, setAmountOut] = useState("");
+	const [dividendAsset, setDividendAsset] = useState("");
+	const [withholdingTaxAmount, setWithholdingTaxAmount] = useState("");
+	const [feeAmountUsd, setFeeAmountUsd] = useState("");
+	const [entityName, setEntityName] = useState("");
 	const [inrValue, setInrValue] = useState("");
 	const [inrMode, setInrMode] = useState<InrEntryMode>("total");
 	const [incomeKind, setIncomeKind] = useState<IncomeKind>("staking");
@@ -164,7 +178,7 @@ export function AddManualTxDrawer({
 		? entryDate.toISOString()
 		: undefined;
 	const priceReference = usePriceReference(pricedAsset, {
-		enabled: open,
+		enabled: open && assetClass === "vda",
 		...(saleContext && type === "buy" ? { sale: saleContext.tx } : {}),
 		...(entryInstant ? { at: entryInstant } : {}),
 	});
@@ -176,6 +190,10 @@ export function AddManualTxDrawer({
 	const amountInId = useId();
 	const assetOutId = useId();
 	const amountOutId = useId();
+	const dividendTickerId = useId();
+	const withholdingId = useId();
+	const feeUsdId = useId();
+	const entityNameId = useId();
 	const inrId = useId();
 	const kindId = useId();
 	const tdsId = useId();
@@ -194,18 +212,37 @@ export function AddManualTxDrawer({
 
 	useEffect(() => {
 		if (!open) return;
+		setAssetClass(initialAssetClass);
 		setType(initialPreset);
-		setVenue(initialVenue);
+		setVenue(
+			initialAssetClass === "us_equity" && initialVenue === "manual"
+				? "us_broker"
+				: initialVenue,
+		);
 		if (initialPreset === "sell") {
 			setAssetOut(initialAsset.toUpperCase());
+			setAssetIn(initialAssetClass === "us_equity" ? "USD" : "");
+		} else if (initialPreset === "dividend") {
+			setAssetIn("USD");
+			setAssetOut("");
+			setDividendAsset(initialAsset.toUpperCase());
+		} else if (initialPreset === "foreign_tax") {
 			setAssetIn("");
+			setAssetOut("USD");
+			setDividendAsset(initialAsset.toUpperCase());
 		} else {
 			setAssetIn(initialAsset.toUpperCase());
-			setAssetOut("");
+			setAssetOut(initialAssetClass === "us_equity" ? "USD" : "");
+		}
+		if (initialPreset !== "dividend" && initialPreset !== "foreign_tax") {
+			setDividendAsset("");
 		}
 		setIstDateTime(initialDateTime ?? DEFAULT_DATE_TIME);
 		setAmountIn(initialPreset === "sell" ? "" : initialAmount);
 		setAmountOut("");
+		setWithholdingTaxAmount("");
+		setFeeAmountUsd("");
+		setEntityName("");
 		setInrValue("");
 		setInrMode("total");
 		setTdsInr("");
@@ -215,11 +252,71 @@ export function AddManualTxDrawer({
 	}, [
 		open,
 		initialPreset,
+		initialAssetClass,
 		initialAsset,
 		initialVenue,
 		initialDateTime,
 		initialAmount,
 	]);
+
+	function handleAssetClassChange(next: AssetClass) {
+		setAssetClass(next);
+		setError(null);
+		setFieldErrors({});
+		if (next === "us_equity") {
+			const nextType: TxType =
+				type === "buy" ||
+				type === "sell" ||
+				type === "dividend" ||
+				type === "foreign_tax"
+					? type
+					: "buy";
+			setType(nextType);
+			setVenue("us_broker");
+			if (nextType === "buy") {
+				setAssetOut((prev) => prev || "USD");
+			} else if (nextType === "sell" || nextType === "dividend") {
+				setAssetIn((prev) => prev || "USD");
+			} else if (nextType === "foreign_tax") {
+				setAssetOut((prev) => prev || "USD");
+			}
+		} else {
+			const nextType: TxType =
+				type === "buy" ||
+				type === "sell" ||
+				type === "gift" ||
+				type === "income"
+					? type
+					: "buy";
+			setType(nextType);
+			if (venue === "us_broker") setVenue("manual");
+			if (nextType === "buy" && assetOut === "USD") setAssetOut("");
+			if (nextType === "sell" && assetIn === "USD") setAssetIn("");
+		}
+	}
+
+	function handleTypeChange(nextType: TxType) {
+		setType(nextType);
+		setError(null);
+		setFieldErrors({});
+		if (assetClass === "us_equity") {
+			if (nextType === "buy") {
+				setAssetOut("USD");
+				if (assetIn === "USD") setAssetIn("");
+			} else if (nextType === "sell") {
+				setAssetIn("USD");
+				if (assetOut === "USD") setAssetOut("");
+			} else if (nextType === "dividend") {
+				setAssetIn("USD");
+				setAssetOut("");
+				setAmountOut("");
+			} else if (nextType === "foreign_tax") {
+				setAssetIn("");
+				setAmountIn("");
+				setAssetOut("USD");
+			}
+		}
+	}
 
 	async function handleSubmit(e: React.FormEvent) {
 		e.preventDefault();
@@ -249,6 +346,10 @@ export function AddManualTxDrawer({
 			const trimmedAmountIn = amountIn.trim();
 			const normAssetOut = assetOut.trim().toUpperCase();
 			const trimmedAmountOut = amountOut.trim();
+			const normDividendAsset = dividendAsset.trim().toUpperCase();
+			const trimmedWithholdingTax = withholdingTaxAmount.trim();
+			const trimmedFeeUsd = feeAmountUsd.trim();
+			const trimmedEntityName = entityName.trim();
 			const typedInr = inrValue.trim();
 			const trimmedInr =
 				inrMode === "perUnit" && typedInr !== ""
@@ -263,17 +364,47 @@ export function AddManualTxDrawer({
 				return;
 			}
 
+			const isUsEquity = assetClass === "us_equity";
 			const payload = {
 				sourceRef: `manual-${crypto.randomUUID()}`,
 				importId: null,
 				timestamp: iso,
 				type,
+				assetClass,
 				venue,
 				...(type === "income" ? { incomeKind } : {}),
 				...(normAssetIn ? { assetIn: normAssetIn } : {}),
 				...(trimmedAmountIn ? { amountIn: trimmedAmountIn } : {}),
 				...(normAssetOut ? { assetOut: normAssetOut } : {}),
 				...(trimmedAmountOut ? { amountOut: trimmedAmountOut } : {}),
+				...(isUsEquity &&
+				(type === "dividend" || type === "foreign_tax") &&
+				normDividendAsset
+					? { dividendAsset: normDividendAsset }
+					: {}),
+				...(isUsEquity && type === "dividend" && trimmedWithholdingTax !== ""
+					? {
+							withholdingTaxAmount: trimmedWithholdingTax,
+							withholdingTaxAsset: "USD",
+						}
+					: {}),
+				...(isUsEquity && type === "foreign_tax" && trimmedAmountOut !== ""
+					? {
+							withholdingTaxAmount: trimmedAmountOut,
+							withholdingTaxAsset: normAssetOut || "USD",
+						}
+					: {}),
+				...(isUsEquity &&
+				(type === "buy" || type === "sell") &&
+				trimmedFeeUsd !== ""
+					? {
+							feeAmount: trimmedFeeUsd,
+							feeAsset: "USD",
+						}
+					: {}),
+				...(isUsEquity && trimmedEntityName
+					? { entityName: trimmedEntityName }
+					: {}),
 				...(trimmedInr !== ""
 					? {
 							inrValue: trimmedInr,
@@ -286,6 +417,7 @@ export function AddManualTxDrawer({
 				...(tdsInr.trim() !== "" ? { tdsInr: tdsInr.trim() } : {}),
 				raw: {
 					manualEntry: true,
+					assetClass,
 					istDateTime,
 					type,
 					venue,
@@ -293,6 +425,10 @@ export function AddManualTxDrawer({
 					amountIn: trimmedAmountIn || undefined,
 					assetOut: normAssetOut || undefined,
 					amountOut: trimmedAmountOut || undefined,
+					dividendAsset: normDividendAsset || undefined,
+					withholdingTaxAmount: trimmedWithholdingTax || undefined,
+					feeAmount: trimmedFeeUsd || undefined,
+					entityName: trimmedEntityName || undefined,
 					inrValue: trimmedInr || undefined,
 					inrPerUnitEntered:
 						inrMode === "perUnit" && typedInr ? typedInr : undefined,
@@ -316,9 +452,12 @@ export function AddManualTxDrawer({
 		}
 	}
 
-	const needsIn = ["buy", "income", "gift", "deposit", "swap"].includes(type);
+	const isUsEquity = assetClass === "us_equity";
+	const needsIn =
+		!isUsEquity && ["buy", "income", "gift", "deposit", "swap"].includes(type);
 	const needsOut =
-		["sell", "withdrawal", "swap"].includes(type) || type === "buy";
+		!isUsEquity &&
+		(["sell", "withdrawal", "swap"].includes(type) || type === "buy");
 
 	function inputBorderClass(field: string): string {
 		return fieldErrors[field]
@@ -331,10 +470,14 @@ export function AddManualTxDrawer({
 			open={open}
 			onClose={onClose}
 			title="Add manual transaction"
-			subtitle="Record a missing buy, gift (with optional cost/FMV), or staking/airdrop income."
+			subtitle={
+				isUsEquity
+					? "Record a US stock buy, sell, dividend (with US tax withheld), or foreign tax entry."
+					: "Record a missing buy, gift (with optional cost/FMV), or staking/airdrop income."
+			}
 		>
 			<form onSubmit={handleSubmit} className="space-y-4">
-				{saleContext && type === "buy" ? (
+				{saleContext && type === "buy" && !isUsEquity ? (
 					<SaleContextBox sale={saleContext} />
 				) : null}
 
@@ -342,25 +485,54 @@ export function AddManualTxDrawer({
 
 				<div className="space-y-1.5">
 					<span className="block text-xs font-medium text-[var(--text-secondary)]">
-						Entry type
+						Asset class
 					</span>
-					<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+					<div className="grid grid-cols-2 gap-2">
 						{(
 							[
-								{ id: "buy", label: "Missing Buy" },
-								{ id: "gift", label: "Gift" },
-								{ id: "income", label: "Income" },
-								{ id: "sell", label: "Sell" },
+								{ id: "vda", label: "Crypto (VDA)" },
+								{ id: "us_equity", label: "US Stocks" },
 							] as const
 						).map((tab) => (
 							<button
 								key={tab.id}
 								type="button"
-								onClick={() => {
-									setType(tab.id);
-									setError(null);
-									setFieldErrors({});
-								}}
+								onClick={() => handleAssetClassChange(tab.id)}
+								className={`rounded border px-3 py-1.5 text-xs font-medium ${
+									assetClass === tab.id
+										? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-text)]"
+										: "border-[var(--border)] bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+								}`}
+							>
+								{tab.label}
+							</button>
+						))}
+					</div>
+				</div>
+
+				<div className="space-y-1.5">
+					<span className="block text-xs font-medium text-[var(--text-secondary)]">
+						Entry type
+					</span>
+					<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+						{(isUsEquity
+							? ([
+									{ id: "buy", label: "Buy" },
+									{ id: "sell", label: "Sell" },
+									{ id: "dividend", label: "Dividend" },
+									{ id: "foreign_tax", label: "Foreign Tax" },
+								] as const)
+							: ([
+									{ id: "buy", label: "Missing Buy" },
+									{ id: "gift", label: "Gift" },
+									{ id: "income", label: "Income" },
+									{ id: "sell", label: "Sell" },
+								] as const)
+						).map((tab) => (
+							<button
+								key={tab.id}
+								type="button"
+								onClick={() => handleTypeChange(tab.id)}
 								className={`rounded border px-3 py-1.5 text-xs font-medium ${
 									type === tab.id
 										? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent-text)]"
@@ -390,16 +562,26 @@ export function AddManualTxDrawer({
 						}}
 						className="mt-1 w-full"
 					>
-						<SelectItem value="manual">Manual (no exchange)</SelectItem>
-						<SelectItem value="binance">Binance</SelectItem>
-						<SelectItem value="coindcx">CoinDCX</SelectItem>
+						{isUsEquity ? (
+							<>
+								<SelectItem value="us_broker">US Broker</SelectItem>
+								<SelectItem value="manual">Manual (no broker)</SelectItem>
+							</>
+						) : (
+							<>
+								<SelectItem value="manual">Manual (no exchange)</SelectItem>
+								<SelectItem value="binance">Binance</SelectItem>
+								<SelectItem value="coindcx">CoinDCX</SelectItem>
+							</>
+						)}
 					</Select>
 					<p
 						id={venueHintId}
 						className="mt-1 text-[11px] text-[var(--text-muted)]"
 					>
-						Assigning an exchange lets a missing event (e.g. an old P2P buy)
-						close that exchange&apos;s balance gap.
+						{isUsEquity
+							? "Group manual US stock rows under your US broker or standalone manual entries."
+							: "Assigning an exchange lets a missing event (e.g. an old P2P buy) close that exchange's balance gap."}
 					</p>
 				</div>
 
@@ -469,6 +651,249 @@ export function AddManualTxDrawer({
 								</SelectItem>
 							))}
 						</Select>
+					</div>
+				) : null}
+
+				{isUsEquity ? (
+					<div className="space-y-4">
+						{(type === "buy" || type === "sell") && (
+							<>
+								<div className="grid grid-cols-2 gap-3">
+									<div>
+										<label
+											htmlFor={type === "buy" ? assetInId : assetOutId}
+											className="block text-xs font-medium text-[var(--text-secondary)]"
+										>
+											Stock ticker *
+										</label>
+										<input
+											id={type === "buy" ? assetInId : assetOutId}
+											type="text"
+											required
+											placeholder="e.g. AAPL"
+											value={type === "buy" ? assetIn : assetOut}
+											onChange={(e) => {
+												if (type === "buy") {
+													setAssetIn(e.target.value);
+													clearFieldError("assetIn");
+												} else {
+													setAssetOut(e.target.value);
+													clearFieldError("assetOut");
+												}
+											}}
+											className={`mt-1 w-full rounded border ${inputBorderClass(type === "buy" ? "assetIn" : "assetOut")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase placeholder:normal-case`}
+										/>
+									</div>
+									<div>
+										<label
+											htmlFor={type === "buy" ? amountInId : amountOutId}
+											className="block text-xs font-medium text-[var(--text-secondary)]"
+										>
+											Shares *
+										</label>
+										<input
+											id={type === "buy" ? amountInId : amountOutId}
+											type="text"
+											required
+											inputMode="decimal"
+											placeholder="e.g. 10"
+											value={type === "buy" ? amountIn : amountOut}
+											onChange={(e) => {
+												if (type === "buy") {
+													setAmountIn(e.target.value);
+													clearFieldError("amountIn");
+												} else {
+													setAmountOut(e.target.value);
+													clearFieldError("amountOut");
+												}
+											}}
+											className={`num mt-1 w-full rounded border ${inputBorderClass(type === "buy" ? "amountIn" : "amountOut")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
+										/>
+									</div>
+								</div>
+
+								<div className="grid grid-cols-2 gap-3">
+									<div>
+										<label
+											htmlFor={type === "buy" ? amountOutId : amountInId}
+											className="block text-xs font-medium text-[var(--text-secondary)]"
+										>
+											{type === "buy"
+												? "Total cost (USD) *"
+												: "Gross proceeds (USD) *"}
+										</label>
+										<input
+											id={type === "buy" ? amountOutId : amountInId}
+											type="text"
+											required
+											inputMode="decimal"
+											placeholder="e.g. 1500.00"
+											value={type === "buy" ? amountOut : amountIn}
+											onChange={(e) => {
+												if (type === "buy") {
+													setAmountOut(e.target.value);
+													clearFieldError("amountOut");
+												} else {
+													setAmountIn(e.target.value);
+													clearFieldError("amountIn");
+												}
+											}}
+											className={`num mt-1 w-full rounded border ${inputBorderClass(type === "buy" ? "amountOut" : "amountIn")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
+										/>
+									</div>
+									<div>
+										<label
+											htmlFor={feeUsdId}
+											className="block text-xs font-medium text-[var(--text-secondary)]"
+										>
+											Brokerage fee (USD, optional)
+										</label>
+										<input
+											id={feeUsdId}
+											type="text"
+											inputMode="decimal"
+											placeholder="e.g. 0.03"
+											value={feeAmountUsd}
+											onChange={(e) => {
+												setFeeAmountUsd(e.target.value);
+												clearFieldError("feeAmount");
+											}}
+											className={`num mt-1 w-full rounded border ${inputBorderClass("feeAmount")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
+										/>
+									</div>
+								</div>
+							</>
+						)}
+
+						{type === "dividend" && (
+							<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+								<div>
+									<label
+										htmlFor={dividendTickerId}
+										className="block text-xs font-medium text-[var(--text-secondary)]"
+									>
+										Stock ticker *
+									</label>
+									<input
+										id={dividendTickerId}
+										type="text"
+										required
+										placeholder="e.g. AAPL"
+										value={dividendAsset}
+										onChange={(e) => {
+											setDividendAsset(e.target.value);
+											clearFieldError("dividendAsset");
+										}}
+										className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase placeholder:normal-case"
+									/>
+								</div>
+								<div>
+									<label
+										htmlFor={amountInId}
+										className="block text-xs font-medium text-[var(--text-secondary)]"
+									>
+										Gross dividend (USD) *
+									</label>
+									<input
+										id={amountInId}
+										type="text"
+										required
+										inputMode="decimal"
+										placeholder="e.g. 9.24"
+										value={amountIn}
+										onChange={(e) => {
+											setAmountIn(e.target.value);
+											clearFieldError("amountIn");
+										}}
+										className={`num mt-1 w-full rounded border ${inputBorderClass("amountIn")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
+									/>
+								</div>
+								<div>
+									<label
+										htmlFor={withholdingId}
+										className="block text-xs font-medium text-[var(--text-secondary)]"
+									>
+										US tax withheld (USD)
+									</label>
+									<input
+										id={withholdingId}
+										type="text"
+										inputMode="decimal"
+										placeholder="e.g. 2.31"
+										value={withholdingTaxAmount}
+										onChange={(e) => {
+											setWithholdingTaxAmount(e.target.value);
+											clearFieldError("withholdingTaxAmount");
+										}}
+										className={`num mt-1 w-full rounded border ${inputBorderClass("withholdingTaxAmount")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
+									/>
+								</div>
+							</div>
+						)}
+
+						{type === "foreign_tax" && (
+							<div className="grid grid-cols-2 gap-3">
+								<div>
+									<label
+										htmlFor={dividendTickerId}
+										className="block text-xs font-medium text-[var(--text-secondary)]"
+									>
+										Stock ticker (optional)
+									</label>
+									<input
+										id={dividendTickerId}
+										type="text"
+										placeholder="e.g. AAPL"
+										value={dividendAsset}
+										onChange={(e) => setDividendAsset(e.target.value)}
+										className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm uppercase placeholder:normal-case"
+									/>
+								</div>
+								<div>
+									<label
+										htmlFor={amountOutId}
+										className="block text-xs font-medium text-[var(--text-secondary)]"
+									>
+										Foreign tax paid (USD) *
+									</label>
+									<input
+										id={amountOutId}
+										type="text"
+										required
+										inputMode="decimal"
+										placeholder="e.g. 2.31"
+										value={amountOut}
+										onChange={(e) => {
+											setAmountOut(e.target.value);
+											clearFieldError("amountOut");
+										}}
+										className={`num mt-1 w-full rounded border ${inputBorderClass("amountOut")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
+									/>
+								</div>
+							</div>
+						)}
+
+						<div>
+							<label
+								htmlFor={entityNameId}
+								className="block text-xs font-medium text-[var(--text-secondary)]"
+							>
+								Company / entity name (optional, for Schedule FA)
+							</label>
+							<input
+								id={entityNameId}
+								type="text"
+								placeholder="e.g. APPLE INC"
+								value={entityName}
+								onChange={(e) => setEntityName(e.target.value)}
+								className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm"
+							/>
+						</div>
+
+						<p className="text-[11px] text-[var(--text-muted)]">
+							INR values for US stocks are converted automatically from USD
+							using the SBI TT buying rate configured in Settings.
+						</p>
 					</div>
 				) : null}
 
@@ -628,71 +1053,73 @@ export function AddManualTxDrawer({
 					</div>
 				) : null}
 
-				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-					<div className="sm:col-span-2">
-						<InrAmountField
-							id={inrId}
-							totalLabel={INR_LABELS[inrLabelKey].total}
-							perUnitLabel={INR_LABELS[inrLabelKey].perUnit(pricedAsset)}
-							mode={inrMode}
-							onModeChange={(next) => {
-								setInrMode(next);
-								clearFieldError("inrValue");
-							}}
-							text={inrValue}
-							onTextChange={(next) => {
-								setInrValue(next);
-								clearFieldError("inrValue");
-							}}
-							quantity={pricedQuantity}
-							asset={pricedAsset}
-							reference={priceReference}
-							required={type === "buy" && !assetOut.trim()}
-							placeholder={inrMode === "total" ? "e.g. 200000" : "e.g. 95"}
-							error={fieldErrors.inrValue}
-							hint={
-								type === "buy"
-									? "Required unless you fill in the quote asset and quantity paid: the app then values it from those and flags the row if it can't. It never guesses a cost."
-									: type === "gift"
-										? "Enter donor cost or receipt FMV in INR for gift threshold tracking."
-										: undefined
-							}
-						/>
-					</div>
+				{!isUsEquity ? (
+					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<div className="sm:col-span-2">
+							<InrAmountField
+								id={inrId}
+								totalLabel={INR_LABELS[inrLabelKey].total}
+								perUnitLabel={INR_LABELS[inrLabelKey].perUnit(pricedAsset)}
+								mode={inrMode}
+								onModeChange={(next) => {
+									setInrMode(next);
+									clearFieldError("inrValue");
+								}}
+								text={inrValue}
+								onTextChange={(next) => {
+									setInrValue(next);
+									clearFieldError("inrValue");
+								}}
+								quantity={pricedQuantity}
+								asset={pricedAsset}
+								reference={priceReference}
+								required={type === "buy" && !assetOut.trim()}
+								placeholder={inrMode === "total" ? "e.g. 200000" : "e.g. 95"}
+								error={fieldErrors.inrValue}
+								hint={
+									type === "buy"
+										? "Required unless you fill in the quote asset and quantity paid: the app then values it from those and flags the row if it can't. It never guesses a cost."
+										: type === "gift"
+											? "Enter donor cost or receipt FMV in INR for gift threshold tracking."
+											: undefined
+								}
+							/>
+						</div>
 
-					<div>
-						<label
-							htmlFor={tdsId}
-							className="block text-xs font-medium text-[var(--text-secondary)]"
-						>
-							TDS deducted (₹, optional)
-						</label>
-						<input
-							id={tdsId}
-							type="text"
-							inputMode="decimal"
-							placeholder="e.g. 0"
-							value={tdsInr}
-							aria-invalid={Boolean(fieldErrors.tdsInr)}
-							aria-describedby={
-								fieldErrors.tdsInr ? `${tdsId}-error` : undefined
-							}
-							onChange={(e) => {
-								setTdsInr(e.target.value);
-								clearFieldError("tdsInr");
-							}}
-							className={`num mt-1 w-full rounded border ${inputBorderClass("tdsInr")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
-						/>
-						{fieldErrors.tdsInr ? (
-							<p
-								id={`${tdsId}-error`}
-								className="mt-1 text-xs text-[var(--loss)]"
+						<div>
+							<label
+								htmlFor={tdsId}
+								className="block text-xs font-medium text-[var(--text-secondary)]"
 							>
-								{fieldErrors.tdsInr}
-							</p>
-						) : null}
+								TDS deducted (₹, optional)
+							</label>
+							<input
+								id={tdsId}
+								type="text"
+								inputMode="decimal"
+								placeholder="e.g. 0"
+								value={tdsInr}
+								aria-invalid={Boolean(fieldErrors.tdsInr)}
+								aria-describedby={
+									fieldErrors.tdsInr ? `${tdsId}-error` : undefined
+								}
+								onChange={(e) => {
+									setTdsInr(e.target.value);
+									clearFieldError("tdsInr");
+								}}
+								className={`num mt-1 w-full rounded border ${inputBorderClass("tdsInr")} bg-[var(--bg-canvas)] px-2.5 py-1.5 text-sm`}
+							/>
+							{fieldErrors.tdsInr ? (
+								<p
+									id={`${tdsId}-error`}
+									className="mt-1 text-xs text-[var(--loss)]"
+								>
+									{fieldErrors.tdsInr}
+								</p>
+							) : null}
+						</div>
 					</div>
-				</div>
+				) : null}
 
 				<div>
 					<label

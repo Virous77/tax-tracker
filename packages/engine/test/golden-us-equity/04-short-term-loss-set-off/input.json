@@ -1,0 +1,119 @@
+{
+	"cases": [
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2024-04-01T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "L",
+					"amountIn": "1",
+					"assetOut": "USD",
+					"amountOut": "100"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-04-02T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetIn": "S",
+					"amountIn": "1",
+					"assetOut": "USD",
+					"amountOut": "100"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "csv:golden-us",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2026-04-03T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 3
+					},
+					"reviewFlags": [],
+					"assetIn": "N",
+					"amountIn": "1",
+					"assetOut": "USD",
+					"amountOut": "150"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000004",
+					"source": "csv:golden-us",
+					"sourceRef": "4",
+					"importId": null,
+					"timestamp": "2026-06-10T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 4
+					},
+					"reviewFlags": [],
+					"assetOut": "L",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "160"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000005",
+					"source": "csv:golden-us",
+					"sourceRef": "5",
+					"importId": null,
+					"timestamp": "2026-06-11T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 5
+					},
+					"reviewFlags": [],
+					"assetOut": "S",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "110"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000006",
+					"source": "csv:golden-us",
+					"sourceRef": "6",
+					"importId": null,
+					"timestamp": "2026-06-12T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 6
+					},
+					"reviewFlags": [],
+					"assetOut": "N",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "100"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2023-01-01",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				}
+			]
+		}
+	]
+}

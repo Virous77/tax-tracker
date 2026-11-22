@@ -1,0 +1,106 @@
+{
+	"cases": [
+		{
+			"dividends": {
+				"rows": [
+					{
+						"asset": "AAPL",
+						"taxWithheldUsd": "2.50",
+						"netInr": "600.00",
+						"trail": [
+							{
+								"sourceRef": "1"
+							},
+							{
+								"sourceRef": "2"
+							},
+							{
+								"sourceRef": "3"
+							}
+						]
+					}
+				]
+			},
+			"form67": {
+				"rows": [
+					{
+						"asset": "AAPL",
+						"foreignTaxPaidInr": "200.00"
+					},
+					{
+						"asset": "MSFT",
+						"foreignTaxPaidInr": "80.00",
+						"effectiveForeignTaxRate": null
+					}
+				],
+				"totals": {
+					"foreignTaxPaidUsd": "3.50",
+					"foreignTaxPaidInr": "280.00"
+				}
+			},
+			"warningCodes": ["unmatched_foreign_tax"],
+			"incomplete": true
+		},
+		{
+			"dividends": {
+				"rows": [
+					{
+						"asset": "AAPL",
+						"taxWithheldUsd": "2.00",
+						"netUsd": "6.00"
+					},
+					{
+						"asset": "NVDA",
+						"taxWithheldUsd": null,
+						"netUsd": null
+					}
+				]
+			},
+			"form67": {
+				"totals": {
+					"foreignIncomeUsd": "10.00",
+					"foreignTaxPaidUsd": "5.00",
+					"foreignTaxPaidInr": "400.00"
+				}
+			},
+			"warningCodes": ["unmatched_foreign_tax"]
+		},
+		{
+			"dividends": {
+				"rows": [
+					{
+						"asset": "AAPL",
+						"grossUsd": "8.00",
+						"taxWithheldUsd": null,
+						"netUsd": null
+					}
+				]
+			},
+			"form67": {
+				"totals": {
+					"foreignIncomeUsd": "8.00",
+					"foreignTaxPaidUsd": null,
+					"foreignTaxPaidInr": null,
+					"maxCreditEligibleInr": null
+				},
+				"rows": [
+					{
+						"asset": "AAPL",
+						"foreignTaxPayments": [
+							{
+								"amountUsd": "2.00",
+								"amountInr": "160.00"
+							},
+							{
+								"amountUsd": "1.00",
+								"amountInr": "80.00",
+								"possibleOverlap": true
+							}
+						]
+					}
+				]
+			},
+			"warningCodes": ["unmatched_foreign_tax"]
+		}
+	]
+}

@@ -1,0 +1,207 @@
+{
+	"cases": [
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "dividend",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"dividendAsset": "AAPL",
+					"assetIn": "USD",
+					"amountIn": "10"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "foreign_tax",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"dividendAsset": "AAPL",
+					"assetOut": "USD",
+					"amountOut": "0.5"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "csv:golden-us",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "foreign_tax",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 3
+					},
+					"reviewFlags": [],
+					"dividendAsset": "AAPL",
+					"assetOut": "USD",
+					"amountOut": "2"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000004",
+					"source": "csv:golden-us",
+					"sourceRef": "4",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "foreign_tax",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 4
+					},
+					"reviewFlags": [],
+					"dividendAsset": "MSFT",
+					"assetOut": "USD",
+					"amountOut": "1"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2023-01-01",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				}
+			]
+		},
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "dividend",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"dividendAsset": "AAPL",
+					"assetIn": "USD",
+					"amountIn": "8",
+					"withholdingTaxAmount": "2",
+					"withholdingTaxAsset": "USD"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "foreign_tax",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"dividendAsset": "AAPL",
+					"assetOut": "USD",
+					"amountOut": "2"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "csv:golden-us",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2026-06-02T12:00:00.000Z",
+					"type": "dividend",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 3
+					},
+					"reviewFlags": [],
+					"dividendAsset": "NVDA",
+					"assetIn": "USD",
+					"amountIn": "2"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000004",
+					"source": "csv:golden-us",
+					"sourceRef": "4",
+					"importId": null,
+					"timestamp": "2026-06-02T12:00:00.000Z",
+					"type": "foreign_tax",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 4
+					},
+					"reviewFlags": [],
+					"dividendAsset": "NVDA",
+					"assetOut": "USD",
+					"amountOut": "3"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2023-01-01",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				}
+			]
+		},
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "dividend",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"dividendAsset": "AAPL",
+					"assetIn": "USD",
+					"amountIn": "8",
+					"withholdingTaxAmount": "2",
+					"withholdingTaxAsset": "USD"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "foreign_tax",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"dividendAsset": "AAPL",
+					"assetOut": "USD",
+					"amountOut": "1"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2023-01-01",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				}
+			]
+		}
+	]
+}

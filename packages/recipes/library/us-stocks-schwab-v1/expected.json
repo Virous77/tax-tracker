@@ -1,0 +1,282 @@
+[
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "259824a96be3e67851c5fd425b86109e93755ec57e728d17a9f17f5c4b17b536#0",
+		"importId": null,
+		"timestamp": "2023-05-12T00:00:00.000Z",
+		"type": "deposit",
+		"assetIn": "USD",
+		"amountIn": "5000",
+		"entityName": "WIRED FUNDS RECEIVED",
+		"raw": {
+			"Date": "05/12/2023",
+			"Action": "Wire Funds Received",
+			"Symbol": "",
+			"Description": "WIRED FUNDS RECEIVED",
+			"Quantity": "",
+			"Price": "",
+			"Fees & Comm": "",
+			"Amount": "$5,000.00"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "090fec7e78fe24846592b252960f82d8778af96162452dd9ae29e12889b90143#0",
+		"importId": null,
+		"timestamp": "2023-05-15T00:00:00.000Z",
+		"type": "buy",
+		"assetIn": "AAPL",
+		"amountIn": "10",
+		"assetOut": "USD",
+		"amountOut": "1720.7",
+		"entityName": "APPLE INC",
+		"priceQuote": {
+			"asset": "USD",
+			"price": "172.07"
+		},
+		"raw": {
+			"Date": "05/15/2023",
+			"Action": "Buy",
+			"Symbol": "AAPL",
+			"Description": "APPLE INC",
+			"Quantity": "10",
+			"Price": "$172.07",
+			"Fees & Comm": "",
+			"Amount": "-$1,720.70"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "e4e138ff8fd19d757441c3b123018a5ae91b3d75bc6778d8e054e567f020fd44#0",
+		"importId": null,
+		"timestamp": "2024-02-09T00:00:00.000Z",
+		"type": "buy",
+		"assetIn": "VTI",
+		"amountIn": "10",
+		"assetOut": "USD",
+		"amountOut": "2455",
+		"entityName": "VANGUARD TOTAL STOCK MARKET ETF",
+		"priceQuote": {
+			"asset": "USD",
+			"price": "245.5"
+		},
+		"raw": {
+			"Date": "02/09/2024",
+			"Action": "Buy",
+			"Symbol": "VTI",
+			"Description": "VANGUARD TOTAL STOCK MARKET ETF",
+			"Quantity": "10",
+			"Price": "$245.50",
+			"Fees & Comm": "",
+			"Amount": "-$2,455.00"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "eae160cf68a2d84c21624b98ed68a8f850a16c37af85f261a483f2dc5461fb60#0",
+		"importId": null,
+		"timestamp": "2024-12-05T00:00:00.000Z",
+		"type": "buy",
+		"assetIn": "NVDA",
+		"amountIn": "6",
+		"assetOut": "USD",
+		"amountOut": "870",
+		"entityName": "NVIDIA CORP",
+		"priceQuote": {
+			"asset": "USD",
+			"price": "145"
+		},
+		"raw": {
+			"Date": "12/05/2024",
+			"Action": "Buy",
+			"Symbol": "NVDA",
+			"Description": "NVIDIA CORP",
+			"Quantity": "6",
+			"Price": "$145.00",
+			"Fees & Comm": "",
+			"Amount": "-$870.00"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "fcc879d06c1706e2070e7265092338d2cb633aa8131a967b3dd0b48040197e82#0",
+		"importId": null,
+		"timestamp": "2025-09-15T00:00:00.000Z",
+		"type": "dividend",
+		"assetIn": "USD",
+		"amountIn": "2.4",
+		"dividendAsset": "AAPL",
+		"entityName": "APPLE INC",
+		"raw": {
+			"Date": "09/15/2025",
+			"Action": "Cash Dividend",
+			"Symbol": "AAPL",
+			"Description": "APPLE INC",
+			"Quantity": "",
+			"Price": "",
+			"Fees & Comm": "",
+			"Amount": "$2.40"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "e628c515c78bf2965ccf2aa2d29f9f11d29360216d52d102cf99378371382dd8#0",
+		"importId": null,
+		"timestamp": "2025-09-15T00:00:00.000Z",
+		"type": "foreign_tax",
+		"assetOut": "USD",
+		"amountOut": "0.6",
+		"dividendAsset": "AAPL",
+		"withholdingTaxAmount": "0.6",
+		"withholdingTaxAsset": "USD",
+		"entityName": "APPLE INC",
+		"raw": {
+			"Date": "09/15/2025",
+			"Action": "NRA Tax Adj",
+			"Symbol": "AAPL",
+			"Description": "APPLE INC",
+			"Quantity": "",
+			"Price": "",
+			"Fees & Comm": "",
+			"Amount": "-$0.60"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "6587966a06b0087befbd180afd8fbf8623235fddf708b08980d5f6bb837f1e05#0",
+		"importId": null,
+		"timestamp": "2025-11-12T00:00:00.000Z",
+		"type": "sell",
+		"assetIn": "USD",
+		"amountIn": "1340.5",
+		"assetOut": "AAPL",
+		"amountOut": "5",
+		"entityName": "APPLE INC",
+		"feeAsset": "USD",
+		"feeAmount": "0.02",
+		"priceQuote": {
+			"asset": "USD",
+			"price": "268.1"
+		},
+		"raw": {
+			"Date": "11/12/2025",
+			"Action": "Sell",
+			"Symbol": "AAPL",
+			"Description": "APPLE INC",
+			"Quantity": "5",
+			"Price": "$268.10",
+			"Fees & Comm": "$0.02",
+			"Amount": "$1,340.48"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "f9096001f75bcdf9a749109ff017dcc4c80c67214ad45ff9f4a7b01371accdd6#0",
+		"importId": null,
+		"timestamp": "2025-12-12T00:00:00.000Z",
+		"type": "dividend",
+		"assetIn": "USD",
+		"amountIn": "9.24",
+		"dividendAsset": "VTI",
+		"entityName": "VANGUARD TOTAL STOCK MARKET ETF",
+		"raw": {
+			"Date": "12/12/2025",
+			"Action": "Qualified Dividend",
+			"Symbol": "VTI",
+			"Description": "VANGUARD TOTAL STOCK MARKET ETF",
+			"Quantity": "",
+			"Price": "",
+			"Fees & Comm": "",
+			"Amount": "$9.24"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "5d004fea2a29e0c3fcdb66b36d08287af987aa72dc91f7d0fb3f71faced9a510#0",
+		"importId": null,
+		"timestamp": "2025-12-12T00:00:00.000Z",
+		"type": "foreign_tax",
+		"assetOut": "USD",
+		"amountOut": "2.31",
+		"dividendAsset": "VTI",
+		"withholdingTaxAmount": "2.31",
+		"withholdingTaxAsset": "USD",
+		"entityName": "VANGUARD TOTAL STOCK MARKET ETF",
+		"raw": {
+			"Date": "12/12/2025",
+			"Action": "NRA Tax Adj",
+			"Symbol": "VTI",
+			"Description": "VANGUARD TOTAL STOCK MARKET ETF",
+			"Quantity": "",
+			"Price": "",
+			"Fees & Comm": "",
+			"Amount": "-$2.31"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "7793cb1d9b51d52e1291ccac68df092f762705354172c9dd7a720ca714633ff5#0",
+		"importId": null,
+		"timestamp": "2025-12-31T00:00:00.000Z",
+		"type": "dividend",
+		"assetIn": "USD",
+		"amountIn": "2.6",
+		"dividendAsset": "AAPL",
+		"entityName": "APPLE INC",
+		"raw": {
+			"Date": "01/02/2026 as of 12/31/2025",
+			"Action": "Qualified Dividend",
+			"Symbol": "AAPL",
+			"Description": "APPLE INC",
+			"Quantity": "",
+			"Price": "",
+			"Fees & Comm": "",
+			"Amount": "$2.60"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	},
+	{
+		"source": "csv:152d7c792e3e649f69553ad81bae612df80825eb48e2e2f87cd2ab7a72533f12",
+		"sourceRef": "0a681ed64fc2942f483d553d1c17c098bf8998a3b6782a68fd5ee736473f997b#0",
+		"importId": null,
+		"timestamp": "2025-12-31T00:00:00.000Z",
+		"type": "foreign_tax",
+		"assetOut": "USD",
+		"amountOut": "0.65",
+		"dividendAsset": "AAPL",
+		"withholdingTaxAmount": "0.65",
+		"withholdingTaxAsset": "USD",
+		"entityName": "APPLE INC",
+		"raw": {
+			"Date": "01/02/2026 as of 12/31/2025",
+			"Action": "NRA Tax Adj",
+			"Symbol": "AAPL",
+			"Description": "APPLE INC",
+			"Quantity": "",
+			"Price": "",
+			"Fees & Comm": "",
+			"Amount": "-$0.65"
+		},
+		"reviewFlags": [],
+		"assetClass": "us_equity"
+	}
+]

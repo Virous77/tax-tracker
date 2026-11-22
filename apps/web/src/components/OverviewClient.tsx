@@ -1,11 +1,12 @@
 "use client";
 
-import type { VdaReport } from "@tax/core";
+import type { UsEquityReport, VdaReport } from "@tax/core";
 import {
 	ArrowRight,
 	Calculator,
 	CheckCircle2,
 	FileSpreadsheet,
+	TrendingUp,
 	Upload,
 } from "lucide-react";
 import Link from "next/link";
@@ -28,7 +29,9 @@ import {
 import {
 	formatIncompleteSummary,
 	formatInr,
+	formatInrNullable,
 	formatReportMissingState,
+	formatUsdNullable,
 	isNegativeDecimal,
 	isPositiveDecimal,
 	isReportIncomplete,
@@ -45,6 +48,10 @@ export function OverviewClient() {
 	const [reportMissing, setReportMissing] =
 		useState<ReportMissingDetails | null>(null);
 	const [txTotal, setTxTotal] = useState<number | null>(null);
+	const [usEquityReport, setUsEquityReport] = useState<UsEquityReport | null>(
+		null,
+	);
+	const [usEquityTxTotal, setUsEquityTxTotal] = useState<number | null>(null);
 	const [review, setReview] = useState<ReviewData | null>(null);
 	const [reviewCurrent, setReviewCurrent] = useState(false);
 	const [reportStale, setReportStale] = useState(false);
@@ -75,14 +82,24 @@ export function OverviewClient() {
 		setLoading(true);
 		setError(null);
 		try {
-			const txPage = await api
-				.listTransactions({ page: 1, pageSize: 1 })
-				.catch(() => null);
-			const [repState, review] = await Promise.all([
+			const [txPage, usEqTxPage] = await Promise.all([
+				api.listTransactions({ page: 1, pageSize: 1 }).catch(() => null),
+				api
+					.listTransactions({
+						assetClass: "us_equity",
+						page: 1,
+						pageSize: 1,
+					})
+					.catch(() => null),
+			]);
+			const [repState, review, usEqReport] = await Promise.all([
 				txPage?.total === 0
 					? Promise.resolve(REPORT_NOT_COMPUTED)
 					: api.getReportState(year),
 				api.getReview(year).catch(() => null),
+				(usEqTxPage?.total ?? 0) === 0
+					? Promise.resolve(null)
+					: api.getUsEquityReportOrNull(year, true).catch(() => null),
 			]);
 			if (repState.status === "ready") {
 				setReport(repState.report);
@@ -98,6 +115,8 @@ export function OverviewClient() {
 			setReview(review);
 			setReviewCurrent(review?.reportStatus === "current");
 			setTxTotal(txPage ? txPage.total : null);
+			setUsEquityReport(usEqReport);
+			setUsEquityTxTotal(usEqTxPage ? usEqTxPage.total : null);
 		} catch (err) {
 			setError(getErrorMessage(err));
 		} finally {
@@ -463,6 +482,120 @@ export function OverviewClient() {
 					</section>
 				</>
 			)}
+
+			{!loading && (usEquityReport !== null || (usEquityTxTotal ?? 0) > 0) ? (
+				<section
+					aria-label="US Stocks summary"
+					className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-5"
+				>
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<div className="flex flex-wrap items-center gap-2">
+							<TrendingUp
+								className="h-4 w-4 text-[var(--accent-text)]"
+								aria-hidden="true"
+							/>
+							<h2 className="text-base font-semibold tracking-tight">
+								US Stocks
+							</h2>
+							{usEquityReport ? (
+								<>
+									<Badge tone="neutral">
+										CY {usEquityReport.calendarYear} Schedule FA
+									</Badge>
+									{usEquityReport.stale ? (
+										<Badge tone="warning">Stale — recompute on US Stocks</Badge>
+									) : null}
+									{!usEquityReport.sectionsVerified ? (
+										<Badge tone="warning">Pending CA verification</Badge>
+									) : null}
+								</>
+							) : null}
+						</div>
+						<Link
+							href={`/us-stocks?taxYear=${encodeURIComponent(taxYear)}`}
+							className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent-text)] hover:underline"
+						>
+							Open US Stocks report
+							<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+						</Link>
+					</div>
+
+					{usEquityReport ? (
+						<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+							<div className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<p className="text-xs text-[var(--text-secondary)]">
+									LTCG Tax (12.5% + cess)
+								</p>
+								<p className="num mt-1 text-lg font-semibold">
+									{formatInr(
+										usEquityReport.capitalGains.summary.ltcgTax
+											.totalLtcgTaxRoundedInr,
+									)}
+								</p>
+							</div>
+							<div className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<p className="text-xs text-[var(--text-secondary)]">
+									Net Taxable LTCG
+								</p>
+								<p className="num mt-1 text-lg font-semibold">
+									{formatInr(
+										usEquityReport.capitalGains.summary.setOff
+											.netTaxableLtcgInr,
+									)}
+								</p>
+							</div>
+							<div className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<p className="text-xs text-[var(--text-secondary)]">
+									Net Taxable STCG (slab)
+								</p>
+								<p className="num mt-1 text-lg font-semibold">
+									{formatInr(
+										usEquityReport.capitalGains.summary.setOff
+											.netTaxableStcgInr,
+									)}
+								</p>
+							</div>
+							<div className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<p className="text-xs text-[var(--text-secondary)]">
+									Gross Dividends
+								</p>
+								<p className="num mt-1 text-lg font-semibold">
+									{formatInrNullable(usEquityReport.dividends.totals.grossInr)}
+								</p>
+								<p className="num mt-0.5 text-[11px] text-[var(--text-muted)]">
+									{formatUsdNullable(usEquityReport.dividends.totals.grossUsd)}
+								</p>
+							</div>
+							<div className="rounded-md border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+								<p className="text-xs text-[var(--text-secondary)]">
+									Form 67 Tax Paid
+								</p>
+								<p className="num mt-1 text-lg font-semibold">
+									{formatInrNullable(
+										usEquityReport.form67.totals.foreignTaxPaidInr,
+									)}
+								</p>
+								<p className="num mt-0.5 text-[11px] text-[var(--text-muted)]">
+									{usEquityReport.scheduleFa.rows.length}{" "}
+									{pluralise(
+										usEquityReport.scheduleFa.rows.length,
+										"Schedule FA holding",
+									)}
+								</p>
+							</div>
+						</div>
+					) : (
+						<p className="text-xs text-[var(--text-secondary)]">
+							<span className="num font-medium text-[var(--text-primary)]">
+								{usEquityTxTotal}
+							</span>{" "}
+							US stock {pluralise(usEquityTxTotal ?? 0, "transaction")} in the
+							ledger. Open US Stocks to compute capital gains, Form 67, and
+							Schedule FA for {taxYear}.
+						</p>
+					)}
+				</section>
+			) : null}
 		</div>
 	);
 }

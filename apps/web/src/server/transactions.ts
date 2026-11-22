@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
 	D,
+	type LedgerTx,
 	LedgerTxSchema,
 	mergeReviewFlags,
 	type ReviewCode,
@@ -21,8 +22,11 @@ import { ApiError, required } from "./errors";
 import { warningSeverity } from "./report-presentation";
 import { readReview, saveReviewResolutions } from "./report-review";
 
-function reviewedLedger(db: TaxDatabase) {
-	const { ledger, entries } = readReview(db, undefined, true);
+function reviewedLedger(
+	db: TaxDatabase,
+	assetClass?: TransactionsQuery["assetClass"],
+) {
+	const { ledger, entries } = readReview(db, undefined, true, assetClass);
 	const flags = new Map<string, (typeof ledger)[number]["reviewFlags"]>();
 	for (const entry of entries) {
 		if (!("flag" in entry)) continue;
@@ -40,15 +44,19 @@ export function listTransactions(db: TaxDatabase, query: TransactionsQuery) {
 	const supersededBy = new Map(
 		db.transactions.superseded().map((row) => [row.txId, row.importId]),
 	);
-	const items = reviewedLedger(db)
+	const items = reviewedLedger(db, query.assetClass)
 		.map((tx) => ({ ...tx, supersededBy: supersededBy.get(tx.id) ?? null }))
 		.filter(
 			(tx) =>
 				(!query.taxYear || taxYearOf(tx.timestamp) === query.taxYear) &&
 				(!query.asset ||
-					[tx.assetIn, tx.assetOut, tx.feeAsset].includes(
-						query.asset.toUpperCase(),
-					)) &&
+					[
+						tx.assetIn,
+						tx.assetOut,
+						tx.feeAsset,
+						tx.dividendAsset,
+						tx.withholdingTaxAsset,
+					].includes(query.asset.toUpperCase())) &&
 				(!query.type || tx.type === query.type) &&
 				(!query.source || tx.source === query.source) &&
 				(query.flagged === undefined ||
@@ -62,6 +70,8 @@ export function listTransactions(db: TaxDatabase, query: TransactionsQuery) {
 						tx.sourceLabel,
 						tx.assetIn,
 						tx.assetOut,
+						tx.dividendAsset,
+						tx.entityName,
 						tx.userNote,
 						tx.txHash,
 					].some((value) => value?.toLowerCase().includes(needle))),
@@ -70,13 +80,13 @@ export function listTransactions(db: TaxDatabase, query: TransactionsQuery) {
 	items.sort((a, b) => {
 		const left =
 			field === "asset"
-				? (a.assetIn ?? a.assetOut ?? "")
+				? (a.dividendAsset ?? a.assetIn ?? a.assetOut ?? "")
 				: field === "source"
 					? a.source
 					: a.timestamp;
 		const right =
 			field === "asset"
-				? (b.assetIn ?? b.assetOut ?? "")
+				? (b.dividendAsset ?? b.assetIn ?? b.assetOut ?? "")
 				: field === "source"
 					? b.source
 					: b.timestamp;
@@ -95,6 +105,21 @@ export function listTransactions(db: TaxDatabase, query: TransactionsQuery) {
 		pageSize: query.pageSize,
 	};
 }
+function validateManualEquity(tx: LedgerTx) {
+	if (tx.source !== "manual" || tx.assetClass !== "us_equity") return;
+	if (tx.venue !== "manual" && tx.venue !== "us_broker")
+		throw new ApiError(
+			400,
+			"validation_error",
+			"Use the manual or US broker venue for US stock transactions.",
+		);
+	if (!["buy", "sell", "dividend", "foreign_tax"].includes(tx.type))
+		throw new ApiError(
+			400,
+			"validation_error",
+			"Manual US stock transactions must be buys, sells, dividends or foreign tax payments.",
+		);
+}
 export function createTransaction(db: TaxDatabase, input: unknown) {
 	const body = CreateTransactionRequestSchema.parse(input);
 	if (body.importId !== null)
@@ -108,6 +133,7 @@ export function createTransaction(db: TaxDatabase, input: unknown) {
 		id: randomUUID(),
 		source: "manual",
 	});
+	validateManualEquity(tx);
 	if (!db.transactions.insert([{ tx }]).inserted)
 		throw new ApiError(
 			409,
@@ -139,6 +165,8 @@ export function patchTransaction(db: TaxDatabase, id: string, input: unknown) {
 			inrValue: inrChanged ? patch.inrValue : current.inrValue,
 			inrRateSource: inrChanged ? "manual" : current.inrRateSource,
 		});
+		if (patch.type !== undefined || patch.venue !== undefined)
+			validateManualEquity(tx);
 		if (Object.keys(patch).length) db.transactions.update(tx);
 		if (resolveFlags?.length) {
 			const { entries } = readReview(db, undefined, true);

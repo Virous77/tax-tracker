@@ -196,8 +196,8 @@ export async function handle(
 				},
 			});
 		}
-		if (name === "exportReport") {
-			const file = ApiContract.exportReport.response.parse(output);
+		if (name === "exportReport" || name === "exportUsEquityReport") {
+			const file = ApiContract[name].response.parse(output);
 			return new Response(new Uint8Array(file.bytes), {
 				headers: {
 					"Content-Type": file.contentType,
@@ -209,7 +209,9 @@ export async function handle(
 		if (output === undefined)
 			return new Response(null, { status: 204, headers: result.headers });
 		return Response.json(output, {
-			status: ["syncConnection", "fillPrices"].includes(name)
+			status: ["syncConnection", "fillPrices", "fillEquityPrices"].includes(
+				name,
+			)
 				? 202
 				: [
 							"createTransaction",

@@ -1,0 +1,35 @@
+{
+	"cases": [
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2026-06-01T12:00:00.000Z",
+					"type": "dividend",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"dividendAsset": "VTI",
+					"assetIn": "USD",
+					"amountIn": "9.24",
+					"withholdingTaxAmount": "2.31",
+					"withholdingTaxAsset": "USD"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2023-01-01",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				}
+			]
+		}
+	]
+}

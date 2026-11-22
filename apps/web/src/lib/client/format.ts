@@ -1,5 +1,7 @@
 import {
+	type AssetClass,
 	D,
+	type DecimalValue,
 	formatDecimal,
 	formatInr,
 	istDate,
@@ -84,6 +86,50 @@ export function formatInrNullable(value: string | null | undefined): string {
 	}
 }
 
+export function formatUsd(
+	value: DecimalValue,
+	options?: { preservePrecision?: boolean },
+): string {
+	const d = D(value);
+	const negative = d.lt("0");
+	const abs = d.abs();
+	let formatted: string;
+	if (options?.preservePrecision) {
+		const raw = abs.toFixed();
+		if (!raw.includes(".")) {
+			formatted = `${raw}.00`;
+		} else {
+			const [w = "0", frac = ""] = raw.split(".");
+			const trimmed = frac.replace(/0+$/, "");
+			formatted = `${w}.${trimmed.length >= 2 ? trimmed : trimmed.padEnd(2, "0")}`;
+		}
+	} else {
+		formatted = abs.toFixed(2);
+	}
+	const [whole = "0", fraction = "00"] = formatted.split(".");
+	const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+	return `${negative ? "-" : ""}$${grouped}.${fraction}`;
+}
+
+export function formatUsdNullable(
+	value: string | null | undefined,
+	options?: { preservePrecision?: boolean },
+): string {
+	if (value === null || value === undefined || value === "") return "—";
+	try {
+		return formatUsd(value, options);
+	} catch {
+		return value;
+	}
+}
+
+export function formatAssetClass(
+	assetClass: AssetClass | string | undefined,
+): string {
+	if (assetClass === "us_equity") return "US Stocks";
+	return "Crypto (VDA)";
+}
+
 export function formatQty(value: string | null | undefined): string {
 	if (value === null || value === undefined || value === "") return "—";
 	try {
@@ -157,6 +203,7 @@ export function formatSourceLabel(
 	if (source === "binance-api") return "Binance (API)";
 	if (source === "coindcx") return "CoinDCX";
 	if (source === "coindcx-api") return "CoinDCX (API)";
+	if (source === "vested") return "Vested";
 	if (source === "manual") return "Manual";
 	if (source === "generic") return "Generic CSV";
 	if (source.startsWith("csv:")) {
@@ -189,6 +236,7 @@ const TX_TYPE_LABELS: Record<TxType, string> = {
 	income: "Income",
 	gift: "Gift",
 	dividend: "Dividend",
+	foreign_tax: "Foreign Tax",
 	fee: "Fee",
 };
 
@@ -196,16 +244,23 @@ const OUTGOING_TYPES: ReadonlySet<TxType> = new Set([
 	"sell",
 	"withdrawal",
 	"gift",
+	"foreign_tax",
 	"fee",
 ]);
 
 /** "Sell · USDT" names the asset given up; "Buy · BTC" the asset received; a swap names both. */
 export function formatTxTitle(
-	tx: Pick<LedgerTx, "type" | "assetIn" | "assetOut">,
+	tx: Pick<LedgerTx, "type" | "assetIn" | "assetOut" | "dividendAsset">,
 ): string {
 	const type = formatTxType(tx.type);
 	if (tx.type === "swap" && tx.assetIn && tx.assetOut) {
 		return `${type} · ${tx.assetOut} → ${tx.assetIn}`;
+	}
+	if (
+		(tx.type === "dividend" || tx.type === "foreign_tax") &&
+		tx.dividendAsset
+	) {
+		return `${type} · ${tx.dividendAsset}`;
 	}
 	const asset = OUTGOING_TYPES.has(tx.type)
 		? (tx.assetOut ?? tx.assetIn)
@@ -223,6 +278,11 @@ const SECTION_LABELS: Record<string, string> = {
 	vdaDefinition: "VDA Definition",
 	platformReporting: "Platform Reporting",
 	currencyConversionRule: "Currency Conversion Rule",
+	ltcgTax: "LTCG Tax",
+	stcgTax: "STCG Tax",
+	dividendIncome: "Dividend Income",
+	foreignTaxCredit: "Foreign Tax Credit",
+	foreignAssets: "Foreign Assets",
 };
 
 export function formatSectionLabel(key: string): string {
@@ -236,6 +296,8 @@ export function formatSectionLabel(key: string): string {
 const ENGINE_SETTING_LABELS: Record<string, string> = {
 	marketPriceBasis: "Market price basis",
 	feeTreatment: "Fee & GST treatment",
+	usEquityFeeTreatment: "US equity fee treatment",
+	usEquityFxBasis: "US equity FX rate basis",
 	lotMethod: "Lot matching method",
 	lotPool: "Lot pool scope",
 	usdtInrRate: "USDT / stablecoin INR rate",
@@ -264,6 +326,14 @@ export function formatEngineSettingValue(key: string, value: unknown): string {
 				: "IST-day close (pending CA verification)";
 		case "feeTreatment":
 			return str === "include" ? "Include fees" : "Exclude fees";
+		case "usEquityFeeTreatment":
+			return str === "exclude"
+				? "Exclude brokerage/commission"
+				: "Include brokerage/commission";
+		case "usEquityFxBasis":
+			return str === "trade_date"
+				? "Trade-date SBI TT buying rate"
+				: "Previous month-end SBI TT buying rate (Rule 115 / 206)";
 		case "lotMethod":
 			return str === "FIFO" ? "FIFO (First-In, First-Out)" : str;
 		case "lotPool":
@@ -359,6 +429,8 @@ const REPORT_KIND_LABELS: Record<string, string> = {
 	"coindcx:options": "CoinDCX Options",
 	"coindcx:form16a-pdf": "CoinDCX Form 16A",
 	"coindcx:mixed": "CoinDCX Trade Report",
+	"vested:account-statement-pdf": "Vested Account Statement (PDF)",
+	"vested:account-statement-xlsx": "Vested Account Statement (XLSX)",
 };
 
 export function formatReportKindLabel(
@@ -441,6 +513,7 @@ export function formatSyncStreamLabel(stream: string): string {
 export function formatManualVenueLabel(venue: string): string {
 	if (venue === "binance") return "Binance";
 	if (venue === "coindcx") return "CoinDCX";
+	if (venue === "us_broker") return "US Broker";
 	if (venue === "manual") return "Manual (no exchange)";
 	return venue;
 }

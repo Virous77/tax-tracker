@@ -91,6 +91,21 @@ export function summariseReviewGroup(
 				headline: `${n} ${pluralise(n, "deposit or withdrawal", "deposits or withdrawals")} not matched to another account`,
 				hint: "Import the other exchange or wallet, or confirm where the coins went.",
 			};
+		case "missing_market_price":
+			return {
+				headline: `${n} Schedule FA ${pluralise(n, "holding needs", "holdings need")} peak or closing USD price`,
+				hint: "Enter the calendar-year peak price (with date) and Dec 31 closing price on the US Stocks page.",
+			};
+		case "unmatched_foreign_tax":
+			return {
+				headline: `${n} foreign tax ${pluralise(n, "entry", "entries")} not matched to a dividend`,
+				hint: "Inspect the foreign tax row and verify the matching dividend date and ticker.",
+			};
+		case "corporate_action":
+			return {
+				headline: `${n} corporate ${pluralise(n, "action", "actions")} need manual review`,
+				hint: "Check stock splits, mergers, or spin-offs against your broker statement.",
+			};
 		default: {
 			const info = REVIEW_CODE_INFO[group.code];
 			return {
@@ -300,6 +315,50 @@ export const REVIEW_CODE_INFO: Record<ReviewCode, ReviewCodeInfo> = {
 		fixLabel: "Inspect in Transactions",
 		fixHref: (tx, taxYear) => {
 			const params = new URLSearchParams({ flagged: "true", q: tx.sourceRef });
+			if (taxYear) params.set("taxYear", taxYear);
+			return `/transactions?${params.toString()}`;
+		},
+	},
+	missing_market_price: {
+		code: "missing_market_price",
+		title: "Missing Schedule FA market price",
+		severity: "warning",
+		explanation:
+			"Schedule FA (Table A3) requires the calendar-year peak USD price (with peak date) and 31 December closing USD price for each US stock held. Market prices are never guessed — enter them in the Schedule FA editor.",
+		fixLabel: "Enter prices in US Stocks",
+		fixHref: (_tx, taxYear) =>
+			taxYear
+				? `/us-stocks?taxYear=${encodeURIComponent(taxYear)}&tab=schedule-fa`
+				: "/us-stocks?tab=schedule-fa",
+	},
+	unmatched_foreign_tax: {
+		code: "unmatched_foreign_tax",
+		title: "Unmatched foreign tax withholding",
+		severity: "warning",
+		explanation:
+			"A standalone foreign withholding tax row (such as NRA Tax Adj) could not be matched to a dividend on the same date and ticker, or exceeds the gross dividend. Verify the dividend and withholding entries.",
+		fixLabel: "Inspect in Transactions",
+		fixHref: (tx, taxYear) => {
+			const params = new URLSearchParams({
+				assetClass: "us_equity",
+				q: tx.sourceRef,
+			});
+			if (taxYear) params.set("taxYear", taxYear);
+			return `/transactions?${params.toString()}`;
+		},
+	},
+	corporate_action: {
+		code: "corporate_action",
+		title: "Corporate action needs manual review",
+		severity: "warning",
+		explanation:
+			"This row reflects a stock split, merger, spin-off, or other corporate action that may affect share counts or cost basis. Verify the adjusted lots against your broker statement.",
+		fixLabel: "Inspect in Transactions",
+		fixHref: (tx, taxYear) => {
+			const params = new URLSearchParams({
+				assetClass: "us_equity",
+				q: tx.sourceRef,
+			});
 			if (taxYear) params.set("taxYear", taxYear);
 			return `/transactions?${params.toString()}`;
 		},

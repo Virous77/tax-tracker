@@ -55,7 +55,7 @@ export interface ImportResult {
 	skippedRows?: (ImportSummary["skippedRows"][number] & { raw?: unknown })[];
 }
 export interface Importer {
-	id: "binance" | "coindcx" | "generic";
+	id: "binance" | "coindcx" | "vested" | "generic";
 	detect(file: InputFile): boolean;
 	parse(file: InputFile, opts: ImportOptions): ImportResult;
 }

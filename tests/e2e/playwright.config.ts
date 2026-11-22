@@ -49,6 +49,7 @@ export default defineConfig({
 				/empty-states\.spec\.ts/,
 				/password\.spec\.ts/,
 				/phase2-.*\.spec\.ts/,
+				/phase3\.spec\.ts/,
 				/phase4\.spec\.ts/,
 			],
 			use: { baseURL: MAIN_URL },

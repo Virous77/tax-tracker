@@ -67,6 +67,7 @@ function vendorError(value: unknown): { code?: string; text: string } {
 				[
 					row.msg,
 					row.message,
+					typeof row.error === "string" ? row.error : "",
 					typeof row.result === "string" ? row.result : "",
 				].filter((v): v is string => typeof v === "string" && v.length > 0),
 			),

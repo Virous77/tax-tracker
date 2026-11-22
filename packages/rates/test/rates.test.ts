@@ -1,7 +1,9 @@
 import { expect, test } from "vitest";
 import {
 	createFxLookup,
+	DEFAULT_SBI_MAX_STALE_DAYS,
 	lastDayOfPreviousMonth,
+	loadSbiCsv,
 	parseSbiCsv,
 } from "../src/index.js";
 
@@ -39,4 +41,52 @@ test("archive timestamps, unavailable TT quotes and intraday order", () => {
 		rateDate: "2026-04-01",
 		source: "SBI TT buying",
 	});
+});
+
+test("FX staleness counts UTC calendar days across leap day", () => {
+	const rows = parseSbiCsv("DATE,TT BUY\n2024-02-28,82.50");
+	const lookup = createFxLookup(rows, { maxStaleDays: 2 });
+	expect(lookup("USD", "2024-03-01")?.rateDate).toBe("2024-02-28");
+	expect(lookup("USD", "2024-03-02")).toBeNull();
+	expect(createFxLookup(rows)("USD", "2024-03-02")?.rateDate).toBe(
+		"2024-02-28",
+	);
+});
+
+test.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+	"rejects invalid maxStaleDays %s",
+	(maxStaleDays) => {
+		expect(() => createFxLookup([], { maxStaleDays })).toThrow("maxStaleDays");
+	},
+);
+
+test("the bundled SBI default covers historical month ends and rejects stale future dates", async () => {
+	const lookup = await loadSbiCsv();
+	for (let year = 2024; year <= 2026; year++) {
+		const lastMonth = year === 2026 ? 10 : 12;
+		for (let month = 1; month <= lastMonth; month++) {
+			const date = new Date(Date.UTC(year, month, 0))
+				.toISOString()
+				.slice(0, 10);
+			expect(lookup("USD", date), date).not.toBeNull();
+		}
+	}
+	// The day before the next usable quote in the archive's longest gap.
+	expect(lookup("USD", "2021-08-17")?.rateDate).toBe("2021-07-26");
+	const lastPublication = "2026-11-13";
+	expect(lookup("USD", lastPublication)?.rateDate).toBe(lastPublication);
+	const cutoff = new Date(lastPublication);
+	cutoff.setUTCDate(cutoff.getUTCDate() + DEFAULT_SBI_MAX_STALE_DAYS);
+	expect(lookup("USD", cutoff.toISOString().slice(0, 10))?.rateDate).toBe(
+		lastPublication,
+	);
+	cutoff.setUTCDate(cutoff.getUTCDate() + 1);
+	expect(lookup("USD", cutoff.toISOString().slice(0, 10))).toBeNull();
+	expect(lookup("USD", "2027-01-31")).toBeNull();
+});
+
+test("loading SBI rates accepts a zero-day age limit", async () => {
+	const lookup = await loadSbiCsv(undefined, { maxStaleDays: 0 });
+	expect(lookup("USD", "2026-11-13")?.rateDate).toBe("2026-11-13");
+	expect(lookup("USD", "2026-11-14")).toBeNull();
 });

@@ -1,0 +1,36 @@
+{
+	"cases": [
+		{
+			"balances": [
+				{
+					"asset": "VTI",
+					"computed": "1"
+				}
+			],
+			"capitalGains": {
+				"rows": [
+					{
+						"asset": "VTI",
+						"quantity": "4",
+						"term": "long",
+						"costUsd": "400.00",
+						"considerationUsd": "600.00",
+						"costInr": "32000.00",
+						"considerationInr": "48000.00",
+						"gainInr": "16000.00"
+					}
+				],
+				"summary": {
+					"longTerm": {
+						"netGainInr": "16000.00"
+					},
+					"ltcgTax": {
+						"baseTaxInr": "2000.00",
+						"cessInr": "80.00",
+						"totalLtcgTaxInr": "2080.00"
+					}
+				}
+			}
+		}
+	]
+}

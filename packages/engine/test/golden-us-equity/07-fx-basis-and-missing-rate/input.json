@@ -1,0 +1,190 @@
+{
+	"cases": [
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2024-05-03T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "VTI",
+					"amountIn": "1",
+					"assetOut": "USD",
+					"amountOut": "100"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-06-03T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "VTI",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "150"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2024-04-30",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				},
+				{
+					"currency": "USD",
+					"date": "2024-05-03",
+					"rate": "81",
+					"source": "hand-calculated fixture"
+				},
+				{
+					"currency": "USD",
+					"date": "2026-05-31",
+					"rate": "82",
+					"source": "hand-calculated fixture"
+				},
+				{
+					"currency": "USD",
+					"date": "2026-06-03",
+					"rate": "83",
+					"source": "hand-calculated fixture"
+				}
+			]
+		},
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2024-05-03T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "VTI",
+					"amountIn": "1",
+					"assetOut": "USD",
+					"amountOut": "100"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-06-03T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "VTI",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "150"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2024-04-30",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				},
+				{
+					"currency": "USD",
+					"date": "2024-05-03",
+					"rate": "81",
+					"source": "hand-calculated fixture"
+				},
+				{
+					"currency": "USD",
+					"date": "2026-05-31",
+					"rate": "82",
+					"source": "hand-calculated fixture"
+				},
+				{
+					"currency": "USD",
+					"date": "2026-06-03",
+					"rate": "83",
+					"source": "hand-calculated fixture"
+				}
+			],
+			"settings": {
+				"usEquityFxBasis": "trade_date"
+			}
+		},
+		{
+			"taxYear": "2026-27",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2024-05-03T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "VTI",
+					"amountIn": "1",
+					"assetOut": "USD",
+					"amountOut": "100"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-06-03T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "VTI",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "150"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2026-05-31",
+					"rate": "82",
+					"source": "hand-calculated fixture"
+				},
+				{
+					"currency": "USD",
+					"date": "2026-06-03",
+					"rate": "83",
+					"source": "hand-calculated fixture"
+				}
+			]
+		}
+	]
+}

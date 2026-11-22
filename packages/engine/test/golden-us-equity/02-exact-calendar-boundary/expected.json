@@ -1,0 +1,32 @@
+{
+	"cases": [
+		{
+			"capitalGains": {
+				"rows": [
+					{
+						"dateOfAcquisition": "2024-02-29",
+						"dateOfTransfer": "2026-02-28",
+						"holdingDays": 730,
+						"term": "short",
+						"gainInr": "800.00"
+					},
+					{
+						"dateOfTransfer": "2026-03-01",
+						"holdingDays": 731,
+						"term": "long",
+						"gainInr": "800.00"
+					}
+				],
+				"summary": {
+					"setOff": {
+						"netTaxableStcgInr": "800.00",
+						"netTaxableLtcgInr": "800.00"
+					},
+					"ltcgTax": {
+						"totalLtcgTaxInr": "104.00"
+					}
+				}
+			}
+		}
+	]
+}

@@ -6,6 +6,11 @@ export interface FxRow {
 	rate: string;
 	source: string;
 }
+export interface FxLookupOptions {
+	maxStaleDays?: number;
+}
+// The archive's longest gap is 23 days (2021-07-26 to 2021-08-18), so the last day before the next quote is 22 days old.
+export const DEFAULT_SBI_MAX_STALE_DAYS = 22;
 export const SBI_COLUMNS = { date: "DATE", ttBuy: "TT BUY" } as const;
 function dateOnly(value: string): string {
 	if (
@@ -15,7 +20,16 @@ function dateOnly(value: string): string {
 		throw new Error(`Invalid date: ${value}`);
 	return value;
 }
-export function createFxLookup(rows: readonly FxRow[]): FxLookup {
+export function createFxLookup(
+	rows: readonly FxRow[],
+	options?: FxLookupOptions,
+): FxLookup {
+	const maxStaleDays = options?.maxStaleDays;
+	if (
+		maxStaleDays !== undefined &&
+		(!Number.isInteger(maxStaleDays) || maxStaleDays < 0)
+	)
+		throw new Error("maxStaleDays must be a finite non-negative integer");
 	const copy = rows
 		.map((row) => {
 			dateOnly(row.date);
@@ -29,9 +43,13 @@ export function createFxLookup(rows: readonly FxRow[]): FxLookup {
 		let found: FxRow | undefined;
 		for (const row of copy)
 			if (row.currency === currency && row.date <= date) found = row;
-		return found
-			? { rate: found.rate, rateDate: found.date, source: found.source }
-			: null;
+		if (!found) return null;
+		if (
+			maxStaleDays !== undefined &&
+			(Date.parse(date) - Date.parse(found.date)) / 86_400_000 > maxStaleDays
+		)
+			return null;
+		return { rate: found.rate, rateDate: found.date, source: found.source };
 	};
 }
 function csvRecords(text: string): string[][] {
@@ -96,8 +114,9 @@ export async function loadSbiCsv(
 		"../data/SBI_REFERENCE_RATES_USD.csv",
 		import.meta.url,
 	),
+	options: FxLookupOptions = { maxStaleDays: DEFAULT_SBI_MAX_STALE_DAYS },
 ): Promise<FxLookup> {
-	return createFxLookup(parseSbiCsv(await readFile(path, "utf8")));
+	return createFxLookup(parseSbiCsv(await readFile(path, "utf8")), options);
 }
 export function lastDayOfPreviousMonth(date: string): string {
 	dateOnly(date);

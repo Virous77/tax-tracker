@@ -1,0 +1,69 @@
+{
+	"cases": [
+		{
+			"capitalGains": {
+				"rows": [
+					{
+						"costInr": "8000.00",
+						"costFx": {
+							"rate": "80",
+							"rateDate": "2024-04-30"
+						},
+						"considerationInr": "12300.00",
+						"considerationFx": {
+							"rate": "82",
+							"rateDate": "2026-05-31"
+						},
+						"gainInr": "4300.00"
+					}
+				]
+			}
+		},
+		{
+			"capitalGains": {
+				"rows": [
+					{
+						"costInr": "8100.00",
+						"costFx": {
+							"rate": "81",
+							"rateDate": "2024-05-03"
+						},
+						"considerationInr": "12450.00",
+						"considerationFx": {
+							"rate": "83",
+							"rateDate": "2026-06-03"
+						},
+						"gainInr": "4350.00"
+					}
+				]
+			}
+		},
+		{
+			"unresolved": [
+				{
+					"asset": "VTI",
+					"quantity": "1",
+					"reason": "missing_inr_value"
+				}
+			],
+			"incomplete": true,
+			"warningCodes": ["fx_unavailable"],
+			"capitalGains": {
+				"rows": [
+					{
+						"costUsd": "100.00",
+						"costInr": null,
+						"costFx": null,
+						"considerationInr": "12300.00",
+						"gainInr": null
+					}
+				],
+				"summary": {
+					"longTerm": {
+						"netGainInr": "0.00"
+					}
+				}
+			}
+		}
+	]
+}

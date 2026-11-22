@@ -1,0 +1,68 @@
+{
+	"cases": [
+		{
+			"taxYear": "2025-26",
+			"transactions": [
+				{
+					"id": "00000000-0000-4000-8000-000000000001",
+					"source": "csv:golden-us",
+					"sourceRef": "1",
+					"importId": null,
+					"timestamp": "2024-02-29T12:00:00.000Z",
+					"type": "buy",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 1
+					},
+					"reviewFlags": [],
+					"assetIn": "AAPL",
+					"amountIn": "3",
+					"assetOut": "USD",
+					"amountOut": "90"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000002",
+					"source": "csv:golden-us",
+					"sourceRef": "2",
+					"importId": null,
+					"timestamp": "2026-02-28T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 2
+					},
+					"reviewFlags": [],
+					"assetOut": "AAPL",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "40"
+				},
+				{
+					"id": "00000000-0000-4000-8000-000000000003",
+					"source": "csv:golden-us",
+					"sourceRef": "3",
+					"importId": null,
+					"timestamp": "2026-03-01T12:00:00.000Z",
+					"type": "sell",
+					"assetClass": "us_equity",
+					"raw": {
+						"fixtureRow": 3
+					},
+					"reviewFlags": [],
+					"assetOut": "AAPL",
+					"amountOut": "1",
+					"assetIn": "USD",
+					"amountIn": "40"
+				}
+			],
+			"fxRows": [
+				{
+					"currency": "USD",
+					"date": "2023-01-01",
+					"rate": "80",
+					"source": "hand-calculated fixture"
+				}
+			]
+		}
+	]
+}

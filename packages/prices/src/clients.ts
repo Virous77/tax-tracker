@@ -1,7 +1,8 @@
 import { type CachedPrice, D, istDate } from "@tax/core";
 import { HttpClient, type HttpOptions } from "@tax/sync/http";
 export function createPriceRequest(options: HttpOptions = {}): PriceRequest {
-	const client = new HttpClient({ minIntervalMs: 600, ...options });
+	// 700 ms (~85 req/min) leaves safe jitter headroom below CoinGecko Demo's 100 req/min limit.
+	const client = new HttpClient({ minIntervalMs: 700, ...options });
 	return (url, init) => client.request(url, init);
 }
 export type PriceRequest = (
@@ -107,15 +108,26 @@ export async function coingeckoHistory(input: {
 	};
 }
 
+const coingeckoPlatforms = new Map([
+	["1", "ethereum"],
+	["8453", "base"],
+	["42161", "arbitrum-one"],
+	["137", "polygon-pos"],
+	["56", "binance-smart-chain"],
+]);
+
 export async function coingeckoContractId(input: {
 	request: PriceRequest;
 	baseUrl?: string;
 	apiKey: string;
 	asset: string;
 }): Promise<string | null> {
-	const match = /^ERC20:1:0X([0-9A-F]{40})$/.exec(input.asset);
-	if (!match?.[1]) return null;
-	const url = `${input.baseUrl || "https://api.coingecko.com/api/v3"}/coins/ethereum/contract/0x${match[1].toLowerCase()}`;
+	const [, chainId, address] =
+		/^ERC20:(\d+):0X([0-9A-F]{40})$/.exec(input.asset) ?? [];
+	if (chainId === undefined || address === undefined) return null;
+	const platform = coingeckoPlatforms.get(chainId);
+	if (platform === undefined) return null;
+	const url = `${input.baseUrl || "https://api.coingecko.com/api/v3"}/coins/${platform}/contract/0x${address.toLowerCase()}`;
 	const data = (await input.request(url, {
 		headers: { "x-cg-demo-api-key": input.apiKey },
 	})) as { id?: unknown };

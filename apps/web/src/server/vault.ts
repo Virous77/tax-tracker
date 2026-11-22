@@ -43,6 +43,8 @@ export function providers(db: TaxDatabase) {
 		nodereal: { keySet: Boolean(db.vault.get("provider:nodereal")) },
 		blockscout: { keySet: Boolean(db.vault.get("provider:blockscout")) },
 		coingecko: { keySet: Boolean(db.vault.get("provider:coingecko")) },
+		polygon: { keySet: Boolean(db.vault.get("provider:polygon")) },
+		finnhub: { keySet: Boolean(db.vault.get("provider:finnhub")) },
 	};
 }
 

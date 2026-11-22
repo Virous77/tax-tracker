@@ -1,6 +1,12 @@
 "use client";
 
-import { istDate, type LedgerTx, type TxType, TxTypeSchema } from "@tax/core";
+import {
+	type AssetClass,
+	istDate,
+	type LedgerTx,
+	type TxType,
+	TxTypeSchema,
+} from "@tax/core";
 import { Calculator, CheckCircle2, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -31,6 +37,7 @@ import { EVM_CHAINS } from "@/lib/client/chains";
 import { unresolvedSales, venueForSource } from "@/lib/client/disposals";
 import {
 	defaultMissingBuyDateTime,
+	formatAssetClass,
 	formatInrNullable,
 	formatIstDateTime,
 	formatManualVenueLabel,
@@ -56,6 +63,10 @@ export function TransactionsClient() {
 	const searchParams = useSearchParams();
 
 	const taxYear = searchParams.get("taxYear") ?? "";
+	const assetClass = (searchParams.get("assetClass") ?? "") as
+		| ""
+		| "vda"
+		| "us_equity";
 	const asset = searchParams.get("asset") ?? "";
 	const type = (searchParams.get("type") ?? "") as TxType | "";
 	const source = searchParams.get("source") ?? "";
@@ -70,6 +81,9 @@ export function TransactionsClient() {
 		| "source:desc";
 	const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
 	const addParam = searchParams.get("add");
+	const addAssetClassParam = searchParams.get(
+		"assetClass",
+	) as AssetClass | null;
 	const venueParam = searchParams.get("venue");
 	const beforeParam = searchParams.get("before");
 	const saleParam = searchParams.get("sale");
@@ -91,6 +105,7 @@ export function TransactionsClient() {
 	const [searchDraft, setSearchDraft] = useState(q);
 	const [assetDraft, setAssetDraft] = useState(asset);
 
+	const assetClassFilterId = useId();
 	const assetFilterId = useId();
 	const typeFilterId = useId();
 	const sourceFilterId = useId();
@@ -108,7 +123,9 @@ export function TransactionsClient() {
 			addParam !== "buy" &&
 			addParam !== "gift" &&
 			addParam !== "income" &&
-			addParam !== "sell"
+			addParam !== "sell" &&
+			addParam !== "dividend" &&
+			addParam !== "foreign_tax"
 		) {
 			return;
 		}
@@ -161,6 +178,7 @@ export function TransactionsClient() {
 		setError(null);
 		try {
 			const res = await api.listTransactions({
+				...(assetClass ? { assetClass } : {}),
 				...(taxYear ? { taxYear } : {}),
 				...(asset ? { asset: asset.toUpperCase() } : {}),
 				...(type ? { type } : {}),
@@ -177,7 +195,7 @@ export function TransactionsClient() {
 		} finally {
 			setLoading(false);
 		}
-	}, [taxYear, asset, type, source, flagged, q, sort, page]);
+	}, [assetClass, taxYear, asset, type, source, flagged, q, sort, page]);
 
 	useEffect(() => {
 		loadTransactions();
@@ -210,14 +228,26 @@ export function TransactionsClient() {
 	}
 
 	const manualPreset: ManualPreset =
-		addParam === "gift" || addParam === "income" || addParam === "sell"
+		addParam === "gift" ||
+		addParam === "income" ||
+		addParam === "sell" ||
+		addParam === "dividend" ||
+		addParam === "foreign_tax"
 			? addParam
 			: "buy";
+	const initialAssetClass: AssetClass =
+		addAssetClassParam === "us_equity" || assetClass === "us_equity"
+			? "us_equity"
+			: "vda";
 	const initialVenue: ManualVenue = saleContext
 		? venueForSource(saleContext.tx)
-		: venueParam === "binance" || venueParam === "coindcx"
+		: venueParam === "binance" ||
+				venueParam === "coindcx" ||
+				venueParam === "us_broker"
 			? venueParam
-			: "manual";
+			: initialAssetClass === "us_equity"
+				? "us_broker"
+				: "manual";
 	const saleTimestamp = saleContext?.tx.timestamp ?? beforeParam;
 
 	const initialDateTime =
@@ -273,8 +303,29 @@ export function TransactionsClient() {
 			{/* Filter bar */}
 			<form
 				onSubmit={handleSearchSubmit}
-				className="grid grid-cols-1 gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4 sm:grid-cols-2 lg:grid-cols-6"
+				className="grid grid-cols-1 gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4 sm:grid-cols-2 lg:grid-cols-7"
 			>
+				<div>
+					<label
+						htmlFor={assetClassFilterId}
+						className="block text-xs font-medium text-[var(--text-secondary)]"
+					>
+						Asset class
+					</label>
+					<Select
+						id={assetClassFilterId}
+						value={assetClass}
+						onValueChange={(value) =>
+							updateParams({ assetClass: value || null })
+						}
+						className="mt-1 w-full"
+					>
+						<SelectItem value="">All asset classes</SelectItem>
+						<SelectItem value="vda">Crypto (VDA)</SelectItem>
+						<SelectItem value="us_equity">US Stocks</SelectItem>
+					</Select>
+				</div>
+
 				<div>
 					<TaxYearSelect
 						value={taxYear}
@@ -400,7 +451,7 @@ export function TransactionsClient() {
 					</div>
 				</div>
 
-				<div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-2.5 sm:col-span-2 lg:col-span-6">
+				<div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-2.5 sm:col-span-2 lg:col-span-7">
 					<label
 						htmlFor={flaggedFilterId}
 						className="flex items-center gap-2 text-xs font-medium text-[var(--text-primary)]"
@@ -416,7 +467,7 @@ export function TransactionsClient() {
 						<span>Flagged for review only</span>
 					</label>
 
-					{taxYear || asset || type || source || flagged || q ? (
+					{assetClass || taxYear || asset || type || source || flagged || q ? (
 						<button
 							type="button"
 							onClick={() => router.replace("/transactions")}
@@ -537,6 +588,11 @@ export function TransactionsClient() {
 														{formatTxType(tx.type)}
 														{tx.incomeKind ? ` · ${tx.incomeKind}` : ""}
 													</Badge>
+													{tx.assetClass === "us_equity" ? (
+														<Badge tone="accent">
+															{formatAssetClass(tx.assetClass)}
+														</Badge>
+													) : null}
 													{supersededBy ? (
 														<Badge tone="neutral">Replaced</Badge>
 													) : null}
@@ -545,7 +601,9 @@ export function TransactionsClient() {
 											<td className="px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
 												{sourceLabel(tx.source)}
 												{tx.source === "manual" &&
-												(txVenue === "binance" || txVenue === "coindcx")
+												(txVenue === "binance" ||
+													txVenue === "coindcx" ||
+													txVenue === "us_broker")
 													? ` (${formatManualVenueLabel(txVenue)})`
 													: ""}
 											</td>
@@ -637,6 +695,7 @@ export function TransactionsClient() {
 			<AddManualTxDrawer
 				open={addOpen}
 				initialPreset={manualPreset}
+				initialAssetClass={initialAssetClass}
 				initialAsset={asset}
 				initialVenue={initialVenue}
 				{...(initialDateTime ? { initialDateTime } : {})}

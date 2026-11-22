@@ -1,0 +1,66 @@
+{
+	"cases": [
+		{
+			"act": "Income-tax Act, 1961",
+			"calendarYear": 2025,
+			"sectionsVerified": false,
+			"sections": {
+				"currencyConversionRule": "Rule 115"
+			},
+			"generatedFrom": {
+				"ruleFile": "india-us-equity/2025-26.json"
+			},
+			"warningCodes": ["ca_verification_pending"],
+			"capitalGains": {
+				"rows": [
+					{
+						"term": "long",
+						"gainInr": "8000.00"
+					}
+				],
+				"summary": {
+					"ltcgTax": {
+						"baseTaxInr": "1000.00",
+						"surchargeRateApplied": "0.15",
+						"surchargeCapped": true,
+						"surchargeInr": "150.00",
+						"cessInr": "46.00",
+						"totalLtcgTaxInr": "1196.00",
+						"totalLtcgTaxRoundedInr": "1196"
+					}
+				}
+			}
+		},
+		{
+			"act": "Income-tax Act, 2025",
+			"calendarYear": 2026,
+			"sectionsVerified": false,
+			"sections": {
+				"currencyConversionRule": "Rule 206"
+			},
+			"generatedFrom": {
+				"ruleFile": "india-us-equity/2026-27.json"
+			},
+			"warningCodes": ["ca_verification_pending"],
+			"capitalGains": {
+				"rows": [
+					{
+						"term": "long",
+						"gainInr": "8000.00"
+					}
+				],
+				"summary": {
+					"ltcgTax": {
+						"baseTaxInr": "1000.00",
+						"surchargeRateApplied": "0.15",
+						"surchargeCapped": true,
+						"surchargeInr": "150.00",
+						"cessInr": "46.00",
+						"totalLtcgTaxInr": "1196.00",
+						"totalLtcgTaxRoundedInr": "1196"
+					}
+				}
+			}
+		}
+	]
+}

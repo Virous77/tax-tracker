@@ -45,6 +45,20 @@ import {
 import { exportUsEquityReport } from "./us-equity-exports";
 import { equityPricesStatus, startEquityPriceFill } from "./us-equity-prices";
 import { vaultSession } from "./vault";
+
+function isSecureRequest(request: Request): boolean {
+	const override = process.env.COOKIE_SECURE;
+	if (override === "true" || override === "false") return override === "true";
+	return (
+		request.url.startsWith("https://") ||
+		request.headers
+			.get("x-forwarded-proto")
+			?.split(",", 1)[0]
+			?.trim()
+			.toLowerCase() === "https"
+	);
+}
+
 export async function execute(
 	name: Endpoint,
 	input: unknown,
@@ -274,10 +288,7 @@ export async function execute(
 			return {
 				value: { ok: true },
 				headers: {
-					"Set-Cookie": sessionCookie(
-						token,
-						new URL(request.url).protocol === "https:",
-					),
+					"Set-Cookie": sessionCookie(token, isSecureRequest(request)),
 				},
 			};
 		}
@@ -287,10 +298,7 @@ export async function execute(
 			return {
 				value: undefined,
 				headers: {
-					"Set-Cookie": sessionCookie(
-						"",
-						new URL(request.url).protocol === "https:",
-					),
+					"Set-Cookie": sessionCookie("", isSecureRequest(request)),
 				},
 			};
 	}

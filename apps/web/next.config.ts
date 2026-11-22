@@ -61,9 +61,27 @@ const config: NextConfig = {
 					},
 					{
 						key: "Content-Security-Policy",
-						value: `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
+						value: `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
 					},
 				],
+			},
+			{
+				source: "/sw.js",
+				headers: [
+					{
+						key: "Cache-Control",
+						value: "no-cache, no-store, must-revalidate",
+					},
+					{ key: "Service-Worker-Allowed", value: "/" },
+					{
+						key: "Content-Type",
+						value: "application/javascript; charset=utf-8",
+					},
+				],
+			},
+			{
+				source: "/manifest.webmanifest",
+				headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
 			},
 		];
 	},

@@ -98,6 +98,16 @@ export const PAGE_SEO = {
 		title: "Sign In",
 		description: "Sign in to unlock your self-hosted Tax Tracker workspace.",
 	},
+	offline: {
+		title: "Offline",
+		description:
+			"Reconnect to your Tax Tracker server to load or save tax data.",
+	},
+	welcome: {
+		title: "Self-Hosted Indian Crypto & US Stock Tax Helper",
+		description:
+			"Free, open-source (AGPL-3.0), local-first tax ledger and workpaper generator for Indian Crypto (Schedule VDA & TDS) and US Stocks (Capital Gains, Form 67 & Schedule FA).",
+	},
 } as const satisfies Record<string, { title: string; description: string }>;
 
 export type PageSeoKey = keyof typeof PAGE_SEO;
@@ -110,6 +120,25 @@ export function rootMetadata(): Metadata {
 		},
 		description: SITE_CONFIG.description,
 		applicationName: SITE_CONFIG.name,
+		appleWebApp: {
+			capable: true,
+			title: SITE_CONFIG.shortName,
+			statusBarStyle: "default",
+		},
+		icons: {
+			icon: [
+				{ url: "/icon.svg", sizes: "any", type: "image/svg+xml" },
+				{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+			],
+			apple: [
+				{
+					url: "/icons/apple-touch-icon.png",
+					sizes: "180x180",
+					type: "image/png",
+				},
+			],
+		},
+		formatDetection: { telephone: false },
 		keywords: [...SITE_CONFIG.keywords],
 		robots: { ...SITE_CONFIG.robots },
 		openGraph: { ...SITE_CONFIG.openGraph },

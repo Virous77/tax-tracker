@@ -92,6 +92,9 @@ import {
 	VaultStatusSchema,
 } from "@tax/core/api";
 import { z } from "zod";
+import { clearSwrCache, swrFetch } from "./swr-cache";
+
+export { clearSwrCache, peekSwr } from "./swr-cache";
 
 export class ApiError extends Error {
 	readonly status: number;
@@ -316,6 +319,7 @@ export function getErrorMessage(err: unknown): string {
 }
 
 function redirectToLogin() {
+	clearSwrCache();
 	if (typeof window === "undefined") return;
 	if (window.location.pathname === "/login") return;
 	const next = `${window.location.pathname}${window.location.search}`;
@@ -329,15 +333,32 @@ function parseInDev<T>(schema: z.ZodType<T>, data: unknown): T {
 	return data as T;
 }
 
-async function requestJson<T>(
+type JsonRequestOptions<T> = RequestInit & {
+	schema?: z.ZodType<T>;
+	skipAuthRedirect?: boolean;
+	fresh?: boolean;
+};
+
+function requestJson<T>(
 	path: string,
-	options: RequestInit & {
-		schema?: z.ZodType<T>;
-		skipAuthRedirect?: boolean;
-	} = {},
+	options: JsonRequestOptions<T> = {},
+): Promise<T> {
+	const { fresh, ...request } = options;
+	const fetcher = () => fetchJson(path, request);
+	if (request.method && request.method.toUpperCase() !== "GET") {
+		return fetcher().finally(clearSwrCache);
+	}
+	if (fresh) return fetcher();
+	return swrFetch(path, fetcher);
+}
+
+async function fetchJson<T>(
+	path: string,
+	options: Omit<JsonRequestOptions<T>, "fresh">,
 ): Promise<T> {
 	const { schema, skipAuthRedirect, headers, ...init } = options;
 	const res = await fetch(path, {
+		cache: "no-store",
 		...init,
 		credentials: "same-origin",
 		headers: {
@@ -467,7 +488,10 @@ function backupFileName(res: Response): string {
 
 export const api = {
 	health(): Promise<AppHealth> {
-		return requestJson("/api/health", { schema: HealthResponseSchema });
+		return requestJson("/api/health", {
+			schema: HealthResponseSchema,
+			fresh: true,
+		});
 	},
 
 	getDemo() {
@@ -790,17 +814,29 @@ export const api = {
 		});
 	},
 
-	logout(): Promise<void> {
-		return requestJson("/api/auth/logout", {
-			method: "POST",
-			body: JSON.stringify({}),
-			skipAuthRedirect: true,
-		});
+	async logout(): Promise<void> {
+		clearSwrCache();
+		try {
+			await requestJson<void>("/api/auth/logout", {
+				method: "POST",
+				body: JSON.stringify({}),
+				skipAuthRedirect: true,
+			});
+		} finally {
+			if (typeof navigator !== "undefined") {
+				navigator.serviceWorker?.controller?.postMessage({
+					type: "CLEAR_CACHES",
+				});
+			}
+		}
 	},
 
 	// Phase 2: Vault
 	getVault(): Promise<VaultStatus> {
-		return requestJson("/api/vault", { schema: VaultStatusSchema });
+		return requestJson("/api/vault", {
+			schema: VaultStatusSchema,
+			fresh: true,
+		});
 	},
 
 	setupVault(passphrase: string): Promise<VaultStatus> {
@@ -879,6 +915,7 @@ export const api = {
 	listConnections(): Promise<Connection[]> {
 		return requestJson("/api/connections", {
 			schema: z.array(ConnectionSchema),
+			fresh: true,
 		});
 	},
 
@@ -943,10 +980,13 @@ export const api = {
 	},
 
 	// Phase 2: Jobs
-	getJob(id: string): Promise<JobStatus> {
-		return requestJson(`/api/jobs/${encodeURIComponent(id)}`, {
+	async getJob(id: string): Promise<JobStatus> {
+		const job = await requestJson(`/api/jobs/${encodeURIComponent(id)}`, {
 			schema: JobSchema,
+			fresh: true,
 		});
+		if (job.status === "completed" || job.status === "failed") clearSwrCache();
+		return job;
 	},
 
 	// Phase 2: Prices
@@ -954,6 +994,7 @@ export const api = {
 		const qs = new URLSearchParams({ taxYear }).toString();
 		return requestJson(`/api/prices/status?${qs}`, {
 			schema: PricesStatusSchema,
+			fresh: true,
 		});
 	},
 
@@ -1083,6 +1124,7 @@ export const api = {
 		const params = new URLSearchParams({ taxYear });
 		return requestJson(`/api/us-equity/prices/status?${params.toString()}`, {
 			schema: EquityPricesStatusResponseSchema,
+			fresh: true,
 		});
 	},
 

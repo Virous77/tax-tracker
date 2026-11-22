@@ -31,6 +31,13 @@ export function AppFooter({ className = "" }: { className?: string }) {
 				<span>AGPL-3.0</span>
 				<span aria-hidden="true">·</span>
 				<Link
+					href="/welcome"
+					className="font-medium text-[var(--accent-text)] hover:underline"
+				>
+					About
+				</Link>
+				<span aria-hidden="true">·</span>
+				<Link
 					href="/docs"
 					className="font-medium text-[var(--accent-text)] hover:underline"
 				>

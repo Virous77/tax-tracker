@@ -4,6 +4,7 @@ import {
 	AlertTriangle,
 	ArrowLeftRight,
 	BookOpen,
+	Download,
 	FileSpreadsheet,
 	FolderClock,
 	LayoutDashboard,
@@ -19,7 +20,11 @@ import {
 	X,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import {
+	usePathname,
+	useRouter,
+	useSelectedLayoutSegment,
+} from "next/navigation";
 import {
 	type ReactNode,
 	useCallback,
@@ -28,6 +33,8 @@ import {
 	useState,
 } from "react";
 import { DemoBanner } from "@/components/demo/DemoBanner";
+import { DemoProvider } from "@/components/demo/DemoProvider";
+import { REVALIDATE_EVENT, usePwa } from "@/components/pwa/PwaProvider";
 import { AppFooter } from "@/components/shell/AppFooter";
 import { DisclaimerGate } from "@/components/shell/DisclaimerGate";
 
@@ -60,6 +67,10 @@ const WIDE_ROUTES = new Set(["/imports", "/us-stocks", "/docs"]);
 
 export function AppShell({ children }: { children: ReactNode }) {
 	const pathname = usePathname();
+	const segment = useSelectedLayoutSegment();
+	const router = useRouter();
+	const { canInstall, promptInstall } = usePwa();
+	const isPublicPage = segment === "login" || segment === "offline";
 	const [mobileOpen, setMobileOpen] = useState(false);
 	const [theme, setTheme] = useState<ThemePref>("system");
 	const mobileToggleRef = useRef<HTMLButtonElement>(null);
@@ -74,6 +85,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 			applyTheme(saved);
 		}
 	}, []);
+
+	useEffect(() => {
+		if (isPublicPage) return;
+		const refresh = () => router.refresh();
+		window.addEventListener(REVALIDATE_EVENT, refresh);
+		return () => window.removeEventListener(REVALIDATE_EVENT, refresh);
+	}, [isPublicPage, router]);
 
 	const closeMobileMenu = useCallback((restoreFocus = true) => {
 		restoreFocusOnCloseRef.current = restoreFocus;
@@ -141,7 +159,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 		applyTheme(next);
 	}
 
-	if (pathname === "/login") {
+	if (segment === "offline" || segment === "welcome") return children;
+
+	if (segment === "login") {
 		return (
 			<div className="flex min-h-dvh flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)]">
 				<main className="flex flex-1 items-center justify-center p-4">
@@ -209,6 +229,16 @@ export function AppShell({ children }: { children: ReactNode }) {
 			</div>
 
 			<div className="space-y-2 border-t border-[var(--border)] p-3">
+				{canInstall ? (
+					<button
+						type="button"
+						onClick={() => void promptInstall()}
+						className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+					>
+						<Download className="h-3.5 w-3.5" aria-hidden="true" />
+						Install app
+					</button>
+				) : null}
 				<button
 					type="button"
 					onClick={cycleTheme}
@@ -288,17 +318,19 @@ export function AppShell({ children }: { children: ReactNode }) {
 			) : null}
 
 			{/* Main Content + Footer */}
-			<div className="flex min-w-0 flex-1 flex-col lg:pl-60">
-				<DemoBanner />
-				<main
-					className={`mx-auto w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 ${
-						WIDE_ROUTES.has(pathname) ? "max-w-screen-2xl" : "max-w-6xl"
-					}`}
-				>
-					{children}
-				</main>
-				<AppFooter className="sm:px-6" />
-			</div>
+			<DemoProvider>
+				<div className="flex min-w-0 flex-1 flex-col lg:pl-60">
+					<DemoBanner />
+					<main
+						className={`mx-auto w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 ${
+							WIDE_ROUTES.has(pathname) ? "max-w-screen-2xl" : "max-w-6xl"
+						}`}
+					>
+						{children}
+					</main>
+					<AppFooter className="sm:px-6" />
+				</div>
+			</DemoProvider>
 			<DisclaimerGate />
 		</div>
 	);

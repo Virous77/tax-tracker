@@ -3,8 +3,14 @@
 > **Pre-release. Not tax advice.** The tax rules are pending review by a Chartered Accountant. Check every
 > figure with a CA before you file.
 
-tax-tracker runs as one Docker container on your own computer. Everything it stores goes in one folder,
-`./data`, next to `docker-compose.yml`.
+For a local Docker install, tax-tracker runs in one app container and stores its data in `./data`, next to
+`docker-compose.yml`.
+
+## Deploy on Railway
+
+For a hosted instance, connect the GitHub repository to Railway, mount a persistent volume at `/data`, and paste
+the [Railway variables template](../.env.railway.example) into the service's **Variables → Raw Editor**. Set a
+strong password before making the service public. Follow the [Railway deployment guide](deploy-railway.md).
 
 ## 1. Install Docker
 
@@ -95,6 +101,8 @@ Docker Compose reads `.env` from the repository root. Restart after a change wit
 | `ALCHEMY_API_BASE`        | `https://{network}.g.alchemy.com/v2` | Alchemy API for EVM wallets (`{network}` is filled per chain).                                                                                                                              |
 | `NODEREAL_API_BASE`       | `https://bsc-mainnet.nodereal.io/v1` | NodeReal API for BNB Chain wallets.                                                                                                                                                         |
 | `COINGECKO_API_BASE`      | `https://api.coingecko.com/api/v3`   | CoinGecko Demo API, the optional price fallback.                                                                                                                                            |
+| `POLYGON_API_BASE`        | `https://api.polygon.io`             | Polygon.io (Massive) API for optional historical US stock prices.                                                                                                                           |
+| `FINNHUB_API_BASE`        | `https://finnhub.io/api/v1`          | Finnhub API for optional historical US stock prices.                                                                                                                                        |
 
 Image and build variables (compose only):
 

@@ -22,28 +22,30 @@ RUN --mount=type=cache,id=tax-tracker-pnpm,target=/root/.local/share/pnpm/store 
 COPY packages ./packages
 COPY apps ./apps
 COPY tsconfig.base.json ./
-RUN pnpm -r build
+RUN mkdir -p apps/web/public && pnpm -r build
 
 FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS runner
 ARG VERSION
 ARG REVISION
 ARG REPOSITORY_URL
 LABEL org.opencontainers.image.title="tax-tracker" \
-      org.opencontainers.image.description="Self-hosted India crypto tax helper" \
+      org.opencontainers.image.description="Self-hosted Indian crypto & US stock tax helper" \
       org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.source="${REPOSITORY_URL}"
 WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 DATA_DIR=/data HOSTNAME=0.0.0.0 PORT=3000
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 DATA_DIR=/data HOSTNAME=0.0.0.0
 RUN mkdir /data && chown node:node /data
 COPY --chown=node:node LICENSE ./LICENSE
 COPY --from=build --chown=node:node /app/apps/web/.next/standalone ./
 COPY --from=build --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=node:node /app/apps/web/public ./apps/web/public
 COPY --from=build --chown=node:node /app/packages/db/migrations ./packages/db/migrations
 COPY --from=build --chown=node:node /app/packages/rates/data ./packages/rates/data
+COPY scripts/docker-entrypoint.mjs ./scripts/docker-entrypoint.mjs
 VOLUME /data
 USER node
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(async r=>{if(!r.ok||!(await r.json()).dbOk)process.exit(1)}).catch(()=>process.exit(1))"
-CMD ["node", "apps/web/server.js"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT || 3000)+'/api/health').then(async r=>{if(!r.ok||!(await r.json()).dbOk)process.exit(1)}).catch(()=>process.exit(1))"
+CMD ["node", "scripts/docker-entrypoint.mjs"]

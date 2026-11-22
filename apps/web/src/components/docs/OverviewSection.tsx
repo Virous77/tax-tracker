@@ -118,8 +118,9 @@ export function OverviewSection({ vda, equity }: DocsYear) {
 					and reports stay in your local database on your server. There is no
 					telemetry, analytics or calling home. Network requests are limited to
 					features you enable: exchange or wallet sync, optional price lookups,
-					and an AI recipe endpoint you choose. Merely reading this guide sends
-					no transaction data to providers.
+					and an AI recipe endpoint you choose. Merely reading this guide or the{" "}
+					<DocLink href="/welcome">product overview</DocLink> sends no
+					transaction data to providers.
 				</p>
 			</Topic>
 		</DocSection>

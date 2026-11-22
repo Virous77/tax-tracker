@@ -3,9 +3,9 @@ import type { ReferenceRow } from "./docs-data";
 
 export const REVIEW_FIXES: Record<ReviewCode, string> = {
 	missing_history:
-		"Import earlier purchases and both transfer sides. Add a manual acquisition only from evidence; unknown cost is not nil cost.",
+		"Import earlier purchases and both transfer sides. Use Review Queue or Report's combined missing-buy shortcut only from evidence; unknown cost is not nil cost.",
 	missing_inr_value:
-		"Inspect the raw trade and FX trail. Fetch eligible prices or enter a supported INR value, then recompute.",
+		"Inspect the raw trade and FX trail. Fetch eligible prices or enter a supported total or per-unit INR value in the drawer, then recompute.",
 	unknown_type:
 		"Review the original action and correct the type or recipe; unsupported actions require separate treatment.",
 	unmatched_transfer:

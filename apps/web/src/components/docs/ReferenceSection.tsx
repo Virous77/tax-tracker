@@ -75,6 +75,25 @@ export function ReferenceSection({ rules }: { rules: VdaRules }) {
 					overwritten. Overlapping formats still need duplicate review.
 				</p>
 				<p>
+					For Railway self-hosting, connect the repository, mount a persistent
+					volume at /data, keep 1 replica for SQLite, and paste the variables
+					from .env.railway.example with a strong APP_PASSWORD (see
+					docs/deploy-railway.md for healthcheck and HTTPS setup).
+				</p>
+				<p>
+					Tax Tracker can also be installed as a PWA. The Service Worker caches
+					only static shell assets and the /offline fallback — /api/* responses
+					are never cached in the Service Worker. Smooth tab switching uses an
+					in-memory stale-while-revalidate cache that clears automatically on
+					edits and logout.
+				</p>
+				<p>
+					When usdtInrRate is set to ledger_usdt_inr, preceding ledger USDT/INR
+					trades are capped at a 14-day staleness window and fall back to
+					bundled SBI USD TT rates (with a 22-day freshness guard) rather than
+					applying stale FX quotes.
+				</p>
+				<p>
 					Exchange and provider secrets are encrypted in the Vault using
 					AES-256-GCM with a passphrase-derived scrypt key. This encrypts
 					secrets, not the entire ledger database. Unlock the Vault for

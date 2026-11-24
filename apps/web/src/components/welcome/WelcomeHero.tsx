@@ -23,14 +23,19 @@ export function WelcomeHero({
 
 	return (
 		<section className="mx-auto max-w-6xl px-4 pt-10 pb-14 sm:px-6 sm:pt-14 lg:px-8 lg:pt-16">
-			<div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-12">
-				<div className="space-y-6">
+			<div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-12">
+				<div className="min-w-0 space-y-6">
 					<div className="flex flex-wrap items-center gap-2">
-						<Badge tone="accent">
-							Free · Open Source (AGPL-3.0) · Local-First · Installable PWA
+						<Badge tone="accent" className="whitespace-nowrap">
+							Open Source (AGPL-3.0)
+						</Badge>
+						<Badge tone="accent" className="whitespace-nowrap">
+							Local-First PWA
 						</Badge>
 						{pendingVerification ? (
-							<Badge tone="warning">Pending CA verification</Badge>
+							<Badge tone="warning" className="whitespace-nowrap">
+								Pending CA verification
+							</Badge>
 						) : null}
 					</div>
 
@@ -117,7 +122,7 @@ export function WelcomeHero({
 				{/* Live Product Preview Mockup Card (synthetic figures computed from live rules) */}
 				<aside
 					aria-label="Synthetic product preview"
-					className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-sm"
+					className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] shadow-sm"
 				>
 					<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-3">
 						<div className="flex items-center gap-2">

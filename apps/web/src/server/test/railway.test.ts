@@ -49,6 +49,8 @@ it("ships paste-ready variables with only placeholders for secrets", async () =>
 	);
 	expect(parseEnv(template)).toEqual({
 		APP_PASSWORD: "change-me-to-a-strong-passphrase",
+		DEMO_MODE: "false",
+		DEMO_PASSWORD: "",
 		DATA_DIR: "/data",
 		RAILWAY_RUN_UID: "0",
 		RAILWAY_DEPLOYMENT_DRAINING_SECONDS: "15",

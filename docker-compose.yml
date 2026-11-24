@@ -18,6 +18,8 @@ services:
       DATA_DIR: /data
       SOURCE_URL: ${SOURCE_URL:-}
       APP_PASSWORD: ${APP_PASSWORD:-}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       APP_SECRET: ${APP_SECRET:-}
       AI_BASE_URL: ${AI_BASE_URL:-http://ollama:11434/v1}
       AI_MODEL: ${AI_MODEL:-}

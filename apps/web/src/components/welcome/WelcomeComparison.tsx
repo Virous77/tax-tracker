@@ -25,7 +25,7 @@ export function WelcomeComparison() {
 					</p>
 				</header>
 
-				<div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]">
+				<div className="min-w-0 max-w-full overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg-surface)]">
 					<table className="w-full min-w-[640px] text-left text-sm">
 						<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs uppercase tracking-wide">
 							<tr>

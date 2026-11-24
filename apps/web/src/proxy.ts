@@ -1,5 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, validSession } from "./server/auth";
+import {
+	isPasswordProtected,
+	SESSION_COOKIE,
+	validSession,
+} from "./server/auth";
+import { isDemoModeEnabled } from "./server/demo-mode";
 
 const publicPaths = new Set([
 	"/api/health",
@@ -17,14 +22,18 @@ const publicPaths = new Set([
 
 export function proxy(request: NextRequest) {
 	const path = request.nextUrl.pathname;
+	const headers = { "Cache-Control": "no-store" };
+	if (path === "/api/demo/samples" || path.startsWith("/api/demo/samples/"))
+		return isDemoModeEnabled()
+			? NextResponse.next()
+			: new Response(null, { status: 404, headers });
 	if (
-		!process.env.APP_PASSWORD ||
+		!isPasswordProtected() ||
 		publicPaths.has(path) ||
 		path.startsWith("/_next/") ||
 		path.startsWith("/icons/")
 	)
 		return NextResponse.next();
-	const headers = { "Cache-Control": "no-store" };
 	if (validSession(request.cookies.get(SESSION_COOKIE)?.value))
 		return NextResponse.next({ headers });
 	if (path.startsWith("/api/"))

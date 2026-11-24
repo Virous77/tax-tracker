@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { demoPassword } from "./demo-mode";
 import { ApiError } from "./errors";
 export const SESSION_COOKIE = "tax_tracker_session";
 const sessionSeconds = 12 * 60 * 60;
@@ -88,6 +89,11 @@ export function validSession(
 	);
 }
 const attempts = new Map<string, { count: number; until: number }>();
+
+export function isPasswordProtected(): boolean {
+	return Boolean(process.env.APP_PASSWORD || demoPassword());
+}
+
 export function login(password: string, identity = "local"): string {
 	const now = Date.now();
 	for (const [key, value] of attempts)
@@ -107,7 +113,13 @@ export function login(password: string, identity = "local"): string {
 	attempts.set(key, attempt);
 	if (attempts.size > 10000)
 		attempts.delete(attempts.keys().next().value ?? "");
-	if (process.env.APP_PASSWORD && !equal(password, process.env.APP_PASSWORD))
+	const appPassword = process.env.APP_PASSWORD;
+	const publicPassword = demoPassword();
+	if (
+		(appPassword || publicPassword) &&
+		!(appPassword && equal(password, appPassword)) &&
+		!(publicPassword && equal(password, publicPassword))
+	)
 		throw new ApiError(401, "unauthorized", "Incorrect password.");
 	attempts.delete(key);
 	return createSession();

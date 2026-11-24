@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Drawer } from "@/components/ui/Drawer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { TaxYearSelect } from "@/components/ui/TaxYearSelect";
 import {
 	ApiError,
@@ -632,39 +633,32 @@ export function ReportClient() {
 
 	return (
 		<div className="space-y-6">
-			{/* Header */}
-			<div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-				<div>
-					<h1 className="text-xl font-semibold tracking-tight">
-						Schedule VDA &amp; Tax Report
-					</h1>
-					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						ITR-ready Schedule VDA rows, Section 194S/393 TDS summary, income
-						&amp; gifts, and year-end balances.
-					</p>
-				</div>
-
-				<div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-					<TaxYearSelect
-						value={taxYear}
-						onChange={selectTaxYear}
-						taxYears={taxYears}
-					/>
-					<button
-						type="button"
-						disabled={computing}
-						onClick={handleCompute}
-						className="shrink-0 whitespace-nowrap inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 sm:w-auto"
-					>
-						<Calculator className="h-4 w-4" aria-hidden="true" />
-						{computing
-							? "Computing…"
-							: report
-								? "Recompute report"
-								: "Compute report"}
-					</button>
-				</div>
-			</div>
+			<PageHeader
+				title="Schedule VDA &amp; Tax Report"
+				description="ITR-ready Schedule VDA rows, TDS summary, income &amp; gifts, and year-end balances."
+				actions={
+					<>
+						<TaxYearSelect
+							value={taxYear}
+							onChange={selectTaxYear}
+							taxYears={taxYears}
+						/>
+						<button
+							type="button"
+							disabled={computing}
+							onClick={handleCompute}
+							className="shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+						>
+							<Calculator className="h-4 w-4" aria-hidden="true" />
+							{computing
+								? "Computing…"
+								: report
+									? "Recompute report"
+									: "Compute report"}
+						</button>
+					</>
+				}
+			/>
 
 			{error ? (
 				<ErrorBanner message={error} onRetry={() => loadReport(taxYear)} />

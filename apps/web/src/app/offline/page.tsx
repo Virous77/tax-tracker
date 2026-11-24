@@ -5,6 +5,9 @@ import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata("offline");
 
+// The service worker precaches this public fallback.
+export const dynamic = "force-static";
+
 export default function OfflinePage() {
 	return (
 		<div className="flex min-h-dvh flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)]">

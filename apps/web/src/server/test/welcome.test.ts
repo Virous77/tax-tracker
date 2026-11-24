@@ -2,7 +2,10 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { D, DISCLAIMER, formatInr } from "@tax/core";
 import { loadRules } from "@tax/rules";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import WelcomePage from "@/app/welcome/page";
 import {
 	buildPreviewData,
 	COMPARISON_ROWS,
@@ -18,6 +21,25 @@ const welcomeComponentsDir = new URL(
 const welcomePageFile = new URL("../../app/welcome/page.tsx", import.meta.url);
 
 describe("/welcome landing page", () => {
+	it("renders separate hero pills, deploy commands and footer links", () => {
+		const html = renderToStaticMarkup(createElement(WelcomePage));
+		expect(html).toMatch(/Open Source \(AGPL-3\.0\)<\/span>/);
+		expect(html).toMatch(/Local-First PWA<\/span>/);
+		expect(html).toMatch(/Pending CA verification<\/span>/);
+		for (const { title } of DEPLOY_OPTIONS) {
+			expect(html).toContain(
+				`aria-label="Copy ${title.replaceAll("&", "&amp;")} commands"`,
+			);
+		}
+		expect(html.match(/<pre[^>]*overflow-x-auto/g)).toHaveLength(
+			DEPLOY_OPTIONS.length,
+		);
+		const footer = html.slice(html.indexOf("<footer"));
+		expect(footer).toContain(DISCLAIMER);
+		for (const href of ["/", "/docs", "/import"])
+			expect(footer).toContain(`href="${href}"`);
+	});
+
 	it.each(["2025-26", "2026-27"])(
 		"builds live preview data from @tax/rules for %s",
 		(year) => {

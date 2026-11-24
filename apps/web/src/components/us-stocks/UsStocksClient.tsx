@@ -34,6 +34,7 @@ import { StaleReportBanner } from "@/components/report/StaleReportBanner";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { TaxYearSelect } from "@/components/ui/TaxYearSelect";
 import { CapitalGainsTab } from "@/components/us-stocks/CapitalGainsTab";
 import { DividendsForm67Tab } from "@/components/us-stocks/DividendsForm67Tab";
@@ -345,33 +346,32 @@ export function UsStocksClient() {
 
 	return (
 		<div className="space-y-6">
-			{/* Header */}
-			<div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-				<div>
-					<h1 className="text-xl font-semibold tracking-tight">US Stocks</h1>
-					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						US equity capital gains (LTCG 12.5% / STCG slab), dividends &amp;
-						Form 67 credit, and Schedule FA (Table A3).
-					</p>
-				</div>
-
-				<div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-					<TaxYearSelect
-						value={taxYear}
-						onChange={selectTaxYear}
-						taxYears={taxYears}
-					/>
-					<button
-						type="button"
-						disabled={computing || !taxYear}
-						onClick={handleCompute}
-						className="shrink-0 whitespace-nowrap inline-flex w-full items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50 sm:w-auto"
-					>
-						<Calculator className="h-4 w-4" aria-hidden="true" />
-						{computing ? "Computing…" : report ? "Recompute" : "Compute report"}
-					</button>
-				</div>
-			</div>
+			<PageHeader
+				title="US Stocks"
+				description="US equity capital gains, dividends &amp; Form 67 credit, and Schedule FA."
+				actions={
+					<>
+						<TaxYearSelect
+							value={taxYear}
+							onChange={selectTaxYear}
+							taxYears={taxYears}
+						/>
+						<button
+							type="button"
+							disabled={computing || !taxYear}
+							onClick={handleCompute}
+							className="shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+						>
+							<Calculator className="h-4 w-4" aria-hidden="true" />
+							{computing
+								? "Computing…"
+								: report
+									? "Recompute"
+									: "Compute report"}
+						</button>
+					</>
+				}
+			/>
 
 			{error ? (
 				<ErrorBanner message={error} onRetry={() => loadData(taxYear)} />

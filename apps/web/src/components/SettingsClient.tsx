@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectItem } from "@/components/ui/Select";
 import { FALLBACK_TAX_YEARS } from "@/components/ui/TaxYearSelect";
 import {
@@ -187,10 +188,13 @@ export function SettingsClient({
 		);
 	}
 
+	const description =
+		"CA-configurable tax assumptions, AI recipe assistant endpoint, and backup location.";
+
 	if (!settings) {
 		return (
 			<div className="space-y-4">
-				<h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+				<PageHeader title="Settings" description={description} />
 				{error ? <ErrorBanner message={error} onRetry={load} /> : null}
 			</div>
 		);
@@ -200,25 +204,22 @@ export function SettingsClient({
 
 	return (
 		<div className="space-y-6">
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<h1 className="text-xl font-semibold tracking-tight">Settings</h1>
-					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						CA-configurable tax assumptions, AI recipe assistant endpoint, and
-						backup location.
-					</p>
-				</div>
-				{passwordEnabled ? (
-					<button
-						type="button"
-						onClick={handleLogout}
-						className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-					>
-						<LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-						Log out
-					</button>
-				) : null}
-			</div>
+			<PageHeader
+				title="Settings"
+				description={description}
+				actions={
+					passwordEnabled ? (
+						<button
+							type="button"
+							onClick={handleLogout}
+							className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+						>
+							<LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+							Log out
+						</button>
+					) : null
+				}
+			/>
 
 			{error ? <ErrorBanner message={error} /> : null}
 			{savedMsg ? (

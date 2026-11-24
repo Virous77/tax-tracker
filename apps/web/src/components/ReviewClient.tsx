@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { TaxYearSelect } from "@/components/ui/TaxYearSelect";
 import { api, getErrorMessage, type ReviewData } from "@/lib/client/api";
 import { getEvmChainName } from "@/lib/client/chains";
@@ -894,22 +895,18 @@ export function ReviewClient() {
 
 	return (
 		<div className="space-y-6">
-			<div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-				<div>
-					<h1 className="text-xl font-semibold tracking-tight">Review Queue</h1>
-					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						Uncertain or incomplete rows are never guessed silently. Resolve
-						each group below before filing.
-					</p>
-				</div>
-				<TaxYearSelect
-					value={taxYear}
-					onChange={handleTaxYearChange}
-					taxYears={taxYears}
-					includeAllOption
-					className="w-full sm:w-auto"
-				/>
-			</div>
+			<PageHeader
+				title="Review Queue"
+				description="Uncertain or incomplete rows are never guessed silently. Resolve each group below before filing."
+				actions={
+					<TaxYearSelect
+						value={taxYear}
+						onChange={handleTaxYearChange}
+						taxYears={taxYears}
+						includeAllOption
+					/>
+				}
+			/>
 
 			{error ? <ErrorBanner message={error} onRetry={loadReview} /> : null}
 

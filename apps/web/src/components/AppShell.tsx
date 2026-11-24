@@ -65,7 +65,13 @@ function applyTheme(pref: ThemePref) {
 /** Table-heavy pages that benefit from the full content width. */
 const WIDE_ROUTES = new Set(["/imports", "/us-stocks", "/docs"]);
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+	children,
+	publicDemo,
+}: {
+	children: ReactNode;
+	publicDemo: boolean;
+}) {
 	const pathname = usePathname();
 	const segment = useSelectedLayoutSegment();
 	const router = useRouter();
@@ -320,6 +326,15 @@ export function AppShell({ children }: { children: ReactNode }) {
 			{/* Main Content + Footer */}
 			<DemoProvider>
 				<div className="flex min-w-0 flex-1 flex-col lg:pl-60">
+					{publicDemo ? (
+						<div className="flex items-start gap-2 border-b border-[var(--warning)]/40 bg-[var(--warning-soft)] px-4 py-2 text-xs text-[var(--warning)] sm:px-6">
+							<AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+							<p>
+								<strong>Public demo.</strong> Do not upload real or sensitive
+								financial or tax files.
+							</p>
+						</div>
+					) : null}
 					<DemoBanner />
 					<main
 						className={`mx-auto w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 ${

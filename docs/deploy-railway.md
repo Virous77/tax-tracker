@@ -34,3 +34,16 @@
   (Massive) or Finnhub keys for US stock prices, or a CoinGecko Demo key for fallback crypto prices. Check each
   provider's free-tier coverage for the history you need.
 - Download periodic database backups from **Settings** (`/settings`) and keep them somewhere private.
+
+## Public demo
+
+Keep `DEMO_MODE=false` for private deployments. On a separate instance with synthetic data only,
+set `DEMO_MODE=true` to show a public-demo warning on `/login` and in the workspace and offer
+synthetic CSV downloads on `/login`. The login page displays the configured `APP_PASSWORD` by
+default. Set `DEMO_PASSWORD` to publish a separate passphrase that also unlocks the demo.
+
+## Troubleshooting
+
+If Railway's monorepo importer fills in a **Custom Start Command** for `@tax/web`, such as a
+`pnpm` command, clear it in **Settings → Deploy**. Railway will then use the Dockerfile's
+`CMD ["node", "scripts/docker-entrypoint.mjs"]`.

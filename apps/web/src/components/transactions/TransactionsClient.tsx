@@ -20,6 +20,7 @@ import { TransactionDrawer } from "@/components/transactions/TransactionDrawer";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Pagination } from "@/components/ui/Pagination";
 import { Select, SelectItem } from "@/components/ui/Select";
 import {
@@ -294,23 +295,20 @@ export function TransactionsClient() {
 
 	return (
 		<div className="space-y-5">
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<h1 className="text-xl font-semibold tracking-tight">Transactions</h1>
-					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						Normalized ledger across all exchanges and manual entries. Click any
-						row to inspect raw data or edit.
-					</p>
-				</div>
-				<button
-					type="button"
-					onClick={() => setAddOpen(true)}
-					className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-				>
-					<Plus className="h-4 w-4" aria-hidden="true" />
-					Add manual entry
-				</button>
-			</div>
+			<PageHeader
+				title="Transactions"
+				description="Normalized ledger across all exchanges and manual entries. Click any row to inspect raw data or edit."
+				actions={
+					<button
+						type="button"
+						onClick={() => setAddOpen(true)}
+						className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+					>
+						<Plus className="h-4 w-4" aria-hidden="true" />
+						Add manual entry
+					</button>
+				}
+			/>
 
 			{/* Filter bar */}
 			<form

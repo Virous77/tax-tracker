@@ -21,6 +21,7 @@ import { RecipeWizard } from "@/components/import/RecipeWizard";
 import { SourceName } from "@/components/import/SourceName";
 import { Badge } from "@/components/ui/Badge";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import {
 	ApiError,
 	api,
@@ -332,12 +333,10 @@ export function ImportClient() {
 	if (result?.status === "pending_recipe") {
 		return (
 			<div className="space-y-4">
-				<div>
-					<h1 className="text-xl font-semibold tracking-tight">Import File</h1>
-					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						Configure column mapping for your generic CSV / XLSX export.
-					</p>
-				</div>
+				<PageHeader
+					title="Import File"
+					description="Configure column mapping for your generic CSV / XLSX export."
+				/>
 				<RecipeWizard
 					importItem={result}
 					onConfirmed={handleWizardConfirmed}
@@ -375,24 +374,19 @@ export function ImportClient() {
 
 	return (
 		<div className="space-y-6">
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<h1 className="text-xl font-semibold tracking-tight">Import</h1>
-					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						Upload CSV or XLSX exports (Binance, CoinDCX, Vested, and other
-						exchanges or US stock brokers like Schwab and IBKR via recipes) or
-						Binance and Vested PDF account statements. Duplicate rows are safely
-						skipped.
-					</p>
-				</div>
-				<Link
-					href="/imports"
-					className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg-hover)]"
-				>
-					Import history
-					<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-				</Link>
-			</div>
+			<PageHeader
+				title="Import"
+				description="Upload CSV or XLSX exports (Binance, CoinDCX, Vested, and other exchanges or US stock brokers like Schwab and IBKR via recipes) or Binance and Vested PDF account statements. Duplicate rows are safely skipped."
+				actions={
+					<Link
+						href="/imports"
+						className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg-hover)]"
+					>
+						Import history
+						<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+					</Link>
+				}
+			/>
 
 			{error ? <ErrorBanner message={error} /> : null}
 
@@ -932,7 +926,7 @@ export function ImportClient() {
 										aria-hidden="true"
 									/>
 									<p className="text-sm font-medium">
-										Drop your exchange or broker export here, or{" "}
+										Drop your exchange export here, or{" "}
 										<span className="text-[var(--accent-text)] underline">
 											browse files
 										</span>

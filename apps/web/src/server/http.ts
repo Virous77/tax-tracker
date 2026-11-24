@@ -1,6 +1,6 @@
 import { ApiContract, ErrorEnvelopeSchema } from "@tax/core/api";
 import { z } from "zod";
-import { SESSION_COOKIE, validSession } from "./auth";
+import { isPasswordProtected, SESSION_COOKIE, validSession } from "./auth";
 import { ApiError } from "./errors";
 import { isPdf } from "./pdf-errors";
 import { execute } from "./service";
@@ -114,7 +114,7 @@ export async function handle(
 	try {
 		const contract = ApiContract[name];
 		if (
-			process.env.APP_PASSWORD &&
+			isPasswordProtected() &&
 			!["health", "login", "logout"].includes(name)
 		) {
 			const cookie = request.headers

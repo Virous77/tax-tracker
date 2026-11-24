@@ -37,6 +37,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import {
 	ApiError,
 	api,
@@ -600,24 +601,21 @@ export function ConnectionsClient() {
 
 	return (
 		<div className="space-y-6">
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<h1 className="text-xl font-semibold tracking-tight">Connections</h1>
-					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						Encrypted vault, read-only exchange API syncs, EVM wallet tracking,
-						and block explorer provider keys.
-					</p>
-				</div>
-				<button
-					type="button"
-					onClick={() => setAddOpen(true)}
-					disabled={!vault}
-					className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-				>
-					<Plus className="h-4 w-4" aria-hidden="true" />
-					Add connection
-				</button>
-			</div>
+			<PageHeader
+				title="Connections"
+				description="Encrypted vault, read-only exchange API syncs, EVM wallet tracking, and block explorer provider keys."
+				actions={
+					<button
+						type="button"
+						onClick={() => setAddOpen(true)}
+						disabled={!vault}
+						className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+					>
+						<Plus className="h-4 w-4" aria-hidden="true" />
+						Add connection
+					</button>
+				}
+			/>
 
 			{error ? <ErrorBanner message={error} onRetry={loadAll} /> : null}
 

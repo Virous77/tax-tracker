@@ -37,12 +37,12 @@ export function WelcomeCoverage({
 					</p>
 				</header>
 
-				<div className="grid gap-6 lg:grid-cols-3">
+				<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 					{/* Crypto / VDA */}
-					<article className="flex flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-canvas)] p-6">
-						<div className="space-y-4">
+					<article className="flex min-w-0 flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-canvas)] p-6">
+						<div className="min-w-0 space-y-4">
 							<div className="flex items-center justify-between gap-2">
-								<span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent-text)]">
+								<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent-text)]">
 									<Bitcoin className="h-5 w-5" aria-hidden="true" />
 								</span>
 								<Badge tone="accent">{vda.sections.vdaTax}</Badge>
@@ -99,10 +99,10 @@ export function WelcomeCoverage({
 					</article>
 
 					{/* US Stocks */}
-					<article className="flex flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-canvas)] p-6">
-						<div className="space-y-4">
+					<article className="flex min-w-0 flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-canvas)] p-6">
+						<div className="min-w-0 space-y-4">
 							<div className="flex items-center justify-between gap-2">
-								<span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent-text)]">
+								<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent-text)]">
 									<TrendingUp className="h-5 w-5" aria-hidden="true" />
 								</span>
 								<Badge tone="accent">
@@ -165,10 +165,10 @@ export function WelcomeCoverage({
 					</article>
 
 					{/* Indian Market & ITR Hand-off */}
-					<article className="flex flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-canvas)] p-6">
-						<div className="space-y-4">
+					<article className="flex min-w-0 flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-canvas)] p-6">
+						<div className="min-w-0 space-y-4">
 							<div className="flex items-center justify-between gap-2">
-								<span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--warning-soft)] text-[var(--warning)]">
+								<span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--warning-soft)] text-[var(--warning)]">
 									<Building2 className="h-5 w-5" aria-hidden="true" />
 								</span>
 								<Badge tone="warning">Domestic engine not built</Badge>

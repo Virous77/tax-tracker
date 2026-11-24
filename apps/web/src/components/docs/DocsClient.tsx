@@ -3,6 +3,7 @@
 import { DISCLAIMER } from "@tax/core";
 import { BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Select } from "@/components/ui/Select";
 import { CryptoSection } from "./CryptoSection";
 import type { DocsYear } from "./docs-data";
@@ -60,40 +61,37 @@ export function DocsClient({
 
 	return (
 		<div className="space-y-6">
-			<header className="space-y-4">
-				<div className="flex flex-wrap items-start justify-between gap-4">
-					<div>
+			<div className="space-y-4">
+				<PageHeader
+					title="Documentation & Tax Calculation Guide"
+					description="Understand the numbers. Review the assumptions. Prepare your workpapers."
+					eyebrow={
 						<div className="mb-2 flex items-center gap-2 text-xs font-medium text-[var(--accent-text)]">
 							<BookOpen className="h-4 w-4" aria-hidden="true" />
 							Tax Tracker handbook
 						</div>
-						<h1 className="text-2xl font-semibold tracking-tight">
-							Documentation & Tax Calculation Guide
-						</h1>
-						<p className="mt-2 text-sm text-[var(--text-secondary)]">
-							Understand the numbers. Review the assumptions. Prepare your
-							workpapers.
-						</p>
-					</div>
-					<fieldset className="space-y-2">
-						<legend className="text-xs font-medium text-[var(--text-secondary)]">
-							Tax year for this guide
-						</legend>
-						<div className="inline-flex gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-1">
-							{years.map(({ vda }) => (
-								<button
-									key={vda.taxYear}
-									type="button"
-									aria-pressed={taxYear === vda.taxYear}
-									onClick={() => setTaxYear(vda.taxYear)}
-									className={`num rounded-md px-3 py-2 text-xs font-medium ${taxYear === vda.taxYear ? "bg-[var(--accent-soft)] text-[var(--accent-text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
-								>
-									{vda.taxYear}
-								</button>
-							))}
-						</div>
-					</fieldset>
-				</div>
+					}
+					actions={
+						<fieldset className="space-y-2">
+							<legend className="text-xs font-medium text-[var(--text-secondary)]">
+								Tax year for this guide
+							</legend>
+							<div className="inline-flex gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-1">
+								{years.map(({ vda }) => (
+									<button
+										key={vda.taxYear}
+										type="button"
+										aria-pressed={taxYear === vda.taxYear}
+										onClick={() => setTaxYear(vda.taxYear)}
+										className={`num rounded-md px-3 py-2 text-xs font-medium ${taxYear === vda.taxYear ? "bg-[var(--accent-soft)] text-[var(--accent-text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+									>
+										{vda.taxYear}
+									</button>
+								))}
+							</div>
+						</fieldset>
+					}
+				/>
 				<p className="rounded-lg border border-[var(--border)] bg-[var(--warning-soft)] px-4 py-3 text-sm font-medium text-[var(--warning)]">
 					{DISCLAIMER}
 				</p>
@@ -102,7 +100,7 @@ export function DocsClient({
 					{selected.equity.scheduleFaCalendarYear}. This switch changes the
 					guide only; your saved workspace settings stay independent.
 				</p>
-			</header>
+			</div>
 			<div className="grid items-start gap-8 xl:grid-cols-[13rem_minmax(0,1fr)]">
 				<div className="xl:sticky xl:top-6">
 					<nav

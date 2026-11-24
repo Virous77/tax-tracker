@@ -27,11 +27,11 @@ export function WelcomeWorkflow() {
 					</p>
 				</header>
 
-				<div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+				<div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
 					{UX_HIGHLIGHTS.map((item, idx) => (
 						<article
 							key={item.id}
-							className={`flex flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-canvas)] p-6 ${
+							className={`flex min-w-0 flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-canvas)] p-6 ${
 								idx === UX_HIGHLIGHTS.length - 1
 									? "md:col-span-2 lg:col-span-1"
 									: ""

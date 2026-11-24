@@ -44,17 +44,17 @@ export function WelcomeDeploy() {
 					</p>
 				</header>
 
-				<div className="grid gap-6 lg:grid-cols-3">
+				<div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 					{DEPLOY_OPTIONS.map((option) => {
 						const isCopied = copiedId === option.id;
 						return (
 							<article
 								key={option.id}
-								className="flex flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-6"
+								className="flex min-w-0 flex-col justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] p-5 sm:p-6"
 							>
-								<div className="space-y-4">
+								<div className="min-w-0 space-y-4">
 									<div className="flex items-center justify-between gap-2">
-										<span className="flex h-8 w-8 items-center justify-center rounded-md bg-[var(--bg-subtle)] text-[var(--accent-text)]">
+										<span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--bg-subtle)] text-[var(--accent-text)]">
 											<Terminal className="h-4 w-4" aria-hidden="true" />
 										</span>
 										<Badge tone="neutral">{option.badge}</Badge>
@@ -65,7 +65,7 @@ export function WelcomeDeploy() {
 									<p className="text-sm leading-relaxed text-[var(--text-secondary)]">
 										{option.summary}
 									</p>
-									<div className="relative rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)]">
+									<div className="max-w-full overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)]">
 										<div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-1.5">
 											<span className="font-mono-code text-[11px] text-[var(--text-muted)]">
 												shell
@@ -94,7 +94,7 @@ export function WelcomeDeploy() {
 												)}
 											</button>
 										</div>
-										<pre className="font-mono-code overflow-x-auto p-3 text-xs leading-5 text-[var(--text-primary)]">
+										<pre className="font-mono-code max-w-full overflow-x-auto p-3 text-xs leading-5 text-[var(--text-primary)]">
 											<code>{option.commands}</code>
 										</pre>
 									</div>

@@ -24,6 +24,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Drawer } from "@/components/ui/Drawer";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import {
 	api,
 	getErrorMessage,
@@ -297,21 +298,19 @@ export function ImportsClient() {
 
 	return (
 		<div className="space-y-6">
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<h1 className="text-xl font-semibold tracking-tight">Imports</h1>
-					<p className="mt-0.5 text-sm text-[var(--text-secondary)]">
-						Uploaded exchange files and saved generic CSV mapping recipes.
-					</p>
-				</div>
-				<Link
-					href="/import"
-					className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
-				>
-					<Plus className="h-4 w-4" aria-hidden="true" />
-					New import
-				</Link>
-			</div>
+			<PageHeader
+				title="Imports"
+				description="Uploaded exchange files and saved generic CSV mapping recipes."
+				actions={
+					<Link
+						href="/import"
+						className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+					>
+						<Plus className="h-4 w-4" aria-hidden="true" />
+						New import
+					</Link>
+				}
+			/>
 
 			{error ? <ErrorBanner message={error} onRetry={loadAll} /> : null}
 

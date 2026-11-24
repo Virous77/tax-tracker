@@ -870,7 +870,7 @@ export function RecipeWizard({
 				</div>
 
 				{currentSheet.sampleRows.length > 0 ? (
-					<div className="overflow-x-auto rounded border border-[var(--border)]">
+					<div className="min-w-0 overflow-x-auto rounded border border-[var(--border)]">
 						<table className="w-full border-collapse text-left text-xs">
 							<thead className="bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 								<tr>
@@ -1455,17 +1455,17 @@ export function RecipeWizard({
 						</div>
 					) : null}
 
-					<div className="overflow-x-auto rounded border border-[var(--border)]">
+					<div className="min-w-0 overflow-x-auto rounded border border-[var(--border)]">
 						<table className="w-full border-collapse text-left text-xs">
 							<thead className="bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 								<tr>
-									<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+									<th className="border-b border-[var(--border)] px-3 py-2 font-medium whitespace-nowrap">
 										#
 									</th>
-									<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+									<th className="border-b border-[var(--border)] px-3 py-2 font-medium whitespace-nowrap">
 										Original Row
 									</th>
-									<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+									<th className="border-b border-[var(--border)] px-3 py-2 font-medium whitespace-nowrap">
 										Converted Ledger Row
 									</th>
 								</tr>
@@ -1476,15 +1476,15 @@ export function RecipeWizard({
 										key={row.converted?.id ?? JSON.stringify(row.original)}
 										className="border-b border-[var(--border)] align-top last:border-b-0"
 									>
-										<td className="num px-3 py-2 text-[var(--text-muted)]">
+										<td className="num px-3 py-2 text-[var(--text-muted)] whitespace-nowrap">
 											{idx + 1}
 										</td>
-										<td className="max-w-xs px-3 py-2">
-											<pre className="font-mono-code overflow-x-auto text-[11px] whitespace-pre-wrap text-[var(--text-secondary)]">
+										<td className="min-w-[220px] max-w-xs px-3 py-2 whitespace-normal">
+											<pre className="font-mono-code text-[11px] wrap-anywhere whitespace-pre-wrap text-[var(--text-secondary)]">
 												{JSON.stringify(row.original, null, 2)}
 											</pre>
 										</td>
-										<td className="px-3 py-2">
+										<td className="min-w-[240px] px-3 py-2 whitespace-normal">
 											{row.error || !row.converted ? (
 												<p className="font-medium text-[var(--loss)]">
 													{row.error ?? "Could not convert row"}
@@ -1495,11 +1495,11 @@ export function RecipeWizard({
 														<Badge tone="accent">
 															{formatTxType(row.converted.type)}
 														</Badge>
-														<span className="text-[var(--text-secondary)]">
+														<span className="whitespace-nowrap text-[var(--text-secondary)]">
 															{formatIstDateTime(row.converted.timestamp)}
 														</span>
 													</div>
-													<div className="num flex flex-wrap gap-x-4 gap-y-1 text-[var(--text-primary)]">
+													<div className="num flex flex-wrap gap-x-4 gap-y-1 whitespace-nowrap text-[var(--text-primary)]">
 														{row.converted.assetIn ? (
 															<span>
 																In:{" "}
@@ -1545,7 +1545,9 @@ export function RecipeWizard({
 															</span>
 														) : null}
 														{row.converted.entityName ? (
-															<span>Entity: {row.converted.entityName}</span>
+															<span className="wrap-anywhere whitespace-normal">
+																Entity: {row.converted.entityName}
+															</span>
 														) : null}
 													</div>
 													{row.converted.reviewFlags.length > 0 ? (

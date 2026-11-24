@@ -104,7 +104,7 @@ export function ScheduleFaTab({
 	return (
 		<div className="space-y-5">
 			{/* Calendar year period banner */}
-			<div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-xs">
+			<div className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-xs">
 				<div className="flex flex-wrap items-center gap-2">
 					<Calendar
 						className="h-4 w-4 text-[var(--accent-text)]"
@@ -129,7 +129,7 @@ export function ScheduleFaTab({
 					aria-label="Auto-fill Schedule FA prices"
 					className="space-y-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 text-xs"
 				>
-					<div className="flex flex-wrap items-center justify-between gap-3">
+					<div className="flex flex-wrap items-baseline justify-between gap-2">
 						<div className="flex flex-wrap items-center gap-x-4 gap-y-1">
 							<span className="font-semibold text-[var(--text-primary)]">
 								Auto-fill Schedule FA prices
@@ -399,7 +399,7 @@ export function ScheduleFaTab({
 				/>
 			) : (
 				<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-					<div className="overflow-x-auto">
+					<div className="min-w-0 overflow-x-auto">
 						<table className="w-full border-collapse text-left text-xs">
 							<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 								<tr>
@@ -446,7 +446,7 @@ export function ScheduleFaTab({
 											key={`${row.slNo}:${row.asset}`}
 											className="border-b border-[var(--border)] align-top last:border-b-0 hover:bg-[var(--bg-hover)]/60"
 										>
-											<td className="num px-3 py-2.5 text-[var(--text-muted)]">
+											<td className="num px-3 py-2.5 text-[var(--text-muted)] whitespace-nowrap">
 												{row.slNo}
 											</td>
 											<td className="px-3 py-2.5 whitespace-nowrap">
@@ -455,10 +455,10 @@ export function ScheduleFaTab({
 													Code: {row.countryCode}
 												</div>
 											</td>
-											<td className="px-3 py-2.5">
+											<td className="min-w-[220px] px-3 py-2.5 wrap-anywhere whitespace-normal">
 												<div className="font-semibold text-[var(--text-primary)]">
 													{row.entityName}{" "}
-													<span className="font-mono-code text-[11px] font-normal text-[var(--text-secondary)]">
+													<span className="font-mono-code text-[11px] font-normal whitespace-nowrap text-[var(--text-secondary)]">
 														({row.asset})
 													</span>
 												</div>

@@ -564,7 +564,7 @@ export function ReviewClient() {
 				className="scroll-mt-16 overflow-hidden lg:scroll-mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]"
 			>
 				<div className="border-b border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-3">
-					<div className="flex flex-wrap items-center justify-between gap-2">
+					<div className="flex flex-wrap items-baseline justify-between gap-2">
 						<div className="flex items-center gap-2">
 							<h2 className="text-sm font-semibold">{info.title}</h2>
 							<Badge tone={tone}>
@@ -634,7 +634,7 @@ export function ReviewClient() {
 
 				{view !== "collapsed" ? (
 					<>
-						<div className="overflow-x-auto">
+						<div className="min-w-0 overflow-x-auto">
 							<table className="w-full border-collapse text-left text-xs">
 								<thead className="border-b border-[var(--border)] text-[var(--text-muted)]">
 									<tr>
@@ -653,7 +653,7 @@ export function ReviewClient() {
 										<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
 											INR Value
 										</th>
-										<th className="min-w-[240px] px-3 py-2 font-medium">
+										<th className="min-w-[240px] px-3 py-2 font-medium whitespace-nowrap">
 											Details
 										</th>
 										<th className="px-3 py-2 text-right font-medium whitespace-nowrap">
@@ -695,7 +695,7 @@ export function ReviewClient() {
 												<td className="num-right px-3 py-2.5 whitespace-nowrap">
 													{formatInrNullable(tx.inrValue)}
 												</td>
-												<td className="min-w-[240px] max-w-md px-3 py-2.5 text-[var(--text-secondary)]">
+												<td className="min-w-[240px] max-w-md px-3 py-2.5 text-[var(--text-secondary)] whitespace-normal">
 													{matchingMessages.length === 0 ? (
 														"—"
 													) : matchingMessages.length === 1 ? (
@@ -820,7 +820,7 @@ export function ReviewClient() {
 												<td className="num-right px-3 py-2.5 whitespace-nowrap text-[var(--text-muted)]">
 													—
 												</td>
-												<td className="min-w-[240px] max-w-md px-3 py-2.5 text-[var(--text-secondary)]">
+												<td className="min-w-[240px] max-w-md px-3 py-2.5 text-[var(--text-secondary)] whitespace-normal">
 													{ri.kind === "unresolved" ? (
 														<div className="space-y-0.5">
 															<p>{ri.message}</p>
@@ -1030,7 +1030,7 @@ export function ReviewClient() {
 					{connectionIssues.length > 0 ? (
 						<section className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
 							<div className="border-b border-[var(--border)] bg-[var(--bg-subtle)] px-4 py-3">
-								<div className="flex flex-wrap items-center justify-between gap-2">
+								<div className="flex flex-wrap items-baseline justify-between gap-2">
 									<div className="flex items-center gap-2">
 										<h2 className="text-sm font-semibold">
 											Failed or incomplete connection syncs
@@ -1053,16 +1053,26 @@ export function ReviewClient() {
 								</p>
 							</div>
 
-							<div className="overflow-x-auto">
+							<div className="min-w-0 overflow-x-auto">
 								<table className="w-full border-collapse text-left text-xs">
 									<thead className="border-b border-[var(--border)] text-[var(--text-muted)]">
 										<tr>
-											<th className="px-4 py-2 font-medium">Connection</th>
-											<th className="px-4 py-2 font-medium">Type</th>
-											<th className="px-4 py-2 font-medium">Sync Status</th>
-											<th className="px-4 py-2 font-medium">Last Sync</th>
-											<th className="px-4 py-2 font-medium">Details</th>
-											<th className="px-4 py-2 text-right font-medium">
+											<th className="px-4 py-2 font-medium whitespace-nowrap">
+												Connection
+											</th>
+											<th className="px-4 py-2 font-medium whitespace-nowrap">
+												Type
+											</th>
+											<th className="px-4 py-2 font-medium whitespace-nowrap">
+												Sync Status
+											</th>
+											<th className="px-4 py-2 font-medium whitespace-nowrap">
+												Last Sync
+											</th>
+											<th className="px-4 py-2 font-medium whitespace-nowrap">
+												Details
+											</th>
+											<th className="px-4 py-2 text-right font-medium whitespace-nowrap">
 												Fix Action
 											</th>
 										</tr>
@@ -1073,7 +1083,7 @@ export function ReviewClient() {
 												key={conn.id}
 												className="border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]/60"
 											>
-												<td className="px-4 py-2.5 font-medium">
+												<td className="px-4 py-2.5 font-medium whitespace-nowrap">
 													{conn.label}
 												</td>
 												<td className="px-4 py-2.5 whitespace-nowrap">
@@ -1101,7 +1111,7 @@ export function ReviewClient() {
 														? formatIstDateTime(conn.lastSyncAt)
 														: "Never"}
 												</td>
-												<td className="max-w-xs px-4 py-2.5 text-[var(--text-secondary)]">
+												<td className="min-w-[240px] max-w-xs px-4 py-2.5 text-[var(--text-secondary)] whitespace-normal">
 													{conn.lastSyncStatus === "incomplete" &&
 													(!conn.lastSyncError ||
 														conn.lastSyncError ===

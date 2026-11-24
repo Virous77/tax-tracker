@@ -22,10 +22,12 @@ export function CryptoSection({ rules }: { rules: VdaRules }) {
 			<ReferenceTable
 				caption={`Live VDA rules · ${rules.taxYear}`}
 				rows={vdaSummary(rules)}
+				compactValues
 			/>
 			<ReferenceTable
 				caption="Informational surcharge slabs"
 				headers={["Total income above", "Surcharge rate"]}
+				compactValues
 				rows={rules.surchargeSlabs.map((slab) => [
 					formatInr(slab.aboveInr),
 					percent(slab.rate),

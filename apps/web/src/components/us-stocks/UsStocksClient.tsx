@@ -360,9 +360,9 @@ export function UsStocksClient() {
 							type="button"
 							disabled={computing || !taxYear}
 							onClick={handleCompute}
-							className="shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+							className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-md bg-[var(--accent)] px-2 sm:gap-2 sm:px-4 text-sm font-medium whitespace-nowrap text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
 						>
-							<Calculator className="h-4 w-4" aria-hidden="true" />
+							<Calculator className="size-3.5 sm:size-4" aria-hidden="true" />
 							{computing
 								? "Computing…"
 								: report

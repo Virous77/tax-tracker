@@ -33,7 +33,7 @@ export function DividendsForm67Tab({ report }: { report: UsEquityReport }) {
 		<div className="space-y-6">
 			{/* Dividends table */}
 			<section className="space-y-3">
-				<div className="flex flex-wrap items-center justify-between gap-2">
+				<div className="flex flex-wrap items-baseline justify-between gap-2">
 					<h3 className="text-base font-semibold tracking-tight">
 						US Stock Dividends ({divRows.length}{" "}
 						{pluralise(divRows.length, "payout")})
@@ -50,7 +50,7 @@ export function DividendsForm67Tab({ report }: { report: UsEquityReport }) {
 					/>
 				) : (
 					<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-						<div className="overflow-x-auto">
+						<div className="min-w-0 overflow-x-auto">
 							<table className="w-full border-collapse text-left text-xs sm:text-sm">
 								<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 									<tr>
@@ -81,7 +81,9 @@ export function DividendsForm67Tab({ report }: { report: UsEquityReport }) {
 										<th className="num-right px-3 py-2.5 font-medium whitespace-nowrap">
 											Net (INR)
 										</th>
-										<th className="px-3 py-2.5 text-right font-medium">Raw</th>
+										<th className="px-3 py-2.5 text-right font-medium whitespace-nowrap">
+											Raw
+										</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -133,7 +135,7 @@ export function DividendsForm67Tab({ report }: { report: UsEquityReport }) {
 								</tbody>
 								<tfoot className="border-t border-[var(--border-strong)] bg-[var(--bg-subtle)] text-xs font-semibold">
 									<tr>
-										<td colSpan={2} className="px-3 py-2.5">
+										<td colSpan={2} className="px-3 py-2.5 whitespace-nowrap">
 											Total
 										</td>
 										<td className="num-right px-3 py-2.5 whitespace-nowrap">
@@ -163,7 +165,7 @@ export function DividendsForm67Tab({ report }: { report: UsEquityReport }) {
 
 			{/* Form 67 Worksheet */}
 			<section className="space-y-3">
-				<div className="flex flex-wrap items-center justify-between gap-2">
+				<div className="flex flex-wrap items-baseline justify-between gap-2">
 					<div>
 						<h3 className="text-base font-semibold tracking-tight">
 							Form 67 Foreign Tax Credit Worksheet
@@ -177,7 +179,7 @@ export function DividendsForm67Tab({ report }: { report: UsEquityReport }) {
 				</div>
 
 				<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-					<div className="overflow-x-auto">
+					<div className="min-w-0 overflow-x-auto">
 						<table className="w-full border-collapse text-left text-xs sm:text-sm">
 							<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 								<tr>
@@ -209,7 +211,7 @@ export function DividendsForm67Tab({ report }: { report: UsEquityReport }) {
 									<tr>
 										<td
 											colSpan={7}
-											className="px-4 py-6 text-center text-xs text-[var(--text-muted)]"
+											className="px-4 py-6 text-center text-xs text-[var(--text-muted)] whitespace-normal"
 										>
 											No foreign tax credit entries for this tax year.
 										</td>
@@ -261,7 +263,7 @@ export function DividendsForm67Tab({ report }: { report: UsEquityReport }) {
 							{f67Rows.length > 0 ? (
 								<tfoot className="border-t border-[var(--border-strong)] bg-[var(--bg-subtle)] text-xs font-semibold">
 									<tr>
-										<td colSpan={4} className="px-3 py-2.5">
+										<td colSpan={4} className="px-3 py-2.5 whitespace-nowrap">
 											Total
 										</td>
 										<td className="num-right px-3 py-2.5 whitespace-nowrap">

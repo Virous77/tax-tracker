@@ -21,6 +21,7 @@ export function UsStocksSection({ rules }: { rules: UsEquityRules }) {
 			<ReferenceTable
 				caption={`Live US equity rules · ${rules.taxYear}`}
 				rows={equitySummary(rules)}
+				compactValues
 			/>
 			<RuleCitations rules={rules} />
 			<Topic title="Capital gains: FIFO and exact holding periods">

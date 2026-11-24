@@ -302,7 +302,7 @@ export function TransactionsClient() {
 					<button
 						type="button"
 						onClick={() => setAddOpen(true)}
-						className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+						className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 text-sm font-medium whitespace-nowrap text-white hover:bg-[var(--accent-hover)]"
 					>
 						<Plus className="h-4 w-4" aria-hidden="true" />
 						Add manual entry
@@ -554,20 +554,34 @@ export function TransactionsClient() {
 				/>
 			) : (
 				<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-					<div className="overflow-x-auto">
+					<div className="min-w-0 overflow-x-auto">
 						<table className="w-full border-collapse text-left text-sm">
 							<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 								<tr>
-									<th className="px-4 py-2.5 font-medium">Date (IST)</th>
-									<th className="px-4 py-2.5 font-medium">Type</th>
-									<th className="px-4 py-2.5 font-medium">Source</th>
-									<th className="num-right px-4 py-2.5 font-medium">In</th>
-									<th className="num-right px-4 py-2.5 font-medium">Out</th>
-									<th className="num-right px-4 py-2.5 font-medium">
+									<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+										Date (IST)
+									</th>
+									<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+										Type
+									</th>
+									<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+										Source
+									</th>
+									<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
+										In
+									</th>
+									<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
+										Out
+									</th>
+									<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 										INR Value
 									</th>
-									<th className="num-right px-4 py-2.5 font-medium">TDS</th>
-									<th className="px-4 py-2.5 font-medium">Flags</th>
+									<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
+										TDS
+									</th>
+									<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+										Flags
+									</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -683,7 +697,7 @@ export function TransactionsClient() {
 											<td className="num-right px-4 py-2.5 text-xs whitespace-nowrap text-[var(--text-secondary)]">
 												{formatInrNullable(tx.tdsInr)}
 											</td>
-											<td className="px-4 py-2.5">
+											<td className="px-4 py-2.5 whitespace-nowrap">
 												<div className="flex flex-wrap gap-1">
 													{groupReviewFlags(tx.reviewFlags).map(
 														({ code, messages }) => {

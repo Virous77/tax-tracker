@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { TaxYearSelect } from "@/components/ui/TaxYearSelect";
 
 it("renders a single heading and keeps descriptive content and actions in reading order", () => {
 	const html = renderToStaticMarkup(
@@ -26,4 +27,24 @@ it("supports a heading without optional content", () => {
 	expect(html).toMatch(/<h1[^>]*>Settings<\/h1>/);
 	expect(html).not.toContain("<p");
 	expect(html).not.toContain("<button");
+});
+
+it("aligns the stacked tax-year trigger with adjacent header actions", () => {
+	const html = renderToStaticMarkup(
+		<PageHeader
+			title="Report"
+			actions={
+				<>
+					<TaxYearSelect value="2026-27" onChange={() => undefined} />
+					<button type="button" className="h-9 whitespace-nowrap">
+						Compute report
+					</button>
+				</>
+			}
+		/>,
+	);
+	expect(html).toMatch(
+		/<div class="[^"]*\bitems-end\b[^"]*\bsm:items-center\b[^"]*">\s*<div class="[^"]*\bflex-col\b[^"]*\bsm:flex-row\b/,
+	);
+	expect(html).toMatch(/<button[^>]*role="combobox"[^>]*class="[^"]*\bh-9\b/);
 });

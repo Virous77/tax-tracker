@@ -609,7 +609,7 @@ export function ConnectionsClient() {
 						type="button"
 						onClick={() => setAddOpen(true)}
 						disabled={!vault}
-						className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+						className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 text-sm font-medium whitespace-nowrap text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
 					>
 						<Plus className="h-4 w-4" aria-hidden="true" />
 						Add connection

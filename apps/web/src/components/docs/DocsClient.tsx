@@ -83,7 +83,7 @@ export function DocsClient({
 										type="button"
 										aria-pressed={taxYear === vda.taxYear}
 										onClick={() => setTaxYear(vda.taxYear)}
-										className={`num rounded-md px-3 py-2 text-xs font-medium ${taxYear === vda.taxYear ? "bg-[var(--accent-soft)] text-[var(--accent-text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
+										className={`num h-9 rounded-md px-3 text-xs font-medium whitespace-nowrap ${taxYear === vda.taxYear ? "bg-[var(--accent-soft)] text-[var(--accent-text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
 									>
 										{vda.taxYear}
 									</button>

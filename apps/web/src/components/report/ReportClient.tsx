@@ -474,7 +474,7 @@ export function ReportClient() {
 	function renderStatementsSection() {
 		return (
 			<div id="statements" className="space-y-3 pt-2">
-				<div className="flex flex-wrap items-center justify-between gap-2">
+				<div className="flex flex-wrap items-baseline justify-between gap-2">
 					<div>
 						<h3 className="text-sm font-semibold tracking-tight">
 							Statements ({snapshots.length})
@@ -508,7 +508,7 @@ export function ReportClient() {
 									key={snap.id}
 									className="space-y-3 rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] p-4"
 								>
-									<div className="flex flex-wrap items-center justify-between gap-3">
+									<div className="flex flex-wrap items-baseline justify-between gap-2">
 										<div>
 											<div className="flex flex-wrap items-center gap-2">
 												<h4 className="text-sm font-semibold">
@@ -561,18 +561,20 @@ export function ReportClient() {
 										</div>
 									) : null}
 
-									<div className="overflow-x-auto rounded border border-[var(--border)]">
+									<div className="min-w-0 overflow-x-auto rounded border border-[var(--border)]">
 										<table className="w-full border-collapse text-left text-xs">
 											<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 												<tr>
-													<th className="px-3 py-2 font-medium">Asset</th>
-													<th className="num-right px-3 py-2 font-medium">
+													<th className="px-3 py-2 font-medium whitespace-nowrap">
+														Asset
+													</th>
+													<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
 														Statement
 													</th>
-													<th className="num-right px-3 py-2 font-medium">
+													<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
 														Computed
 													</th>
-													<th className="num-right px-3 py-2 font-medium">
+													<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
 														Difference
 													</th>
 												</tr>
@@ -582,7 +584,7 @@ export function ReportClient() {
 													<tr>
 														<td
 															colSpan={4}
-															className="px-3 py-4 text-center text-[var(--text-muted)]"
+															className="px-3 py-4 text-center text-[var(--text-muted)] whitespace-normal"
 														>
 															No assets to compare.
 														</td>
@@ -597,17 +599,17 @@ export function ReportClient() {
 																	hasDiff ? "bg-[var(--warning-soft)]/50" : ""
 																}`}
 															>
-																<td className="px-3 py-2 font-semibold">
+																<td className="px-3 py-2 font-semibold whitespace-nowrap">
 																	{row.asset}
 																</td>
-																<td className="num-right px-3 py-2">
+																<td className="num-right px-3 py-2 whitespace-nowrap">
 																	{formatQty(row.statement)}
 																</td>
-																<td className="num-right px-3 py-2">
+																<td className="num-right px-3 py-2 whitespace-nowrap">
 																	{formatQty(row.computed)}
 																</td>
 																<td
-																	className={`num-right px-3 py-2 ${
+																	className={`num-right px-3 py-2 whitespace-nowrap ${
 																		hasDiff
 																			? "font-semibold text-[var(--warning)]"
 																			: "text-[var(--text-muted)]"
@@ -647,9 +649,9 @@ export function ReportClient() {
 							type="button"
 							disabled={computing}
 							onClick={handleCompute}
-							className="shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+							className="inline-flex h-9 shrink-0 items-center justify-center gap-1 rounded-md bg-[var(--accent)] px-2 sm:gap-2 sm:px-4 text-sm font-medium whitespace-nowrap text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
 						>
-							<Calculator className="h-4 w-4" aria-hidden="true" />
+							<Calculator className="size-3.5 sm:size-4" aria-hidden="true" />
 							{computing
 								? "Computing…"
 								: report
@@ -1012,7 +1014,7 @@ export function ReportClient() {
 							id="excluded"
 							className="space-y-3 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning-soft)] p-4"
 						>
-							<div className="flex flex-wrap items-center justify-between gap-2">
+							<div className="flex flex-wrap items-baseline justify-between gap-2">
 								<div className="flex items-center gap-2">
 									<Info
 										className="h-4 w-4 text-[var(--warning)]"
@@ -1030,13 +1032,17 @@ export function ReportClient() {
 									Inspect in Review Queue
 								</Link>
 							</div>
-							<div className="overflow-x-auto rounded border border-[var(--warning)]/25 bg-[var(--bg-surface)]">
+							<div className="min-w-0 overflow-x-auto rounded border border-[var(--warning)]/25 bg-[var(--bg-surface)]">
 								<table className="w-full border-collapse text-left text-xs">
 									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 										<tr>
-											<th className="px-3 py-2 font-medium">Transaction</th>
-											<th className="px-3 py-2 font-medium">Reason</th>
-											<th className="px-3 py-2 text-right font-medium">
+											<th className="px-3 py-2 font-medium whitespace-nowrap">
+												Transaction
+											</th>
+											<th className="px-3 py-2 font-medium whitespace-nowrap">
+												Reason
+											</th>
+											<th className="px-3 py-2 text-right font-medium whitespace-nowrap">
 												Inspect
 											</th>
 										</tr>
@@ -1052,7 +1058,7 @@ export function ReportClient() {
 													key={`${ex.txId}:${ex.reason}`}
 													className="border-b border-[var(--border)] last:border-b-0"
 												>
-													<td className="px-3 py-2">
+													<td className="px-3 py-2 whitespace-nowrap">
 														{tx ? (
 															<div className="space-y-0.5">
 																<p className="font-medium text-[var(--text-primary)]">
@@ -1074,7 +1080,7 @@ export function ReportClient() {
 															</code>
 														)}
 													</td>
-													<td className="px-3 py-2 text-[var(--text-secondary)]">
+													<td className="min-w-[240px] px-3 py-2 text-[var(--text-secondary)] whitespace-normal">
 														{formatExcludedReason(ex.reason)}
 													</td>
 													<td className="px-3 py-2 text-right whitespace-nowrap">
@@ -1096,7 +1102,7 @@ export function ReportClient() {
 
 					{/* Schedule VDA Table */}
 					<section className="space-y-3">
-						<div className="flex flex-wrap items-center justify-between gap-2">
+						<div className="flex flex-wrap items-baseline justify-between gap-2">
 							<h2 className="text-base font-semibold tracking-tight">
 								Schedule VDA ({report.scheduleVdaRows.length}{" "}
 								{pluralise(report.scheduleVdaRows.length, "row")})
@@ -1130,7 +1136,7 @@ export function ReportClient() {
 							)
 						) : (
 							<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-								<div className="overflow-x-auto">
+								<div className="min-w-0 overflow-x-auto">
 									<table className="w-full border-collapse text-left text-xs sm:text-sm">
 										<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 											<tr>
@@ -1158,7 +1164,7 @@ export function ReportClient() {
 												<th className="num-right px-3 py-2.5 font-medium whitespace-nowrap">
 													Loss
 												</th>
-												<th className="px-3 py-2.5 text-right font-medium">
+												<th className="px-3 py-2.5 text-right font-medium whitespace-nowrap">
 													Trail
 												</th>
 											</tr>
@@ -1247,21 +1253,23 @@ export function ReportClient() {
 							TDS Summary &amp; Form 26AS / AIS Reconciliation
 						</h2>
 						<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-							<div className="overflow-x-auto">
+							<div className="min-w-0 overflow-x-auto">
 								<table className="w-full border-collapse text-left text-sm">
 									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 										<tr>
-											<th className="px-4 py-2.5 font-medium">Source</th>
-											<th className="px-4 py-2.5 font-medium">
+											<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+												Source
+											</th>
+											<th className="px-4 py-2.5 font-medium whitespace-nowrap">
 												Platform Deducts TDS
 											</th>
-											<th className="num-right px-4 py-2.5 font-medium">
+											<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 												Gross Transfer Value
 											</th>
-											<th className="num-right px-4 py-2.5 font-medium">
+											<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 												TDS Deducted
 											</th>
-											<th className="num-right px-4 py-2.5 font-medium">
+											<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 												TDS Possibly Due
 											</th>
 										</tr>
@@ -1271,7 +1279,7 @@ export function ReportClient() {
 											<tr>
 												<td
 													colSpan={5}
-													className="px-4 py-6 text-center text-xs text-[var(--text-muted)]"
+													className="px-4 py-6 text-center text-xs text-[var(--text-muted)] whitespace-normal"
 												>
 													No VDA transfers recorded in this tax year.
 												</td>
@@ -1298,10 +1306,10 @@ export function ReportClient() {
 														key={src.source}
 														className="border-b border-[var(--border)] last:border-b-0"
 													>
-														<td className="px-4 py-2.5 font-medium">
+														<td className="px-4 py-2.5 font-medium whitespace-nowrap">
 															{sourceLabel(src.source)}
 														</td>
-														<td className="px-4 py-2.5">
+														<td className="px-4 py-2.5 whitespace-nowrap">
 															{src.deductedByPlatform === true ? (
 																<Badge tone="positive">Yes</Badge>
 															) : src.deductedByPlatform === false ? (
@@ -1312,13 +1320,13 @@ export function ReportClient() {
 																<Badge tone="neutral">Unknown</Badge>
 															)}
 														</td>
-														<td className="num-right px-4 py-2.5">
+														<td className="num-right px-4 py-2.5 whitespace-nowrap">
 															{formatInr(src.transferValueInr)}
 														</td>
-														<td className="num-right px-4 py-2.5 font-medium text-[var(--positive)]">
+														<td className="num-right px-4 py-2.5 font-medium text-[var(--positive)] whitespace-nowrap">
 															{formatInr(src.tdsInr)}
 														</td>
-														<td className="num-right px-4 py-2.5">
+														<td className="num-right px-4 py-2.5 whitespace-nowrap">
 															{src.deductedByPlatform === true ? (
 																<span className="text-xs text-[var(--text-muted)]">
 																	— (deducted by platform)
@@ -1386,12 +1394,12 @@ export function ReportClient() {
 
 					{/* Income & Gifts */}
 					<section className="space-y-3">
-						<div className="flex flex-wrap items-center justify-between gap-2">
+						<div className="flex flex-wrap items-baseline justify-between gap-2">
 							<h2 className="text-base font-semibold tracking-tight">
 								Income &amp; Gifts ({report.income.rows.length})
 							</h2>
-							<div className="flex items-center gap-2 text-xs">
-								<span>
+							<div className="flex flex-wrap items-baseline gap-2 text-xs">
+								<span className="whitespace-nowrap">
 									Gifts total:{" "}
 									<strong className="num">
 										{formatInr(report.income.giftsTotalInr)}
@@ -1414,20 +1422,26 @@ export function ReportClient() {
 						) : null}
 
 						<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-							<div className="overflow-x-auto">
+							<div className="min-w-0 overflow-x-auto">
 								<table className="w-full border-collapse text-left text-sm">
 									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 										<tr>
-											<th className="px-4 py-2.5 font-medium">Date</th>
-											<th className="px-4 py-2.5 font-medium">Type</th>
-											<th className="px-4 py-2.5 font-medium">Kind</th>
-											<th className="px-4 py-2.5 font-medium">
+											<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+												Date
+											</th>
+											<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+												Type
+											</th>
+											<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+												Kind
+											</th>
+											<th className="px-4 py-2.5 font-medium whitespace-nowrap">
 												Asset &amp; Qty
 											</th>
-											<th className="num-right px-4 py-2.5 font-medium">
+											<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 												FMV (INR)
 											</th>
-											<th className="px-4 py-2.5 text-right font-medium">
+											<th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
 												Raw
 											</th>
 										</tr>
@@ -1437,7 +1451,7 @@ export function ReportClient() {
 											<tr>
 												<td
 													colSpan={6}
-													className="px-4 py-6 text-center text-xs text-[var(--text-muted)]"
+													className="px-4 py-6 text-center text-xs text-[var(--text-muted)] whitespace-normal"
 												>
 													No staking, airdrop, or gift receipts in this tax
 													year.
@@ -1452,12 +1466,12 @@ export function ReportClient() {
 													<td className="px-4 py-2.5 text-xs whitespace-nowrap">
 														{formatIstDate(inc.date)}
 													</td>
-													<td className="px-4 py-2.5">
+													<td className="px-4 py-2.5 whitespace-nowrap">
 														<Badge tone="neutral">
 															{formatTxType(inc.type)}
 														</Badge>
 													</td>
-													<td className="px-4 py-2.5 text-xs text-[var(--text-secondary)]">
+													<td className="px-4 py-2.5 text-xs text-[var(--text-secondary)] whitespace-nowrap">
 														{inc.incomeKind
 															? formatIncomeKind(inc.incomeKind)
 															: "—"}
@@ -1465,7 +1479,7 @@ export function ReportClient() {
 													<td className="num px-4 py-2.5 whitespace-nowrap">
 														{formatQty(inc.quantity)} {inc.asset}
 													</td>
-													<td className="num-right px-4 py-2.5 font-medium">
+													<td className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 														{inc.fmvInr !== null ? (
 															formatInr(inc.fmvInr)
 														) : (
@@ -1474,7 +1488,7 @@ export function ReportClient() {
 															</span>
 														)}
 													</td>
-													<td className="px-4 py-2.5 text-right">
+													<td className="px-4 py-2.5 text-right whitespace-nowrap">
 														<button
 															type="button"
 															onClick={() =>
@@ -1499,7 +1513,7 @@ export function ReportClient() {
 
 					{/* Year-end Balances with editable actual balances */}
 					<section id="balances" className="space-y-3">
-						<div className="flex flex-wrap items-center justify-between gap-3">
+						<div className="flex flex-wrap items-baseline justify-between gap-2">
 							<div>
 								<h2 className="text-base font-semibold tracking-tight">
 									Year-End Balances ({report.balances.length})
@@ -1530,19 +1544,23 @@ export function ReportClient() {
 						) : null}
 
 						<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-							<div className="overflow-x-auto">
+							<div className="min-w-0 overflow-x-auto">
 								<table className="w-full border-collapse text-left text-sm">
 									<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 										<tr>
-											<th className="px-4 py-2.5 font-medium">Asset</th>
-											<th className="px-4 py-2.5 font-medium">Pool / Source</th>
-											<th className="num-right px-4 py-2.5 font-medium">
+											<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+												Asset
+											</th>
+											<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+												Pool / Source
+											</th>
+											<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 												Computed
 											</th>
-											<th className="num-right px-4 py-2.5 font-medium">
+											<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 												Actual Balance
 											</th>
-											<th className="num-right px-4 py-2.5 font-medium">
+											<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 												Difference
 											</th>
 										</tr>
@@ -1552,7 +1570,7 @@ export function ReportClient() {
 											<tr>
 												<td
 													colSpan={5}
-													className="px-4 py-6 text-center text-xs text-[var(--text-muted)]"
+													className="px-4 py-6 text-center text-xs text-[var(--text-muted)] whitespace-normal"
 												>
 													No asset holdings at year end.
 												</td>
@@ -1579,16 +1597,16 @@ export function ReportClient() {
 														key={key}
 														className="border-b border-[var(--border)] last:border-b-0"
 													>
-														<td className="px-4 py-2.5 font-medium">
+														<td className="px-4 py-2.5 font-medium whitespace-nowrap">
 															{b.asset}
 														</td>
-														<td className="px-4 py-2.5 text-xs text-[var(--text-secondary)]">
+														<td className="px-4 py-2.5 text-xs text-[var(--text-secondary)] whitespace-nowrap">
 															{b.source ? sourceLabel(b.source) : "Global"}
 														</td>
-														<td className="num-right px-4 py-2.5">
+														<td className="num-right px-4 py-2.5 whitespace-nowrap">
 															{formatQty(b.computed)}
 														</td>
-														<td className="px-4 py-2 text-right">
+														<td className="px-4 py-2 text-right whitespace-nowrap">
 															<input
 																type="text"
 																inputMode="decimal"
@@ -1605,7 +1623,7 @@ export function ReportClient() {
 															/>
 														</td>
 														<td
-															className={`num-right px-4 py-2.5 text-xs ${
+															className={`num-right px-4 py-2.5 text-xs whitespace-nowrap ${
 																hasMismatch
 																	? "font-medium text-[var(--warning)]"
 																	: "text-[var(--text-muted)]"

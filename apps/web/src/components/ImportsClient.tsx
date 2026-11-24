@@ -50,11 +50,11 @@ function PendingMappingNote({
 	onDelete: (imp: ImportSummary) => void;
 }) {
 	return (
-		<span className="mt-1 block text-xs font-normal text-[var(--warning)]">
+		<span className="mt-1 block text-xs font-normal whitespace-normal text-[var(--warning)]">
 			Waiting for a column mapping —{" "}
 			<Link
 				href={`/import?importId=${encodeURIComponent(imp.id)}`}
-				className="font-medium underline"
+				className="font-medium whitespace-nowrap underline"
 			>
 				Map columns
 			</Link>{" "}
@@ -63,7 +63,7 @@ function PendingMappingNote({
 				type="button"
 				onClick={() => onDelete(imp)}
 				aria-label={`Delete pending import ${imp.fileName}`}
-				className="font-medium underline"
+				className="font-medium whitespace-nowrap underline"
 			>
 				Delete
 			</button>
@@ -304,7 +304,7 @@ export function ImportsClient() {
 				actions={
 					<Link
 						href="/import"
-						className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+						className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-[var(--accent)] px-4 text-sm font-medium whitespace-nowrap text-white hover:bg-[var(--accent-hover)]"
 					>
 						<Plus className="h-4 w-4" aria-hidden="true" />
 						New import
@@ -348,28 +348,38 @@ export function ImportsClient() {
 					</ul>
 
 					<div className="hidden overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] md:block">
-						<div className="overflow-x-auto">
+						<div className="min-w-0 overflow-x-auto">
 							<table className="w-full border-collapse text-left text-sm">
 								<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 									<tr>
-										<th className="px-3 py-2.5 font-medium">
+										<th className="px-3 py-2.5 font-medium whitespace-nowrap">
 											File &amp; Report
 										</th>
-										<th className="px-3 py-2.5 font-medium">Source</th>
-										<th className="px-3 py-2.5 font-medium">TZ</th>
-										<th className="px-3 py-2.5 font-medium">Status</th>
-										<th className="num-right px-2 py-2.5 font-medium">Read</th>
-										<th className="num-right px-2 py-2.5 font-medium">
+										<th className="px-3 py-2.5 font-medium whitespace-nowrap">
+											Source
+										</th>
+										<th className="px-3 py-2.5 font-medium whitespace-nowrap">
+											TZ
+										</th>
+										<th className="px-3 py-2.5 font-medium whitespace-nowrap">
+											Status
+										</th>
+										<th className="num-right px-2 py-2.5 font-medium whitespace-nowrap">
+											Read
+										</th>
+										<th className="num-right px-2 py-2.5 font-medium whitespace-nowrap">
 											Inserted
 										</th>
-										<th className="num-right px-2 py-2.5 font-medium">Dupes</th>
-										<th className="num-right px-2 py-2.5 font-medium">
+										<th className="num-right px-2 py-2.5 font-medium whitespace-nowrap">
+											Dupes
+										</th>
+										<th className="num-right px-2 py-2.5 font-medium whitespace-nowrap">
 											Errors
 										</th>
-										<th className="hidden px-3 py-2.5 font-medium min-[1400px]:table-cell">
+										<th className="hidden px-3 py-2.5 font-medium min-[1400px]:table-cell whitespace-nowrap">
 											Imported at
 										</th>
-										<th className="sticky right-0 bg-[var(--bg-subtle)] px-3 py-2.5 text-right font-medium shadow-[inset_1px_0_0_var(--border)]">
+										<th className="sticky right-0 bg-[var(--bg-subtle)] px-3 py-2.5 text-right font-medium shadow-[inset_1px_0_0_var(--border)] whitespace-nowrap">
 											Actions
 										</th>
 									</tr>
@@ -386,7 +396,7 @@ export function ImportsClient() {
 												title={`Imported ${formatIstDateTime(imp.createdAt)}`}
 												className="group border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--bg-hover)]"
 											>
-												<td className="max-w-56 px-3 py-2.5 font-medium">
+												<td className="max-w-56 px-3 py-2.5 font-medium whitespace-nowrap">
 													<div className="flex min-w-0 flex-wrap items-center gap-1.5">
 														<span
 															title={imp.fileName}
@@ -423,10 +433,10 @@ export function ImportsClient() {
 														</span>
 													) : null}
 												</td>
-												<td className="px-3 py-2.5 text-[var(--text-secondary)]">
+												<td className="px-3 py-2.5 text-[var(--text-secondary)] whitespace-nowrap">
 													{sourceLabel(imp)}
 												</td>
-												<td className="min-w-28 px-3 py-2.5">
+												<td className="min-w-28 px-3 py-2.5 whitespace-nowrap">
 													<Badge tone="neutral">{effectiveTimezone(imp)}</Badge>
 													<span className="block text-[11px] text-[var(--text-muted)]">
 														{formatTimezoneSourceLabel(
@@ -438,17 +448,17 @@ export function ImportsClient() {
 												<td className="px-3 py-2.5 whitespace-nowrap">
 													<ImportStatusBadge status={imp.status} />
 												</td>
-												<td className="num-right px-2 py-2.5">
+												<td className="num-right px-2 py-2.5 whitespace-nowrap">
 													{imp.rowsRead}
 												</td>
-												<td className="num-right px-2 py-2.5 text-[var(--positive)]">
+												<td className="num-right px-2 py-2.5 text-[var(--positive)] whitespace-nowrap">
 													{imp.rowsInserted}
 												</td>
-												<td className="num-right px-2 py-2.5 text-[var(--text-secondary)]">
+												<td className="num-right px-2 py-2.5 text-[var(--text-secondary)] whitespace-nowrap">
 													{imp.rowsDuplicate}
 												</td>
 												<td
-													className={`num-right px-2 py-2.5 ${
+													className={`num-right px-2 py-2.5 whitespace-nowrap ${
 														imp.rowsError > 0
 															? "font-medium text-[var(--loss)]"
 															: "text-[var(--text-secondary)]"
@@ -512,15 +522,25 @@ export function ImportsClient() {
 						Saved CSV Recipes ({recipes.length})
 					</h2>
 					<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-						<div className="overflow-x-auto">
+						<div className="min-w-0 overflow-x-auto">
 							<table className="w-full border-collapse text-left text-sm">
 								<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 									<tr>
-										<th className="px-4 py-2 font-medium">Name</th>
-										<th className="px-4 py-2 font-medium">Sign style</th>
-										<th className="px-4 py-2 font-medium">Date format</th>
-										<th className="px-4 py-2 font-medium">Fingerprint</th>
-										<th className="px-4 py-2 text-right font-medium">Delete</th>
+										<th className="px-4 py-2 font-medium whitespace-nowrap">
+											Name
+										</th>
+										<th className="px-4 py-2 font-medium whitespace-nowrap">
+											Sign style
+										</th>
+										<th className="px-4 py-2 font-medium whitespace-nowrap">
+											Date format
+										</th>
+										<th className="px-4 py-2 font-medium whitespace-nowrap">
+											Fingerprint
+										</th>
+										<th className="px-4 py-2 text-right font-medium whitespace-nowrap">
+											Delete
+										</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -529,17 +549,19 @@ export function ImportsClient() {
 											key={rec.id}
 											className="border-b border-[var(--border)] last:border-b-0"
 										>
-											<td className="px-4 py-2 font-medium">{rec.name}</td>
-											<td className="px-4 py-2 text-xs text-[var(--text-secondary)]">
+											<td className="px-4 py-2 font-medium whitespace-nowrap">
+												{rec.name}
+											</td>
+											<td className="px-4 py-2 text-xs text-[var(--text-secondary)] whitespace-nowrap">
 												{formatSignStyle(rec.signStyle)}
 											</td>
-											<td className="font-mono-code px-4 py-2 text-xs text-[var(--text-secondary)]">
+											<td className="font-mono-code px-4 py-2 text-xs text-[var(--text-secondary)] whitespace-nowrap">
 												{rec.dateFormat}
 											</td>
-											<td className="font-mono-code max-w-44 truncate px-4 py-2 text-xs text-[var(--text-muted)]">
+											<td className="font-mono-code max-w-44 truncate px-4 py-2 text-xs text-[var(--text-muted)] whitespace-nowrap">
 												{rec.fingerprint}
 											</td>
-											<td className="px-4 py-2 text-right">
+											<td className="px-4 py-2 text-right whitespace-nowrap">
 												<button
 													type="button"
 													onClick={() => setDeleteRecipeTarget(rec)}

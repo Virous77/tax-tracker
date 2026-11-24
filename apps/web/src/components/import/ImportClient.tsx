@@ -380,7 +380,7 @@ export function ImportClient() {
 				actions={
 					<Link
 						href="/imports"
-						className="inline-flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg-hover)]"
+						className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-3 text-xs font-medium whitespace-nowrap hover:bg-[var(--bg-hover)]"
 					>
 						Import history
 						<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -531,15 +531,19 @@ export function ImportClient() {
 							</div>
 
 							{balanceSnapshot.rows.length > 0 ? (
-								<div className="overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-surface)]">
+								<div className="min-w-0 overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-surface)]">
 									<table className="w-full border-collapse text-left text-xs">
 										<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 											<tr>
-												<th className="px-3 py-2 font-medium">Asset</th>
+												<th className="px-3 py-2 font-medium whitespace-nowrap">
+													Asset
+												</th>
 												{hasSnapshotWallet ? (
-													<th className="px-3 py-2 font-medium">Wallet</th>
+													<th className="px-3 py-2 font-medium whitespace-nowrap">
+														Wallet
+													</th>
 												) : null}
-												<th className="num-right px-3 py-2 font-medium">
+												<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
 													Statement balance
 												</th>
 											</tr>
@@ -550,15 +554,15 @@ export function ImportClient() {
 													key={`${row.asset}:${row.wallet ?? ""}:${row.amount}`}
 													className="border-b border-[var(--border)] last:border-b-0"
 												>
-													<td className="px-3 py-2 font-semibold">
+													<td className="px-3 py-2 font-semibold whitespace-nowrap">
 														{row.asset}
 													</td>
 													{hasSnapshotWallet ? (
-														<td className="px-3 py-2 text-[var(--text-secondary)]">
+														<td className="px-3 py-2 text-[var(--text-secondary)] whitespace-nowrap">
 															{row.wallet ?? "—"}
 														</td>
 													) : null}
-													<td className="num-right px-3 py-2 font-medium">
+													<td className="num-right px-3 py-2 font-medium whitespace-nowrap">
 														{formatQty(row.amount)}
 													</td>
 												</tr>
@@ -739,17 +743,17 @@ export function ImportClient() {
 											</p>
 										) : null}
 										{skippedExpanded && result.skippedRows.length > 0 ? (
-											<div className="max-h-64 overflow-auto rounded border border-[var(--border)] bg-[var(--bg-subtle)]">
+											<div className="min-w-0 max-h-64 overflow-x-auto overflow-y-auto rounded border border-[var(--border)] bg-[var(--bg-subtle)]">
 												<table className="w-full border-collapse text-left text-xs">
 													<thead className="bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 														<tr>
-															<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+															<th className="border-b border-[var(--border)] px-3 py-2 font-medium whitespace-nowrap">
 																Sheet
 															</th>
-															<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+															<th className="border-b border-[var(--border)] px-3 py-2 font-medium whitespace-nowrap">
 																Row
 															</th>
-															<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+															<th className="border-b border-[var(--border)] px-3 py-2 font-medium whitespace-nowrap">
 																Reason
 															</th>
 														</tr>
@@ -760,11 +764,13 @@ export function ImportClient() {
 																key={`${sr.sheet}:${sr.rowIndex}:${sr.reason}`}
 																className="border-b border-[var(--border)] last:border-b-0"
 															>
-																<td className="px-3 py-2">{sr.sheet || "—"}</td>
-																<td className="num px-3 py-2">
+																<td className="px-3 py-2 whitespace-nowrap">
+																	{sr.sheet || "—"}
+																</td>
+																<td className="num px-3 py-2 whitespace-nowrap">
 																	{sr.rowIndex + 1}
 																</td>
-																<td className="px-3 py-2 text-[var(--text-secondary)]">
+																<td className="min-w-[240px] px-3 py-2 text-[var(--text-secondary)] whitespace-normal">
 																	{sr.reason}
 																</td>
 															</tr>
@@ -783,17 +789,17 @@ export function ImportClient() {
 							<h3 className="text-xs font-semibold tracking-wide text-[var(--loss)] uppercase">
 								Row Errors ({rowErrors.length})
 							</h3>
-							<div className="max-h-64 overflow-auto rounded border border-[var(--border)]">
+							<div className="min-w-0 max-h-64 overflow-x-auto overflow-y-auto rounded border border-[var(--border)]">
 								<table className="w-full border-collapse text-left text-xs">
 									<thead className="bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 										<tr>
-											<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+											<th className="border-b border-[var(--border)] px-3 py-2 font-medium whitespace-nowrap">
 												Sheet
 											</th>
-											<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+											<th className="border-b border-[var(--border)] px-3 py-2 font-medium whitespace-nowrap">
 												Row
 											</th>
-											<th className="border-b border-[var(--border)] px-3 py-2 font-medium">
+											<th className="border-b border-[var(--border)] px-3 py-2 font-medium whitespace-nowrap">
 												Message
 											</th>
 										</tr>
@@ -804,9 +810,13 @@ export function ImportClient() {
 												key={`${re.sheet ?? ""}:${re.rowIndex}:${re.message}`}
 												className="border-b border-[var(--border)] last:border-b-0"
 											>
-												<td className="px-3 py-2">{re.sheet ?? "—"}</td>
-												<td className="num px-3 py-2">{re.rowIndex + 1}</td>
-												<td className="px-3 py-2 text-[var(--loss)]">
+												<td className="px-3 py-2 whitespace-nowrap">
+													{re.sheet ?? "—"}
+												</td>
+												<td className="num px-3 py-2 whitespace-nowrap">
+													{re.rowIndex + 1}
+												</td>
+												<td className="min-w-[240px] px-3 py-2 text-[var(--loss)] whitespace-normal">
 													{re.message}
 												</td>
 											</tr>

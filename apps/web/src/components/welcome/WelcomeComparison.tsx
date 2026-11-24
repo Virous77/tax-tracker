@@ -31,19 +31,19 @@ export function WelcomeComparison() {
 							<tr>
 								<th
 									scope="col"
-									className="w-1/5 px-5 py-3.5 font-semibold text-[var(--text-muted)]"
+									className="w-1/5 px-5 py-3.5 font-semibold text-[var(--text-muted)] whitespace-nowrap"
 								>
 									Dimension
 								</th>
 								<th
 									scope="col"
-									className="w-2/5 px-5 py-3.5 font-semibold text-[var(--accent-text)]"
+									className="w-2/5 px-5 py-3.5 font-semibold text-[var(--accent-text)] whitespace-nowrap"
 								>
 									Tax Tracker (Open Source, Local-First)
 								</th>
 								<th
 									scope="col"
-									className="w-2/5 px-5 py-3.5 font-semibold text-[var(--text-muted)]"
+									className="w-2/5 px-5 py-3.5 font-semibold text-[var(--text-muted)] whitespace-nowrap"
 								>
 									Typical Hosted Tax Platforms
 								</th>
@@ -57,11 +57,11 @@ export function WelcomeComparison() {
 								>
 									<th
 										scope="row"
-										className="px-5 py-4 font-semibold text-[var(--text-primary)]"
+										className="px-5 py-4 font-semibold text-[var(--text-primary)] whitespace-nowrap"
 									>
 										{row.criterion}
 									</th>
-									<td className="bg-[var(--accent-soft)]/35 px-5 py-4 text-[var(--text-primary)]">
+									<td className="min-w-[220px] bg-[var(--accent-soft)]/35 px-5 py-4 text-[var(--text-primary)] whitespace-normal">
 										<div className="flex items-start gap-2.5">
 											<Check
 												className="mt-0.5 h-4 w-4 shrink-0 text-[var(--positive)]"
@@ -70,7 +70,7 @@ export function WelcomeComparison() {
 											<span className="leading-relaxed">{row.taxTracker}</span>
 										</div>
 									</td>
-									<td className="px-5 py-4 text-[var(--text-secondary)]">
+									<td className="min-w-[220px] px-5 py-4 text-[var(--text-secondary)] whitespace-normal">
 										<div className="flex items-start gap-2.5">
 											<Minus
 												className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-muted)]"

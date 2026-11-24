@@ -148,6 +148,8 @@ export function rootMetadata(): Metadata {
 
 export function rootViewport(): Viewport {
 	return {
+		width: "device-width",
+		initialScale: 1,
 		themeColor: [
 			{ media: "(prefers-color-scheme: light)", color: SITE_CONFIG.themeColor },
 			{

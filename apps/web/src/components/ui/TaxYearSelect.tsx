@@ -22,7 +22,7 @@ export const FALLBACK_TAX_YEARS: TaxYearInfo[] = [
 const LAYOUTS = {
 	header: {
 		wrapper: "flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2",
-		trigger: "w-full sm:w-auto sm:min-w-48",
+		trigger: "h-9 w-full max-sm:gap-1 max-sm:px-1.5 sm:w-auto sm:min-w-48",
 	},
 	stacked: { wrapper: "flex flex-col gap-1", trigger: "w-full" },
 } as const;

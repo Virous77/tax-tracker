@@ -44,7 +44,7 @@ export function CapitalGainsTab({
 					aria-label="Unresolved US stock disposals"
 					className="space-y-3 rounded-lg border border-[var(--loss)]/40 bg-[var(--loss-soft)] p-4"
 				>
-					<div className="flex flex-wrap items-center justify-between gap-2">
+					<div className="flex flex-wrap items-baseline justify-between gap-2">
 						<div className="flex items-center gap-2">
 							<AlertTriangle
 								className="h-4 w-4 text-[var(--loss)]"
@@ -64,14 +64,22 @@ export function CapitalGainsTab({
 							<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
 						</Link>
 					</div>
-					<div className="overflow-x-auto rounded border border-[var(--loss)]/25 bg-[var(--bg-surface)]">
+					<div className="min-w-0 overflow-x-auto rounded border border-[var(--loss)]/25 bg-[var(--bg-surface)]">
 						<table className="w-full border-collapse text-left text-xs">
 							<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 								<tr>
-									<th className="px-3 py-2 font-medium">Ticker</th>
-									<th className="num-right px-3 py-2 font-medium">Quantity</th>
-									<th className="px-3 py-2 font-medium">Reason</th>
-									<th className="px-3 py-2 text-right font-medium">Action</th>
+									<th className="px-3 py-2 font-medium whitespace-nowrap">
+										Ticker
+									</th>
+									<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
+										Quantity
+									</th>
+									<th className="px-3 py-2 font-medium whitespace-nowrap">
+										Reason
+									</th>
+									<th className="px-3 py-2 text-right font-medium whitespace-nowrap">
+										Action
+									</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -85,11 +93,13 @@ export function CapitalGainsTab({
 											key={`${u.txId}:${u.asset}:${u.reason}`}
 											className="border-b border-[var(--border)] last:border-b-0"
 										>
-											<td className="px-3 py-2 font-semibold">{u.asset}</td>
-											<td className="num-right px-3 py-2">
+											<td className="px-3 py-2 font-semibold whitespace-nowrap">
+												{u.asset}
+											</td>
+											<td className="num-right px-3 py-2 whitespace-nowrap">
 												{formatQty(u.quantity)}
 											</td>
-											<td className="px-3 py-2 text-[var(--text-secondary)]">
+											<td className="px-3 py-2 text-[var(--text-secondary)] whitespace-nowrap">
 												{REVIEW_CODE_INFO[u.reason]?.title ?? u.reason}
 											</td>
 											<td className="px-3 py-2 text-right whitespace-nowrap">
@@ -111,7 +121,7 @@ export function CapitalGainsTab({
 
 			{/* Disposal rows table */}
 			<section className="space-y-3">
-				<div className="flex flex-wrap items-center justify-between gap-2">
+				<div className="flex flex-wrap items-baseline justify-between gap-2">
 					<h3 className="text-base font-semibold tracking-tight">
 						Capital Gains Disposals ({rows.length}{" "}
 						{pluralise(rows.length, "lot slice")})
@@ -129,7 +139,7 @@ export function CapitalGainsTab({
 					/>
 				) : (
 					<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-						<div className="overflow-x-auto">
+						<div className="min-w-0 overflow-x-auto">
 							<table className="w-full border-collapse text-left text-xs sm:text-sm">
 								<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 									<tr>
@@ -160,7 +170,7 @@ export function CapitalGainsTab({
 										<th className="num-right px-3 py-2.5 font-medium whitespace-nowrap">
 											Gain / Loss (INR)
 										</th>
-										<th className="px-3 py-2.5 text-right font-medium">
+										<th className="px-3 py-2.5 text-right font-medium whitespace-nowrap">
 											Trail
 										</th>
 									</tr>

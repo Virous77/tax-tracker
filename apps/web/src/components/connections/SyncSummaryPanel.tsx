@@ -110,7 +110,7 @@ export function SyncSummaryPanel({
 				<>
 					{/* Per-stream summary */}
 					<div className="space-y-2">
-						<div className="flex flex-wrap items-center justify-between gap-2">
+						<div className="flex flex-wrap items-baseline justify-between gap-2">
 							<h4 className="font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
 								Sync Streams
 							</h4>
@@ -121,20 +121,28 @@ export function SyncSummaryPanel({
 								View in Imports
 							</Link>
 						</div>
-						<div className="overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-surface)]">
+						<div className="min-w-0 overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-surface)]">
 							<table className="w-full border-collapse text-left text-xs">
 								<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 									<tr>
-										<th className="px-3 py-2 font-medium">Stream</th>
-										<th className="num-right px-3 py-2 font-medium">Fetched</th>
-										<th className="num-right px-3 py-2 font-medium">
+										<th className="px-3 py-2 font-medium whitespace-nowrap">
+											Stream
+										</th>
+										<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
+											Fetched
+										</th>
+										<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
 											Inserted
 										</th>
-										<th className="num-right px-3 py-2 font-medium">
+										<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
 											Duplicate
 										</th>
-										<th className="num-right px-3 py-2 font-medium">Flagged</th>
-										<th className="px-3 py-2 font-medium">Incomplete</th>
+										<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
+											Flagged
+										</th>
+										<th className="px-3 py-2 font-medium whitespace-nowrap">
+											Incomplete
+										</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -142,7 +150,7 @@ export function SyncSummaryPanel({
 										<tr>
 											<td
 												colSpan={6}
-												className="px-3 py-4 text-center text-[var(--text-muted)]"
+												className="px-3 py-4 text-center text-[var(--text-muted)] whitespace-normal"
 											>
 												No streams reported.
 											</td>
@@ -153,19 +161,19 @@ export function SyncSummaryPanel({
 												key={st.stream}
 												className="border-b border-[var(--border)] last:border-b-0"
 											>
-												<td className="font-mono-code px-3 py-2 font-medium">
+												<td className="font-mono-code px-3 py-2 font-medium whitespace-nowrap">
 													{st.stream}
 												</td>
-												<td className="num-right px-3 py-2">
+												<td className="num-right px-3 py-2 whitespace-nowrap">
 													{st.rowsFetched}
 												</td>
-												<td className="num-right px-3 py-2 text-[var(--positive)]">
+												<td className="num-right px-3 py-2 text-[var(--positive)] whitespace-nowrap">
 													{st.rowsInserted}
 												</td>
-												<td className="num-right px-3 py-2 text-[var(--text-secondary)]">
+												<td className="num-right px-3 py-2 text-[var(--text-secondary)] whitespace-nowrap">
 													{st.rowsDuplicate}
 												</td>
-												<td className="num-right px-3 py-2">
+												<td className="num-right px-3 py-2 whitespace-nowrap">
 													{st.rowsFlagged > 0 ? (
 														<Link
 															href={
@@ -181,7 +189,7 @@ export function SyncSummaryPanel({
 														<span className="text-[var(--text-muted)]">0</span>
 													)}
 												</td>
-												<td className="px-3 py-2">
+												<td className="min-w-[240px] px-3 py-2 whitespace-normal">
 													{st.incomplete ? (
 														<span className="text-[var(--warning)]">
 															{st.incomplete}
@@ -249,7 +257,7 @@ export function SyncSummaryPanel({
 
 			{/* Balance check */}
 			<div className="space-y-2">
-				<div className="flex flex-wrap items-center justify-between gap-2">
+				<div className="flex flex-wrap items-baseline justify-between gap-2">
 					<h4 className="font-semibold tracking-wide text-[var(--text-secondary)] uppercase">
 						Balance Check
 					</h4>
@@ -267,17 +275,25 @@ export function SyncSummaryPanel({
 						{balancesError}
 					</p>
 				) : balances ? (
-					<div className="overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-surface)]">
+					<div className="min-w-0 overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-surface)]">
 						<table className="w-full border-collapse text-left text-xs">
 							<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
 								<tr>
-									<th className="px-3 py-2 font-medium">Asset</th>
-									<th className="num-right px-3 py-2 font-medium">Fetched</th>
-									<th className="num-right px-3 py-2 font-medium">Computed</th>
-									<th className="num-right px-3 py-2 font-medium">
+									<th className="px-3 py-2 font-medium whitespace-nowrap">
+										Asset
+									</th>
+									<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
+										Fetched
+									</th>
+									<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
+										Computed
+									</th>
+									<th className="num-right px-3 py-2 font-medium whitespace-nowrap">
 										Difference
 									</th>
-									<th className="px-3 py-2 text-right font-medium">Status</th>
+									<th className="px-3 py-2 text-right font-medium whitespace-nowrap">
+										Status
+									</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -285,7 +301,7 @@ export function SyncSummaryPanel({
 									<tr>
 										<td
 											colSpan={5}
-											className="px-3 py-4 text-center text-[var(--text-muted)]"
+											className="px-3 py-4 text-center text-[var(--text-muted)] whitespace-normal"
 										>
 											No balances recorded yet.
 										</td>
@@ -306,15 +322,17 @@ export function SyncSummaryPanel({
 													highlight ? "bg-[var(--warning-soft)]/50" : ""
 												}`}
 											>
-												<td className="px-3 py-2 font-semibold">{row.asset}</td>
-												<td className="font-mono-code num-right px-3 py-2">
+												<td className="px-3 py-2 font-semibold whitespace-nowrap">
+													{row.asset}
+												</td>
+												<td className="font-mono-code num-right px-3 py-2 whitespace-nowrap">
 													{row.fetched}
 												</td>
-												<td className="font-mono-code num-right px-3 py-2">
+												<td className="font-mono-code num-right px-3 py-2 whitespace-nowrap">
 													{row.computed}
 												</td>
 												<td
-													className={`font-mono-code num-right px-3 py-2 ${
+													className={`font-mono-code num-right px-3 py-2 whitespace-nowrap ${
 														highlight
 															? "font-semibold text-[var(--warning)]"
 															: "text-[var(--text-secondary)]"

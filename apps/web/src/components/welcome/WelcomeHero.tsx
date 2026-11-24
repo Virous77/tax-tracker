@@ -165,7 +165,7 @@ export function WelcomeHero({
 					<div className="space-y-4 p-4 sm:p-5">
 						{previewTab === "vda" ? (
 							<>
-								<div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+								<div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
 									<span className="font-medium text-[var(--text-secondary)]">
 										{preview.vda.act} · TY {preview.vda.taxYear}
 									</span>
@@ -201,25 +201,31 @@ export function WelcomeHero({
 									</div>
 								</div>
 
-								<div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+								<div className="min-w-0 overflow-x-auto rounded-lg border border-[var(--border)]">
 									<table className="w-full text-left text-xs">
 										<thead className="bg-[var(--bg-subtle)] text-[var(--text-muted)]">
 											<tr>
-												<th scope="col" className="px-3 py-2 font-medium">
+												<th
+													scope="col"
+													className="px-3 py-2 font-medium whitespace-nowrap"
+												>
 													Asset
 												</th>
-												<th scope="col" className="px-3 py-2 font-medium">
+												<th
+													scope="col"
+													className="px-3 py-2 font-medium whitespace-nowrap"
+												>
 													Qty
 												</th>
 												<th
 													scope="col"
-													className="px-3 py-2 text-right font-medium"
+													className="px-3 py-2 text-right font-medium whitespace-nowrap"
 												>
 													Cost
 												</th>
 												<th
 													scope="col"
-													className="px-3 py-2 text-right font-medium"
+													className="px-3 py-2 text-right font-medium whitespace-nowrap"
 												>
 													Proceeds
 												</th>
@@ -227,16 +233,16 @@ export function WelcomeHero({
 										</thead>
 										<tbody>
 											<tr className="border-t border-[var(--border)]">
-												<td className="px-3 py-2.5 font-medium text-[var(--text-primary)]">
+												<td className="px-3 py-2.5 font-medium text-[var(--text-primary)] whitespace-nowrap">
 													{preview.vda.asset}
 												</td>
-												<td className="num px-3 py-2.5 text-[var(--text-secondary)]">
+												<td className="num px-3 py-2.5 text-[var(--text-secondary)] whitespace-nowrap">
 													{preview.vda.quantity}
 												</td>
-												<td className="num-right px-3 py-2.5 text-[var(--text-secondary)]">
+												<td className="num-right px-3 py-2.5 text-[var(--text-secondary)] whitespace-nowrap">
 													{preview.vda.costInr}
 												</td>
-												<td className="num-right px-3 py-2.5 font-medium text-[var(--text-primary)]">
+												<td className="num-right px-3 py-2.5 font-medium text-[var(--text-primary)] whitespace-nowrap">
 													{preview.vda.considerationInr}
 												</td>
 											</tr>
@@ -259,7 +265,7 @@ export function WelcomeHero({
 							</>
 						) : (
 							<>
-								<div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+								<div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
 									<span className="font-medium text-[var(--text-secondary)]">
 										{preview.equity.sectionForeignAssets} · CY{" "}
 										<span className="num">{preview.equity.scheduleFaCy}</span>
@@ -297,25 +303,31 @@ export function WelcomeHero({
 									</div>
 								</div>
 
-								<div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+								<div className="min-w-0 overflow-x-auto rounded-lg border border-[var(--border)]">
 									<table className="w-full text-left text-xs">
 										<thead className="bg-[var(--bg-subtle)] text-[var(--text-muted)]">
 											<tr>
-												<th scope="col" className="px-3 py-2 font-medium">
+												<th
+													scope="col"
+													className="px-3 py-2 font-medium whitespace-nowrap"
+												>
 													Ticker
 												</th>
-												<th scope="col" className="px-3 py-2 font-medium">
+												<th
+													scope="col"
+													className="px-3 py-2 font-medium whitespace-nowrap"
+												>
 													Shares
 												</th>
 												<th
 													scope="col"
-													className="px-3 py-2 text-right font-medium"
+													className="px-3 py-2 text-right font-medium whitespace-nowrap"
 												>
 													Cost (SBI FX)
 												</th>
 												<th
 													scope="col"
-													className="px-3 py-2 text-right font-medium"
+													className="px-3 py-2 text-right font-medium whitespace-nowrap"
 												>
 													Closing
 												</th>
@@ -323,16 +335,16 @@ export function WelcomeHero({
 										</thead>
 										<tbody>
 											<tr className="border-t border-[var(--border)]">
-												<td className="px-3 py-2.5 font-medium text-[var(--text-primary)]">
+												<td className="px-3 py-2.5 font-medium text-[var(--text-primary)] whitespace-nowrap">
 													{preview.equity.ticker}
 												</td>
-												<td className="num px-3 py-2.5 text-[var(--text-secondary)]">
+												<td className="num px-3 py-2.5 text-[var(--text-secondary)] whitespace-nowrap">
 													{preview.equity.shares}
 												</td>
-												<td className="num-right px-3 py-2.5 text-[var(--text-secondary)]">
+												<td className="num-right px-3 py-2.5 text-[var(--text-secondary)] whitespace-nowrap">
 													{preview.equity.costInr}
 												</td>
-												<td className="num-right px-3 py-2.5 font-medium text-[var(--text-primary)]">
+												<td className="num-right px-3 py-2.5 font-medium text-[var(--text-primary)] whitespace-nowrap">
 													{preview.equity.closingValueInr}
 												</td>
 											</tr>

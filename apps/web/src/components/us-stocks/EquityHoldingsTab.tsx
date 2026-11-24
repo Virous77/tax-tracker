@@ -71,7 +71,7 @@ export function EquityHoldingsTab({
 
 	return (
 		<section className="space-y-3">
-			<div className="flex flex-wrap items-center justify-between gap-3">
+			<div className="flex flex-wrap items-baseline justify-between gap-2">
 				<div>
 					<h3 className="text-base font-semibold tracking-tight">
 						Year-End Share Holdings ({report.balances.length})
@@ -106,17 +106,23 @@ export function EquityHoldingsTab({
 			) : null}
 
 			<div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-surface)]">
-				<div className="overflow-x-auto">
+				<div className="min-w-0 overflow-x-auto">
 					<table className="w-full border-collapse text-left text-sm">
 						<thead className="border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs text-[var(--text-secondary)]">
 							<tr>
-								<th className="px-4 py-2.5 font-medium">Ticker</th>
-								<th className="px-4 py-2.5 font-medium">Pool / Source</th>
-								<th className="num-right px-4 py-2.5 font-medium">Computed</th>
-								<th className="num-right px-4 py-2.5 font-medium">
+								<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+									Ticker
+								</th>
+								<th className="px-4 py-2.5 font-medium whitespace-nowrap">
+									Pool / Source
+								</th>
+								<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
+									Computed
+								</th>
+								<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 									Actual Balance
 								</th>
-								<th className="num-right px-4 py-2.5 font-medium">
+								<th className="num-right px-4 py-2.5 font-medium whitespace-nowrap">
 									Difference
 								</th>
 							</tr>
@@ -126,7 +132,7 @@ export function EquityHoldingsTab({
 								<tr>
 									<td
 										colSpan={5}
-										className="px-4 py-6 text-center text-xs text-[var(--text-muted)]"
+										className="px-4 py-6 text-center text-xs text-[var(--text-muted)] whitespace-normal"
 									>
 										No US stock share holdings at 31 March.
 									</td>
@@ -151,14 +157,16 @@ export function EquityHoldingsTab({
 											key={key}
 											className="border-b border-[var(--border)] last:border-b-0"
 										>
-											<td className="px-4 py-2.5 font-semibold">{b.asset}</td>
-											<td className="px-4 py-2.5 text-xs text-[var(--text-secondary)]">
+											<td className="px-4 py-2.5 font-semibold whitespace-nowrap">
+												{b.asset}
+											</td>
+											<td className="px-4 py-2.5 text-xs text-[var(--text-secondary)] whitespace-nowrap">
 												{b.source ? sourceLabel(b.source) : "Global"}
 											</td>
-											<td className="num-right px-4 py-2.5">
+											<td className="num-right px-4 py-2.5 whitespace-nowrap">
 												{formatQty(b.computed)}
 											</td>
-											<td className="px-4 py-2 text-right">
+											<td className="px-4 py-2 text-right whitespace-nowrap">
 												<input
 													type="text"
 													inputMode="decimal"
@@ -175,7 +183,7 @@ export function EquityHoldingsTab({
 												/>
 											</td>
 											<td
-												className={`num-right px-4 py-2.5 text-xs ${
+												className={`num-right px-4 py-2.5 text-xs whitespace-nowrap ${
 													hasMismatch
 														? "font-medium text-[var(--warning)]"
 														: "text-[var(--text-muted)]"

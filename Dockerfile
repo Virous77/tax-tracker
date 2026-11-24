@@ -18,7 +18,7 @@ COPY packages/importers/package.json ./packages/importers/package.json
 COPY packages/recipes/package.json ./packages/recipes/package.json
 COPY apps/cli/package.json ./apps/cli/package.json
 COPY apps/web/package.json ./apps/web/package.json
-RUN --mount=type=cache,id=tax-tracker-pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 COPY packages ./packages
 COPY apps ./apps
 COPY tsconfig.base.json ./
@@ -44,7 +44,6 @@ COPY --from=build --chown=node:node /app/apps/web/public ./apps/web/public
 COPY --from=build --chown=node:node /app/packages/db/migrations ./packages/db/migrations
 COPY --from=build --chown=node:node /app/packages/rates/data ./packages/rates/data
 COPY scripts/docker-entrypoint.mjs ./scripts/docker-entrypoint.mjs
-VOLUME /data
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT || 3000)+'/api/health').then(async r=>{if(!r.ok||!(await r.json()).dbOk)process.exit(1)}).catch(()=>process.exit(1))"

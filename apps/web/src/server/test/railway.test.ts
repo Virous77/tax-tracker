@@ -36,6 +36,12 @@ it("configures a Dockerfile build and one healthy SQLite instance", async () => 
 	expect(deploy).toMatch(/^numReplicas = 1$/m);
 });
 
+it("keeps the Dockerfile compatible with Railway's pre-build validator", async () => {
+	const dockerfile = await readFile(new URL("Dockerfile", repoRoot), "utf8");
+	expect(dockerfile).not.toMatch(/^\s*VOLUME\b/im);
+	expect(dockerfile).not.toMatch(/--mount=type=cache\b/i);
+});
+
 it("ships paste-ready variables with only placeholders for secrets", async () => {
 	const template = await readFile(
 		new URL(".env.railway.example", repoRoot),

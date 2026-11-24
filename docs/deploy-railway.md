@@ -3,8 +3,9 @@
 > **Pre-release. Not tax advice.** Have a Chartered Accountant check every figure before filing.
 
 1. **Connect the repository.** In Railway, create a project, choose **Deploy from GitHub repo**, and select
-   `Virous77/tax-tracker` or your fork. Keep the service root at the repository root so Railway detects
-   `Dockerfile`.
+   `Virous77/tax-tracker` or your fork. Deploy a **single service** with its root directory at the repository
+   root so Railway builds the root `Dockerfile` (which runs the web app). You do not need a separate service for
+   `apps/cli` — the CLI is for local terminal use only.
 2. **Add a persistent volume.** Attach a volume to the Tax Tracker service and set the mount path to `/data`.
    This keeps the SQLite database, encrypted Secrets Vault and session files across redeploys. Use one replica
    for the single SQLite database. Expect a brief interruption during redeploys with a volume attached.

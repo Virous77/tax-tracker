@@ -1,4 +1,4 @@
-import type { VdaReport } from "@tax/core";
+import type { IncomeRow, VdaReport } from "@tax/core";
 import type { ExportReportQuerySchema } from "@tax/core/api";
 import { writeXlsx } from "@tax/importers";
 import type { z } from "zod";
@@ -57,6 +57,34 @@ function scheduleRows(rows: VdaReport["scheduleVdaRows"]): string[][] {
 	];
 }
 
+function joinSourceRefs(refs: IncomeRow["trail"]): string {
+	return [...new Set(refs.map(({ sourceRef }) => sourceRef))].join(", ");
+}
+
+function fullScheduleRows(rows: VdaReport["scheduleVdaRows"]): string[][] {
+	return table(
+		rows.map(({ trail, reviewFlags, ...row }) => {
+			const { disposalTxId, lotTxIds, rawRefs } = trail;
+			return {
+				...row,
+				disposalTxId,
+				lotTxIds: lotTxIds.join(", "),
+				disposalSourceRef: joinSourceRefs(
+					rawRefs.filter(({ txId }) => txId === disposalTxId),
+				),
+				lotSourceRefs: joinSourceRefs(
+					lotTxIds.flatMap((lotTxId) =>
+						rawRefs.filter(({ txId }) => txId === lotTxId),
+					),
+				),
+				sourceRefs: joinSourceRefs(rawRefs),
+				trail,
+				reviewFlags,
+			};
+		}),
+	);
+}
+
 export async function exportReport(
 	report: VdaReport,
 	query: z.infer<typeof ExportReportQuerySchema>,
@@ -82,7 +110,7 @@ export async function exportReport(
 			name: "schedule-vda",
 			rows:
 				query.kind === "full"
-					? table(report.scheduleVdaRows)
+					? fullScheduleRows(report.scheduleVdaRows)
 					: scheduleRows(report.scheduleVdaRows),
 		},
 		{
@@ -105,7 +133,15 @@ export async function exportReport(
 		{
 			name: "income",
 			rows: [
-				...table(report.income.rows),
+				...table(
+					query.kind === "full"
+						? report.income.rows.map(({ trail, ...row }) => ({
+								...row,
+								sourceRefs: joinSourceRefs(trail),
+								trail,
+							}))
+						: report.income.rows,
+				),
 				["Gifts total INR", report.income.giftsTotalInr],
 				["Gifts over threshold", String(report.income.giftsOverThreshold)],
 				...(report.income.note ? [[report.income.note]] : []),
